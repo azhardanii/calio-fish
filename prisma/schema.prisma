@@ -1,0 +1,204 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// =============================================
+// SETTINGS (Target statis, bisa diedit kapan saja)
+// Perubahan target TIDAK mengubah historis record
+// =============================================
+model ReportSettings {
+  id         String   @id @default(uuid())
+  key        String   @unique
+  value      Decimal  @db.Decimal(14, 2) @default(0)
+  label      String   // Deskripsi untuk UI
+  updated_at DateTime @updatedAt
+}
+
+// =============================================
+// PRODUCTS (Katalog produk Calio Fish)
+// =============================================
+model Product {
+  id           String   @id @default(uuid())
+  sku          String   @unique               
+  name         String                         
+  short_name   String                         
+  category     String                         
+  unit         String   @default("pcs")       
+  base_price   Decimal  @db.Decimal(12, 2)    
+  is_active    Boolean  @default(true)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+}
+
+// =============================================
+// 1. MARKETING OFFLINE
+// target_bulanan, persentase, gap disimpan snapshot
+// saat record dibuat (auto-computed dari Settings)
+// =============================================
+model MarketingOffline {
+  id                  String   @id @default(uuid())
+  date                DateTime @db.Date
+  target_bulanan      Decimal  @db.Decimal(14, 2) @default(0)
+  jumlah_outlet_aktif Int      @default(0)
+  omset_harian        Decimal  @db.Decimal(14, 2) @default(0)
+  omset_mtd           Decimal  @db.Decimal(14, 2) @default(0)
+  persentase          Decimal  @db.Decimal(6, 2)  @default(0)
+  gap                 Decimal  @db.Decimal(14, 2) @default(0)
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+}
+
+// =============================================
+// 2. MARKETING ONLINE (Shopee, TikTok)
+// target_mtd, persentase, gap disimpan snapshot
+// =============================================
+model MarketingOnline {
+  id               String   @id @default(uuid())
+  date             DateTime @db.Date
+  platform         String   // "shopee" | "tiktok"
+  target_mtd       Decimal  @db.Decimal(14, 2) @default(0)
+  omset_harian     Decimal  @db.Decimal(14, 2) @default(0)
+  total_omset_mtd  Decimal  @db.Decimal(14, 2) @default(0)
+  persentase       Decimal  @db.Decimal(6, 2)  @default(0)
+  gap              Decimal  @db.Decimal(14, 2) @default(0)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+}
+
+// =============================================
+// 3. PAKET KIRIMAN
+// =============================================
+model PaketKiriman {
+  id                 String   @id @default(uuid())
+  date               DateTime @db.Date
+  
+  // Channels
+  shopee_paket       Int      @default(0)
+  tiktok_paket       Int      @default(0)
+  offline_paket      Int      @default(0)
+  affiliate_paket    Int      @default(0)
+  influencer_paket   Int      @default(0)
+  sample_outlet_paket Int     @default(0)
+
+  // Products
+  fs_original        Int      @default(0)
+  fs_sambal_matah    Int      @default(0)
+  fs_soto            Int      @default(0)
+  fs_rendang         Int      @default(0)
+  abon_90            Int      @default(0)
+
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+}
+
+// =============================================
+// 4. PEMBERSIHAN KULIT
+// =============================================
+model PembersihanKulit {
+  id               String   @id @default(uuid())
+  date             DateTime @db.Date
+  bahan_beku_kg    Decimal  @db.Decimal(8, 3) @default(0)
+  bahan_bersih_kg  Decimal  @db.Decimal(8, 3) @default(0)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+}
+
+// =============================================
+// 5. PRODUKSI
+// =============================================
+model Produksi {
+  id               String   @id @default(uuid())
+  date             DateTime @db.Date
+  kegiatan         String
+  bahan_baku       Decimal? @db.Decimal(8, 3)
+  bahan_jadi       Decimal? @db.Decimal(8, 3)
+  total_hasil_pcs  Int?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+}
+
+// =============================================
+// 6. DATABASE AFFILIATE
+// =============================================
+model Affiliate {
+  id               String   @id @default(uuid())
+  nama             String
+  akun_medsos      String
+  no_hp            String?
+  alamat           String?
+  jenis_postingan  String?
+  media_upload     String?
+  ratecard         Decimal? @db.Decimal(14, 2)
+  link_unggahan    String?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+}
+
+// =============================================
+// 7. DISTRIBUSI SAMPLE
+// =============================================
+model DistribusiSample {
+  id               String   @id @default(uuid())
+  date             DateTime @db.Date
+  jenis_sample     String
+  total_produk     Int      @default(0)
+  biaya_ekspedisi  Decimal  @db.Decimal(14, 2) @default(0)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+}
+
+// =============================================
+// 8. DATABASE OUTLET
+// =============================================
+model Outlet {
+  id               String   @id @default(uuid())
+  nama             String
+  tlp              String?
+  alamat           String?
+  status           String?  // TOP / konsinyasi
+  pic              String?
+  order_baru       Int      @default(0)
+  sisa_stok        Int      @default(0)
+  tagihan          Decimal  @db.Decimal(14, 2) @default(0)
+  payment          Decimal  @db.Decimal(14, 2) @default(0)
+  sisa_tagihan     Decimal  @db.Decimal(14, 2) @default(0)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+}
+
+// =============================================
+// 9. HR - KARYAWAN
+// =============================================
+model Employee {
+  id               String   @id @default(uuid())
+  nama             String
+  posisi           String?
+  no_hp            String?  @unique
+  status_aktif     Boolean  @default(true)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+  
+  attendances      Attendance[]
+}
+
+// =============================================
+// 10. HR - PRESENSI
+// =============================================
+model Attendance {
+  id               String   @id @default(uuid())
+  date             DateTime @db.Date
+  employee_id      String
+  status_kehadiran String   // HADIR, IZIN, dll
+  alasan           String?  // Jika IZIN
+  waktu            DateTime @default(now()) // Jam masuk (WIB via timezone DB)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  employee         Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+}

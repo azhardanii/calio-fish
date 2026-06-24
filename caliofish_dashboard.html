@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>CalioFish — Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root {
+  /* Blue Sea Palette */
+  --ocean-900: #051225;
+  --ocean-800: #0A1E3D;
+  --ocean-700: #0F2D5A;
+  --ocean-600: #163F7A;
+  --ocean-500: #1A5096;
+  --ocean-400: #2567B4;
+  --ocean-300: #4A8FD4;
+  --ocean-200: #80B8E8;
+  --ocean-100: #BDD9F4;
+  --ocean-50:  #E8F3FC;
+  --cyan-600:  #0470A8;
+  --cyan-500:  #0891B2;
+  --cyan-400:  #0EA5C9;
+  --cyan-300:  #38BDF8;
+  --cyan-200:  #7DD3F6;
+  --cyan-100:  #BAE6FD;
+  --cyan-50:   #E0F5FE;
+  --seafoam:   #0D9488;
+  --seafoam-l: #CCFBF1;
+  --sand:      #D97706;
+  --sand-l:    #FEF3C7;
+  --coral:     #DC3545;
+  --coral-l:   #FFE8EB;
+  --slate:     #334155;
+  --slate-l:   #F1F5F9;
+  /* UI */
+  --bg:      #EEF4FB;
+  --surface: #FFFFFF;
+  --surface2:#F5F9FE;
+  --border:  #C8DDF0;
+  --border2: #A8C8E4;
+  --text:    #0A1E3D;
+  --muted:   #4A6A8A;
+  --hint:    #86A5C0;
+  --font: 'Plus Jakarta Sans', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --sidebar: 240px;
+  --r: 10px; --rl: 14px; --rx: 20px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;height:100vh;display:flex;overflow:hidden}
+
+/* ══ SIDEBAR ══ */
+.sidebar{
+  width:var(--sidebar);flex-shrink:0;
+  background:linear-gradient(175deg, var(--ocean-800) 0%, var(--ocean-900) 60%, #030C1A 100%);
+  display:flex;flex-direction:column;height:100vh;overflow:hidden;
+  position:relative;
+}
+.sidebar::before{
+  content:'';position:absolute;top:0;left:0;right:0;bottom:0;
+  background:radial-gradient(ellipse at 20% 10%,rgba(14,165,201,.12) 0%,transparent 60%),
+             radial-gradient(ellipse at 80% 80%,rgba(26,80,150,.15) 0%,transparent 60%);
+  pointer-events:none;
+}
+.sb-logo{padding:22px 20px 18px;border-bottom:1px solid rgba(255,255,255,.07);position:relative}
+.sb-logo-mark{display:flex;align-items:center;gap:9px}
+.logo-icon{
+  width:34px;height:34px;border-radius:9px;
+  background:linear-gradient(135deg,var(--cyan-100),var(--ocean-100));
+  display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;
+}
+.logo-text{font-size:16px;font-weight:700;color:#fff;letter-spacing:.3px}
+.logo-text span{color:var(--cyan-300)}
+.sb-version{font-size:9px;color:rgba(255,255,255,.3);font-family:var(--mono);margin-top:5px;padding-left:43px}
+
+.sb-nav{flex:1;overflow-y:auto;padding:12px 0;scrollbar-width:none}
+.sb-nav::-webkit-scrollbar{display:none}
+.sb-section{padding:14px 14px 4px;font-size:9px;font-weight:600;letter-spacing:1.6px;text-transform:uppercase;color:rgba(255,255,255,.28);font-family:var(--mono)}
+.sb-item{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 14px 9px 16px;margin:1px 8px;
+  border-radius:8px;cursor:pointer;
+  color:rgba(255,255,255,.55);font-size:13px;font-weight:500;
+  transition:all .18s;position:relative;
+}
+.sb-item:hover{background:rgba(255,255,255,.07);color:rgba(255,255,255,.85)}
+.sb-item.active{
+  background:linear-gradient(90deg,rgba(14,165,201,.2),rgba(14,165,201,.07));
+  color:#fff;
+  border-left:2px solid var(--cyan-400);
+  margin-left:6px;padding-left:14px;
+}
+.sb-item.active .sb-icon{color:var(--cyan-300)}
+.sb-icon{font-size:15px;width:20px;text-align:center;flex-shrink:0}
+.sb-badge{margin-left:auto;font-size:9px;padding:1px 6px;border-radius:10px;background:var(--cyan-500);color:#fff;font-family:var(--mono);font-weight:500}
+.sb-live{margin-left:auto;display:flex;align-items:center;gap:4px;font-size:9px;color:var(--cyan-300);font-family:var(--mono)}
+.live-dot{width:5px;height:5px;background:#22C55E;border-radius:50%;animation:bk 2s infinite;flex-shrink:0}
+@keyframes bk{0%,100%{opacity:1}50%{opacity:.2}}
+
+.sb-bottom{padding:12px 10px 16px;border-top:1px solid rgba(255,255,255,.07)}
+.sb-user{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:8px;cursor:pointer}
+.sb-user:hover{background:rgba(255,255,255,.06)}
+.avatar{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--ocean-400),var(--cyan-500));display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#fff;flex-shrink:0}
+.sb-user-name{font-size:12px;font-weight:500;color:rgba(255,255,255,.8)}
+.sb-user-role{font-size:10px;color:rgba(255,255,255,.35);font-family:var(--mono)}
+
+/* ══ MAIN ══ */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* TOPBAR */
+.topbar{
+  background:var(--surface);border-bottom:1px solid var(--border);
+  padding:0 28px;height:58px;display:flex;align-items:center;gap:16px;flex-shrink:0;
+}
+.topbar-left{display:flex;align-items:center;gap:8px;flex:1}
+.page-title{font-size:16px;font-weight:600;color:var(--text)}
+.page-crumb{font-size:12px;color:var(--hint);display:flex;align-items:center;gap:5px}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.tb-badge{
+  display:flex;align-items:center;gap:5px;padding:5px 12px;
+  background:var(--cyan-50);border:1px solid var(--cyan-100);
+  color:var(--cyan-600);border-radius:20px;font-size:11px;font-weight:500;
+}
+.tb-badge .live-dot{background:var(--cyan-400)}
+.tb-btn{
+  width:34px;height:34px;border-radius:8px;border:1px solid var(--border);
+  background:var(--surface);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:15px;color:var(--muted);transition:all .15s;
+}
+.tb-btn:hover{background:var(--surface2);border-color:var(--border2)}
+.tb-notif{position:relative}
+.notif-dot{width:7px;height:7px;background:var(--coral);border-radius:50%;position:absolute;top:6px;right:6px;border:1.5px solid var(--surface)}
+
+/* CONTENT */
+.content{flex:1;overflow-y:auto;padding:24px 28px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.section{display:none}.section.on{display:block}
+
+/* ══ GRID UTILITIES ══ */
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.grid-13{display:grid;grid-template-columns:1fr 3fr;gap:14px}
+.grid-31{display:grid;grid-template-columns:3fr 1fr;gap:14px}
+.gap-top{margin-top:14px}
+
+/* ══ CARDS ══ */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden}
+.card-header{padding:16px 18px 0;display:flex;align-items:center;justify-content:space-between}
+.card-title{font-size:13px;font-weight:600;color:var(--text)}
+.card-sub{font-size:11px;color:var(--hint);margin-top:1px}
+.card-body{padding:16px 18px}
+.card-body-np{padding:0}
+.ch-right{display:flex;align-items:center;gap:8px}
+
+/* STAT CARDS */
+.stat-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);
+  padding:16px 18px;display:flex;align-items:flex-start;gap:14px;
+}
+.stat-icon{
+  width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  font-size:18px;flex-shrink:0;
+}
+.si-blue{background:var(--ocean-50);color:var(--ocean-500)}
+.si-cyan{background:var(--cyan-50);color:var(--cyan-600)}
+.si-sea{background:var(--seafoam-l);color:var(--seafoam)}
+.si-sand{background:var(--sand-l);color:var(--sand)}
+.si-red{background:var(--coral-l);color:var(--coral)}
+.stat-val{font-size:24px;font-weight:700;line-height:1;color:var(--text)}
+.stat-lbl{font-size:11px;color:var(--muted);margin-top:2px}
+.stat-delta{font-size:10px;margin-top:5px;display:flex;align-items:center;gap:3px}
+.delta-up{color:var(--seafoam)}
+.delta-dn{color:var(--coral)}
+.delta-nt{color:var(--muted)}
+
+/* TABLES */
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th{font-size:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--hint);font-family:var(--mono);text-align:left;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--surface2)}
+.tbl td{padding:10px 14px;border-bottom:1px solid #EBF3FC;vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:var(--surface2)}
+.tbl-scroll{overflow-x:auto}
+
+/* BADGES */
+.bdg{display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:2px 8px;border-radius:20px;font-weight:600;font-family:var(--mono)}
+.bdg-green{background:var(--seafoam-l);color:var(--seafoam)}
+.bdg-blue{background:var(--ocean-50);color:var(--ocean-500)}
+.bdg-cyan{background:var(--cyan-50);color:var(--cyan-600)}
+.bdg-yellow{background:var(--sand-l);color:var(--sand)}
+.bdg-red{background:var(--coral-l);color:var(--coral)}
+.bdg-gray{background:var(--slate-l);color:var(--slate)}
+
+/* MINI TABS */
+.mtabs{display:flex;gap:3px;background:var(--surface2);border-radius:8px;padding:3px}
+.mtab{padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-weight:500;color:var(--muted);border:none;background:transparent;font-family:var(--font);transition:all .15s}
+.mtab.on{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(10,30,61,.08)}
+
+/* PROGRESS BAR */
+.pbar-wrap{margin-bottom:10px}
+.pbar-top{display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px}
+.pbar-label{font-weight:500;color:var(--text)}
+.pbar-val{color:var(--muted);font-family:var(--mono)}
+.pbar{height:6px;background:var(--ocean-50);border-radius:3px;overflow:hidden}
+.pbar-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--ocean-400),var(--cyan-400))}
+
+/* PILL STATUS */
+.dot-status{display:flex;align-items:center;gap:6px;font-size:11px}
+.ds-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.ds-green{background:#22C55E}.ds-yellow{background:#F59E0B}.ds-red{background:#EF4444}.ds-blue{background:var(--cyan-400)}.ds-gray{background:#94A3B8}
+
+/* MINI CHART AREA */
+.mini-chart-wrap{position:relative;height:70px;margin-top:8px}
+
+/* SECTION TITLES */
+.sec-title{font-size:11px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--hint);font-family:var(--mono);margin-bottom:12px}
+
+/* FEED / LIST */
+.feed-item{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid #EBF3FC}
+.feed-item:last-child{border-bottom:none}
+.feed-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.fi-green{background:var(--seafoam-l)}.fi-blue{background:var(--ocean-50)}.fi-cyan{background:var(--cyan-50)}.fi-yellow{background:var(--sand-l)}.fi-red{background:var(--coral-l)}
+.feed-text{flex:1;min-width:0}
+.feed-title{font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.feed-sub{font-size:11px;color:var(--muted);margin-top:1px}
+.feed-time{font-size:10px;color:var(--hint);font-family:var(--mono);flex-shrink:0;margin-top:2px}
+
+/* MAP HEAT */
+.area-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #EBF3FC}
+.area-item:last-child{border-bottom:none}
+.area-rank{font-size:11px;font-weight:600;color:var(--hint);font-family:var(--mono);width:18px;flex-shrink:0}
+.area-name{font-size:12px;font-weight:500;flex:1}
+.area-bar{flex:2;height:5px;background:var(--ocean-50);border-radius:3px;overflow:hidden}
+.area-bar-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--ocean-400),var(--cyan-300))}
+.area-val{font-size:11px;font-family:var(--mono);color:var(--muted);min-width:50px;text-align:right}
+
+/* CHAT BUBBLE */
+.chat-wrap{display:flex;flex-direction:column;gap:10px;padding:14px}
+.bubble{max-width:75%;padding:10px 12px;border-radius:10px;font-size:12px;line-height:1.5}
+.bubble.user{align-self:flex-end;background:var(--ocean-500);color:#fff;border-radius:10px 10px 2px 10px}
+.bubble.bot{align-self:flex-start;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:10px 10px 10px 2px}
+.bubble-meta{font-size:9px;color:rgba(255,255,255,.5);margin-top:4px;text-align:right;font-family:var(--mono)}
+.bubble-meta.bot-meta{color:var(--hint);text-align:left}
+.chat-typing{display:flex;gap:3px;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px 10px 10px 2px;align-self:flex-start;width:56px}
+.typing-dot{width:5px;height:5px;border-radius:50%;background:var(--hint);animation:ty .9s infinite}
+.typing-dot:nth-child(2){animation-delay:.2s}
+.typing-dot:nth-child(3){animation-delay:.4s}
+@keyframes ty{0%,100%{opacity:.3;transform:translateY(0)}50%{opacity:1;transform:translateY(-3px)}}
+
+/* CV CARD */
+.cv-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px}
+.cv-top{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.cv-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--ocean-300),var(--cyan-400));display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff;flex-shrink:0}
+.cv-name{font-size:13px;font-weight:600}
+.cv-pos{font-size:11px;color:var(--muted)}
+.cv-score{margin-left:auto;text-align:right}
+.score-val{font-size:20px;font-weight:700;line-height:1}
+.score-lbl{font-size:9px;color:var(--hint);font-family:var(--mono)}
+.score-high{color:var(--seafoam)}.score-mid{color:var(--sand)}.score-low{color:var(--coral)}
+
+/* ALERT BOX */
+.alert-item{display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border-radius:8px;margin-bottom:8px;border:1px solid}
+.alert-red{background:var(--coral-l);border-color:#FCA5A5}
+.alert-yellow{background:var(--sand-l);border-color:#FCD34D}
+.alert-blue{background:var(--cyan-50);border-color:var(--cyan-100)}
+.alert-icon{font-size:15px;flex-shrink:0;margin-top:1px}
+.alert-title{font-size:12px;font-weight:600}
+.alert-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.alert-time{font-size:10px;font-family:var(--mono);color:var(--hint);margin-left:auto;flex-shrink:0}
+
+/* KEUANGAN KPI */
+.kpi-block{padding:14px 0;border-bottom:1px solid #EBF3FC}
+.kpi-block:last-child{border-bottom:none}
+.kpi-label{font-size:11px;color:var(--muted);margin-bottom:4px}
+.kpi-value{font-size:22px;font-weight:700;font-family:var(--mono);color:var(--text)}
+.kpi-note{font-size:10px;color:var(--hint);margin-top:3px}
+
+/* WAREHOUS TABLE COLORED */
+.wh-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #EBF3FC;font-size:12px}
+.wh-row:last-child{border-bottom:none}
+.wh-name{font-weight:600;min-width:90px}
+.wh-bar-wrap{flex:1}
+.wh-bar{height:8px;background:var(--ocean-50);border-radius:4px;overflow:hidden}
+.wh-bar-fill{height:100%;border-radius:4px}
+.fill-full{background:linear-gradient(90deg,var(--seafoam),#34D399)}
+.fill-mid{background:linear-gradient(90deg,var(--ocean-400),var(--cyan-400))}
+.fill-low{background:linear-gradient(90deg,var(--sand),#FBBF24)}
+
+/* COMPLIANCE LOG */
+.log-row{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid #EBF3FC;font-size:11px}
+.log-row:last-child{border-bottom:none}
+.log-ts{font-family:var(--mono);color:var(--hint);min-width:100px;flex-shrink:0;font-size:10px}
+.log-actor{font-weight:500;min-width:110px;flex-shrink:0}
+.log-action{color:var(--muted);flex:1}
+.log-flag{flex-shrink:0}
+
+/* ACTION BUTTONS */
+.action-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;border:none;font-family:var(--font);transition:all .15s}
+.btn-primary{background:linear-gradient(135deg,var(--ocean-500),var(--cyan-600));color:#fff}
+.btn-primary:hover{opacity:.9}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--muted)}
+.btn-outline:hover{border-color:var(--border2);color:var(--text);background:var(--surface2)}
+
+/* SEARCH INPUT */
+.search-input{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted);cursor:text}
+.search-input input{border:none;background:transparent;color:var(--text);font-size:12px;font-family:var(--font);outline:none;flex:1}
+
+/* WATERMARK */
+.watermark{text-align:center;padding:28px 0 8px;font-size:10px;color:var(--hint);font-family:var(--mono)}
+
+/* PHASE TAG */
+.phase-tag{display:inline-block;font-size:9px;padding:1px 6px;border-radius:3px;font-family:var(--mono);margin-left:6px;vertical-align:middle}
+.pt1{background:var(--seafoam-l);color:var(--seafoam)}.pt2{background:var(--cyan-50);color:var(--cyan-600)}.pt3{background:var(--sand-l);color:var(--sand)}.pt4{background:var(--coral-l);color:var(--coral)}
+
+/* CHART CONTAINERS */
+.chart-wrap{position:relative}
+.chart-wrap canvas{width:100%!important}
+</style>
+</head>
+<body>
+
+<!-- ══════════ SIDEBAR ══════════ -->
+<div class="sidebar">
+  <div class="sb-logo">
+    <div class="sb-logo-mark">
+      <div class="logo-icon">🐟</div>
+      <div class="logo-text">Calio<span>Fish</span></div>
+    </div>
+  </div>
+
+  <nav class="sb-nav">
+    <div class="sb-section">Main</div>
+    <div class="sb-item active" onclick="go('overview',this)">
+      <span class="sb-icon">⬡</span>Overview
+      <span class="sb-live"><span class="live-dot"></span>live</span>
+    </div>
+    <div class="sb-item" onclick="go('master',this)">
+      <span class="sb-icon">⚙️</span>Master Data
+    </div>
+
+    <div class="sb-section">Phase 1 — Core</div>
+    <div class="sb-item" onclick="go('order',this)">
+      <span class="sb-icon">💬</span>Order Management
+      <span class="sb-badge">12</span>
+    </div>
+    <div class="sb-item" onclick="go('gudang',this)">
+      <span class="sb-icon">🏭</span>Gudang Pusat
+    </div>
+    <div class="sb-item" onclick="go('cabang',this)">
+      <span class="sb-icon">🏪</span>Stok Cabang
+    </div>
+    <div class="sb-item" onclick="go('online',this)">
+      <span class="sb-icon">🛒</span>Penjualan Online
+    </div>
+    <div class="sb-item" onclick="go('analitik',this)">
+      <span class="sb-icon">📊</span>Analitik & Tren
+    </div>
+    <div class="sb-item" onclick="go('keuangan',this)">
+      <span class="sb-icon">💰</span>Keuangan
+      <span class="sb-badge" style="background:var(--coral)">!</span>
+    </div>
+
+    <div class="sb-section">Phase 2</div>
+    <div class="sb-item" onclick="go('invoice',this)">
+      <span class="sb-icon">🧾</span>Invoice & Tagihan
+    </div>
+    <div class="sb-item" onclick="go('cs',this)">
+      <span class="sb-icon">🤖</span>CS Chatbot
+      <span class="sb-live"><span class="live-dot"></span>on</span>
+    </div>
+
+    <div class="sb-section">Phase 3</div>
+    <div class="sb-item" onclick="go('hr',this)">
+      <span class="sb-icon">👥</span>HR & Rekrutmen
+    </div>
+
+    <div class="sb-section">Phase 4</div>
+    <div class="sb-item" onclick="go('risk',this)">
+      <span class="sb-icon">🛡️</span>Risk & Compliance
+      <span class="sb-badge" style="background:var(--coral)">3</span>
+    </div>
+
+    <div class="sb-section">Config</div>
+    <div class="sb-item" onclick="go('integration',this)">
+      <span class="sb-icon">🔌</span>Integrasi
+    </div>
+  </nav>
+
+  <div class="sb-bottom">
+    <div class="sb-user">
+      <div class="avatar">AZ</div>
+      <div>
+        <div class="sb-user-name">Azhar Dani</div>
+        <div class="sb-user-role">admin · owner</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ MAIN ══════════ -->
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div>
+        <div class="page-title" id="page-title">Overview</div>
+        <div class="page-crumb" id="page-crumb">CalioFish / Dashboard</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="tb-btn tb-notif">🔔<span class="notif-dot"></span></div>
+      <div class="tb-btn">🌙</div>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- ════════ OVERVIEW ════════ -->
+    <div class="section on" id="sec-overview">
+      <div class="grid-4" style="margin-bottom:14px">
+        <div class="stat-card">
+          <div class="stat-icon si-blue">📦</div>
+          <div>
+            <div class="stat-val">1,247</div>
+            <div class="stat-lbl">Total Order Bulan Ini</div>
+            <div class="stat-delta delta-up">↑ 14.3% vs bulan lalu</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon si-cyan">💵</div>
+          <div>
+            <div class="stat-val">Rp 284M</div>
+            <div class="stat-lbl">Revenue Bulan Ini</div>
+            <div class="stat-delta delta-up">↑ 9.1% vs bulan lalu</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon si-sand">⏳</div>
+          <div>
+            <div class="stat-val">Rp 47M</div>
+            <div class="stat-lbl">Piutang Belum Terbayar</div>
+            <div class="stat-delta delta-dn">↑ 5.2% — perlu dimonitor</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon si-sea">🏪</div>
+          <div>
+            <div class="stat-val">89</div>
+            <div class="stat-lbl">Outlet Aktif</div>
+            <div class="stat-delta delta-up">↑ 4 outlet baru</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:14px">
+        <div class="card">
+          <div class="card-header">
+            <div><div class="card-title">Revenue 6 Bulan</div><div class="card-sub">Offline + Online channel</div></div>
+            <div class="mtabs">
+              <button class="mtab on">6 Bln</button>
+              <button class="mtab">YTD</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap" style="height:180px"><canvas id="revenueChart"></canvas></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div><div class="card-title">Distribusi Penjualan</div><div class="card-sub">Per channel & produk</div></div>
+          </div>
+          <div class="card-body">
+            <div style="display:flex;align-items:center;gap:16px">
+              <div class="chart-wrap" style="height:150px;width:150px;flex-shrink:0"><canvas id="donutChart"></canvas></div>
+              <div style="flex:1">
+                <div class="pbar-wrap"><div class="pbar-top"><span class="pbar-label">Skin Fish</span><span class="pbar-val">38%</span></div><div class="pbar"><div class="pbar-fill" style="width:38%"></div></div></div>
+                <div class="pbar-wrap"><div class="pbar-top"><span class="pbar-label">Abon Ikan</span><span class="pbar-val">27%</span></div><div class="pbar"><div class="pbar-fill" style="width:27%"></div></div></div>
+                <div class="pbar-wrap"><div class="pbar-top"><span class="pbar-label">Nugget Ikan</span><span class="pbar-val">19%</span></div><div class="pbar"><div class="pbar-fill" style="width:19%"></div></div></div>
+                <div class="pbar-wrap"><div class="pbar-top"><span class="pbar-label">Kerupuk Ikan</span><span class="pbar-val">10%</span></div><div class="pbar"><div class="pbar-fill" style="width:10%"></div></div></div>
+                <div class="pbar-wrap"><div class="pbar-top"><span class="pbar-label">Lainnya</span><span class="pbar-val">6%</span></div><div class="pbar"><div class="pbar-fill" style="width:6%"></div></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-header"><div class="card-title">Aktivitas Order Terbaru</div></div>
+          <div class="card-body">
+            <div class="feed-item">
+              <div class="feed-icon fi-green">📦</div>
+              <div class="feed-text"><div class="feed-title">Outlet Maju Gresik — Skin Fish 2 dus</div><div class="feed-sub">PO-20260420-182 · W-SBY · 200 pcs</div></div>
+              <div class="feed-time">2 mnt lalu</div>
+            </div>
+            <div class="feed-item">
+              <div class="feed-icon fi-blue">📦</div>
+              <div class="feed-text"><div class="feed-title">Indomaret Denpasar — Abon</div><div class="feed-sub">PO-20260420-183 · W-BWI · 100 pcs</div></div>
+              <div class="feed-time">15 mnt</div>
+            </div>
+            <div class="feed-item">
+              <div class="feed-icon fi-cyan">📦</div>
+              <div class="feed-text"><div class="feed-title">Toko Bahari Surabaya — Nugget 5 dus</div><div class="feed-sub">PO-20260420-184 · W-SBY · 500 pcs</div></div>
+              <div class="feed-time">1 jam</div>
+            </div>
+            <div class="feed-item">
+              <div class="feed-icon fi-yellow">⚠️</div>
+              <div class="feed-text"><div class="feed-title">Stok Skin Fish W-BWI menipis</div><div class="feed-sub">Sisa 120 pcs — reorder point 150 pcs</div></div>
+              <div class="feed-time">2 jam</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="card-title">Top Area Penjualan</div><div class="card-sub">Bulan April 2026</div></div>
+          <div class="card-body">
+            <div class="area-item"><div class="area-rank">1</div><div class="area-name">Surabaya</div><div class="area-bar"><div class="area-bar-fill" style="width:100%"></div></div><div class="area-val">Rp 84M</div></div>
+            <div class="area-item"><div class="area-rank">2</div><div class="area-name">Gresik</div><div class="area-bar"><div class="area-bar-fill" style="width:72%"></div></div><div class="area-val">Rp 61M</div></div>
+            <div class="area-item"><div class="area-rank">3</div><div class="area-name">Sidoarjo</div><div class="area-bar"><div class="area-bar-fill" style="width:58%"></div></div><div class="area-val">Rp 49M</div></div>
+            <div class="area-item"><div class="area-rank">4</div><div class="area-name">Bali</div><div class="area-bar"><div class="area-bar-fill" style="width:46%"></div></div><div class="area-val">Rp 39M</div></div>
+            <div class="area-item"><div class="area-rank">5</div><div class="area-name">Jember</div><div class="area-bar"><div class="area-bar-fill" style="width:33%"></div></div><div class="area-val">Rp 28M</div></div>
+            <div class="area-item"><div class="area-rank">6</div><div class="area-name">Banyuwangi</div><div class="area-bar"><div class="area-bar-fill" style="width:24%"></div></div><div class="area-val">Rp 20M</div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="card-title">Status Sistem</div><div class="card-sub">Integrasi & automation</div></div>
+          <div class="card-body">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div class="dot-status"><span class="ds-dot ds-green"></span><span style="font-size:12px">n8n Automation Engine</span></div>
+                <span class="bdg bdg-green">Running</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div class="dot-status"><span class="ds-dot ds-green"></span><span style="font-size:12px">GOWA WhatsApp Bridge</span></div>
+                <span class="bdg bdg-green">Connected</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div class="dot-status"><span class="ds-dot ds-green"></span><span style="font-size:12px">Gemini AI (Flash)</span></div>
+                <span class="bdg bdg-green">Active</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div class="dot-status"><span class="ds-dot ds-green"></span><span style="font-size:12px">Supabase Database</span></div>
+                <span class="bdg bdg-green">Healthy</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div class="dot-status"><span class="ds-dot ds-blue"></span><span style="font-size:12px">Shopee API</span></div>
+                <span class="bdg bdg-cyan">Syncing</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div class="dot-status"><span class="ds-dot ds-yellow"></span><span style="font-size:12px">Tokopedia API</span></div>
+                <span class="bdg bdg-yellow">Rate limited</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div class="dot-status"><span class="ds-dot ds-gray"></span><span style="font-size:12px">Sheets Sync</span></div>
+                <span class="bdg bdg-gray">Next: 14:00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ ORDER MANAGEMENT ════════ -->
+    <div class="section" id="sec-order">
+      <div class="grid-4" style="margin-bottom:14px">
+        <div class="stat-card"><div class="stat-icon si-blue">📬</div><div><div class="stat-val">12</div><div class="stat-lbl">Order Masuk Hari Ini</div><div class="stat-delta delta-up">↑ dari WA Group</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-cyan">⚡</div><div><div class="stat-val">1.8 dtk</div><div class="stat-lbl">Rata-rata Parse Time</div><div class="stat-delta delta-up">Gemini Flash ✓</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-sea">✅</div><div><div class="stat-val">98.4%</div><div class="stat-lbl">Akurasi AI Parsing</div><div class="stat-delta delta-nt">Dari 1,247 order</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-sand">🏭</div><div><div class="stat-val">W-SBY: 8 · W-BWI: 4</div><div class="stat-lbl">Distribusi Gudang Hari Ini</div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header" style="padding-bottom:14px">
+          <div><div class="card-title">Log Order — Master_Order</div><div class="card-sub">Semua order yang masuk via WhatsApp, diproses otomatis oleh AI</div></div>
+          <div class="ch-right">
+            <div class="search-input" style="width:200px"><span>🔍</span><input placeholder="Cari outlet, produk..."></div>
+            <button class="action-btn btn-outline">Export</button>
+          </div>
+        </div>
+        <div class="tbl-scroll">
+          <table class="tbl">
+            <thead><tr><th>Order ID</th><th>Tgl Masuk</th><th>Outlet Pemesan</th><th>Lokasi</th><th>Gudang</th><th>Produk</th><th>Qty (pcs)</th><th>Status</th><th>Aksi</th></tr></thead>
+            <tbody>
+              <tr><td style="font-family:var(--mono);font-size:10px;color:var(--muted)">PO-20260420-185</td><td>20 Apr 14:32</td><td>Outlet Maju Gresik</td><td>Gresik</td><td><span class="bdg bdg-blue">W-SBY</span></td><td>Skin Fish</td><td style="font-family:var(--mono);font-weight:600">200</td><td><span class="bdg bdg-green">✓ Confirmed</span></td><td><button class="action-btn btn-outline" style="padding:4px 9px">Detail</button></td></tr>
+              <tr><td style="font-family:var(--mono);font-size:10px;color:var(--muted)">PO-20260420-184</td><td>20 Apr 14:18</td><td>Toko Bahari Sby</td><td>Surabaya</td><td><span class="bdg bdg-blue">W-SBY</span></td><td>Nugget Ikan</td><td style="font-family:var(--mono);font-weight:600">500</td><td><span class="bdg bdg-yellow">⏳ Processing</span></td><td><button class="action-btn btn-outline" style="padding:4px 9px">Detail</button></td></tr>
+              <tr><td style="font-family:var(--mono);font-size:10px;color:var(--muted)">PO-20260420-183</td><td>20 Apr 14:05</td><td>Indomaret Denpasar</td><td>Denpasar</td><td><span class="bdg bdg-cyan">W-BWI</span></td><td>Abon Ikan</td><td style="font-family:var(--mono);font-weight:600">100</td><td><span class="bdg bdg-green">✓ Confirmed</span></td><td><button class="action-btn btn-outline" style="padding:4px 9px">Detail</button></td></tr>
+              <tr><td style="font-family:var(--mono);font-size:10px;color:var(--muted)">PO-20260420-182</td><td>20 Apr 13:47</td><td>UD Seafood Banyuwangi</td><td>Banyuwangi</td><td><span class="bdg bdg-cyan">W-BWI</span></td><td>Skin Fish</td><td style="font-family:var(--mono);font-weight:600">150</td><td><span class="bdg bdg-green">✓ Confirmed</span></td><td><button class="action-btn btn-outline" style="padding:4px 9px">Detail</button></td></tr>
+              <tr><td style="font-family:var(--mono);font-size:10px;color:var(--muted)">PO-20260420-181</td><td>20 Apr 13:20</td><td>Alfamart Sidoarjo</td><td>Sidoarjo</td><td><span class="bdg bdg-blue">W-SBY</span></td><td>Kerupuk Ikan</td><td style="font-family:var(--mono);font-weight:600">300</td><td><span class="bdg bdg-red">✗ Gagal parse</span></td><td><button class="action-btn btn-outline" style="padding:4px 9px">Review</button></td></tr>
+              <tr><td style="font-family:var(--mono);font-size:10px;color:var(--muted)">PO-20260420-180</td><td>20 Apr 12:55</td><td>Superindo Malang</td><td>Malang</td><td><span class="bdg bdg-blue">W-SBY</span></td><td>Abon Ikan</td><td style="font-family:var(--mono);font-weight:600">250</td><td><span class="bdg bdg-green">✓ Confirmed</span></td><td><button class="action-btn btn-outline" style="padding:4px 9px">Detail</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ GUDANG PUSAT ════════ -->
+    <div class="section" id="sec-gudang">
+      <div class="grid-4" style="margin-bottom:14px">
+        <div class="stat-card"><div class="stat-icon si-blue">🏭</div><div><div class="stat-val">2</div><div class="stat-lbl">Gudang Aktif</div><div class="stat-delta delta-nt">W-SBY & W-BWI</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-cyan">📥</div><div><div class="stat-val">12,400</div><div class="stat-lbl">Stok Masuk Bulan Ini (pcs)</div><div class="stat-delta delta-up">↑ dari periode lalu</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-sea">📤</div><div><div class="stat-val">9,850</div><div class="stat-lbl">Stok Keluar Bulan Ini (pcs)</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-sand">💰</div><div><div class="stat-val">Rp 18.4M</div><div class="stat-lbl">Belum Terbayar ke Supplier</div><div class="stat-delta delta-dn">Perlu perhatian</div></div></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><div class="card-title">Stok per Produk — W-SBY (Surabaya)</div></div>
+          <div class="card-body-np">
+            <div class="wh-row" style="background:var(--surface2);font-size:10px;font-weight:600;color:var(--hint);text-transform:uppercase;letter-spacing:.7px;padding-top:8px;padding-bottom:8px">
+              <div style="min-width:90px">Produk</div><div style="flex:1">Stok Visual</div><div style="min-width:60px;text-align:right">Sisa</div><div style="min-width:60px;text-align:right">Masuk</div><div style="min-width:60px;text-align:right">Keluar</div>
+            </div>
+            <div class="wh-row"><div class="wh-name">Skin Fish</div><div class="wh-bar-wrap"><div class="wh-bar"><div class="wh-bar-fill fill-full" style="width:85%"></div></div></div><div style="min-width:60px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:600">2,550</div><div style="min-width:60px;text-align:right;font-size:11px;color:var(--seafoam)">+3,000</div><div style="min-width:60px;text-align:right;font-size:11px;color:var(--coral)">-450</div></div>
+            <div class="wh-row"><div class="wh-name">Abon Ikan</div><div class="wh-bar-wrap"><div class="wh-bar"><div class="wh-bar-fill fill-mid" style="width:62%"></div></div></div><div style="min-width:60px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:600">1,860</div><div style="min-width:60px;text-align:right;font-size:11px;color:var(--seafoam)">+2,000</div><div style="min-width:60px;text-align:right;font-size:11px;color:var(--coral)">-140</div></div>
+            <div class="wh-row"><div class="wh-name">Nugget Ikan</div><div class="wh-bar-wrap"><div class="wh-bar"><div class="wh-bar-fill fill-low" style="width:35%"></div></div></div><div style="min-width:60px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:600">1,050</div><div style="min-width:60px;text-align:right;font-size:11px;color:var(--seafoam)">+1,500</div><div style="min-width:60px;text-align:right;font-size:11px;color:var(--coral)">-450</div></div>
+            <div class="wh-row"><div class="wh-name">Kerupuk</div><div class="wh-bar-wrap"><div class="wh-bar"><div class="wh-bar-fill fill-full" style="width:78%"></div></div></div><div style="min-width:60px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:600">2,340</div><div style="min-width:60px;text-align:right;font-size:11px;color:var(--seafoam)">+3,000</div><div style="min-width:60px;text-align:right;font-size:11px;color:var(--coral)">-660</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Stok per Produk — W-BWI (Banyuwangi)</div></div>
+          <div class="card-body-np">
+            <div class="wh-row" style="background:var(--surface2);font-size:10px;font-weight:600;color:var(--hint);text-transform:uppercase;letter-spacing:.7px;padding-top:8px;padding-bottom:8px">
+              <div style="min-width:90px">Produk</div><div style="flex:1">Stok Visual</div><div style="min-width:60px;text-align:right">Sisa</div><div style="min-width:60px;text-align:right">Masuk</div><div style="min-width:60px;text-align:right">Keluar</div>
+            </div>
+            <div class="wh-row"><div class="wh-name">Skin Fish</div><div class="wh-bar-wrap"><div class="wh-bar"><div class="wh-bar-fill fill-low" style="width:24%"></div></div></div><div style="min-width:60px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--coral)">120</div><div style="min-width:60px;text-align:right;font-size:11px;color:var(--seafoam)">+500</div><div style="min-width:60px;text-align:right;font-size:11px;color:var(--coral)">-380</div></div>
+            <div class="wh-row"><div class="wh-name">Abon Ikan</div><div class="wh-bar-wrap"><div class="wh-bar"><div class="wh-bar-fill fill-mid" style="width:58%"></div></div></div><div style="min-width:60px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:600">870</div><div style="min-width:60px;text-align:right;font-size:11px;color:var(--seafoam)">+1,500</div><div style="min-width:60px;text-align:right;font-size:11px;color:var(--coral)">-630</div></div>
+            <div class="wh-row"><div class="wh-name">Nugget Ikan</div><div class="wh-bar-wrap"><div class="wh-bar"><div class="wh-bar-fill fill-full" style="width:72%"></div></div></div><div style="min-width:60px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:600">1,080</div><div style="min-width:60px;text-align:right;font-size:11px;color:var(--seafoam)">+1,500</div><div style="min-width:60px;text-align:right;font-size:11px;color:var(--coral)">-420</div></div>
+            <div class="wh-row"><div class="wh-name">Kerupuk</div><div class="wh-bar-wrap"><div class="wh-bar"><div class="wh-bar-fill fill-mid" style="width:45%"></div></div></div><div style="min-width:60px;text-align:right;font-family:var(--mono);font-size:11px;font-weight:600">675</div><div style="min-width:60px;text-align:right;font-size:11px;color:var(--seafoam)">+1,500</div><div style="min-width:60px;text-align:right;font-size:11px;color:var(--coral)">-825</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card gap-top">
+        <div class="card-header" style="padding-bottom:14px"><div class="card-title">Log Mutasi Gudang</div><div class="card-sub">stok_gudang_pusat — semua transaksi masuk & keluar</div></div>
+        <table class="tbl">
+          <thead><tr><th>Tgl</th><th>Gudang</th><th>Sales</th><th>Produk</th><th>Masuk</th><th>Keluar</th><th>Total Nominal</th><th>Terbayar</th><th>Belum Bayar</th></tr></thead>
+          <tbody>
+            <tr><td>20 Apr</td><td>W-SBY</td><td>Rizal</td><td>Skin Fish</td><td style="color:var(--seafoam);font-weight:600">+3,000</td><td>—</td><td>Rp 45.0M</td><td style="color:var(--seafoam)">Rp 45.0M</td><td style="color:var(--muted)">—</td></tr>
+            <tr><td>20 Apr</td><td>W-BWI</td><td>Fajar</td><td>Abon Ikan</td><td style="color:var(--seafoam);font-weight:600">+1,500</td><td>—</td><td>Rp 18.0M</td><td style="color:var(--seafoam)">Rp 10.0M</td><td style="color:var(--coral);font-weight:600">Rp 8.0M</td></tr>
+            <tr><td>19 Apr</td><td>W-SBY</td><td>Rizal</td><td>Nugget Ikan</td><td>—</td><td style="color:var(--coral);font-weight:600">-450</td><td>—</td><td>—</td><td>—</td></tr>
+            <tr><td>19 Apr</td><td>W-BWI</td><td>Dani</td><td>Skin Fish</td><td>—</td><td style="color:var(--coral);font-weight:600">-380</td><td>—</td><td>—</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ════════ STOK CABANG ════════ -->
+    <div class="section" id="sec-cabang">
+      <div class="grid-4" style="margin-bottom:14px">
+        <div class="stat-card"><div class="stat-icon si-blue">🏪</div><div><div class="stat-val">89</div><div class="stat-lbl">Toko / Outlet Aktif</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-sea">👤</div><div><div class="stat-val">14</div><div class="stat-lbl">Marketing Field Aktif</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-sand">↩️</div><div><div class="stat-val">1,240</div><div class="stat-lbl">Total Retur Bulan Ini (pcs)</div><div class="stat-delta delta-dn">↑ 8% vs bulan lalu</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-red">💸</div><div><div class="stat-val">Rp 28.7M</div><div class="stat-lbl">Belum Terbayar (Cabang)</div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header" style="padding-bottom:14px">
+          <div><div class="card-title">Data Stok Cabang per Marketing</div><div class="card-sub">stok_cabang — semua data distribusi offline per toko</div></div>
+          <div class="ch-right">
+            <select style="border:1px solid var(--border);border-radius:7px;padding:5px 10px;font-size:12px;color:var(--muted);background:var(--surface);font-family:var(--font)"><option>Semua Area</option><option>Surabaya</option><option>Gresik</option><option>Bali</option></select>
+          </div>
+        </div>
+        <table class="tbl">
+          <thead><tr><th>Marketing</th><th>Nama Toko</th><th>Area</th><th>Produk</th><th>Masuk</th><th>Keluar</th><th>Sisa</th><th>Retur</th><th>Terbayar</th><th>Belum Bayar</th><th>Kontak</th></tr></thead>
+          <tbody>
+            <tr><td style="font-weight:600">Budi Santoso</td><td>Maju Gresik</td><td><span class="bdg bdg-blue">Gresik</span></td><td>Skin Fish</td><td style="color:var(--seafoam)">500</td><td style="color:var(--coral)">350</td><td style="font-weight:600">150</td><td style="color:var(--sand)">20</td><td style="color:var(--seafoam)">Rp 5.25M</td><td style="color:var(--coral);font-weight:600">Rp 0</td><td style="font-family:var(--mono);font-size:10px">0812-xxxx</td></tr>
+            <tr><td style="font-weight:600">Sari Dewi</td><td>Indomaret Denpasar</td><td><span class="bdg bdg-cyan">Bali</span></td><td>Abon Ikan</td><td style="color:var(--seafoam)">300</td><td style="color:var(--coral)">280</td><td style="font-weight:600">20</td><td style="color:var(--sand)">5</td><td style="color:var(--seafoam)">Rp 3.36M</td><td style="color:var(--muted)">—</td><td style="font-family:var(--mono);font-size:10px">0821-xxxx</td></tr>
+            <tr><td style="font-weight:600">Andi Pratama</td><td>Toko Bahari Sby</td><td><span class="bdg bdg-blue">Surabaya</span></td><td>Nugget Ikan</td><td style="color:var(--seafoam)">800</td><td style="color:var(--coral)">620</td><td style="font-weight:600">180</td><td style="color:var(--sand)">40</td><td style="color:var(--seafoam)">Rp 8.68M</td><td style="color:var(--coral);font-weight:600">Rp 2.8M</td><td style="font-family:var(--mono);font-size:10px">0856-xxxx</td></tr>
+            <tr><td style="font-weight:600">Rita Wulan</td><td>UD Seafood BWI</td><td><span class="bdg bdg-green">Banyuwangi</span></td><td>Skin Fish</td><td style="color:var(--seafoam)">400</td><td style="color:var(--coral)">310</td><td style="font-weight:600;color:var(--coral)">90</td><td style="color:var(--sand)">15</td><td style="color:var(--seafoam)">Rp 4.65M</td><td style="color:var(--coral);font-weight:600">Rp 1.5M</td><td style="font-family:var(--mono);font-size:10px">0877-xxxx</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ════════ PENJUALAN ONLINE ════════ -->
+    <div class="section" id="sec-online">
+      <div class="grid-4" style="margin-bottom:14px">
+        <div class="stat-card"><div class="stat-icon si-blue">🛒</div><div><div class="stat-val">2,847</div><div class="stat-lbl">Order Online Bulan Ini</div><div class="stat-delta delta-up">↑ 22% MoM</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-cyan">🟠</div><div><div class="stat-val">Rp 142M</div><div class="stat-lbl">Revenue Shopee</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-sea">🟢</div><div><div class="stat-val">Rp 96M</div><div class="stat-lbl">Revenue Tokopedia</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-sand">⭐</div><div><div class="stat-val">4.87</div><div class="stat-lbl">Rating Rata-rata Toko</div></div></div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:14px">
+        <div class="card">
+          <div class="card-header"><div class="card-title">Tren Penjualan Online per Platform</div></div>
+          <div class="card-body">
+            <div class="chart-wrap" style="height:200px"><canvas id="onlineChart"></canvas></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Produk Terlaris Online</div><div class="card-sub">transaksi_online — bulan ini</div></div>
+          <div class="card-body">
+            <div class="pbar-wrap"><div class="pbar-top"><span class="pbar-label">Skin Fish 100g</span><span class="pbar-val">934 terjual</span></div><div class="pbar"><div class="pbar-fill" style="width:100%"></div></div></div>
+            <div class="pbar-wrap"><div class="pbar-top"><span class="pbar-label">Abon Ikan 150g</span><span class="pbar-val">782 terjual</span></div><div class="pbar"><div class="pbar-fill" style="width:83%"></div></div></div>
+            <div class="pbar-wrap"><div class="pbar-top"><span class="pbar-label">Nugget Ikan 500g</span><span class="pbar-val">641 terjual</span></div><div class="pbar"><div class="pbar-fill" style="width:68%"></div></div></div>
+            <div class="pbar-wrap"><div class="pbar-top"><span class="pbar-label">Kerupuk Ikan 200g</span><span class="pbar-val">490 terjual</span></div><div class="pbar"><div class="pbar-fill" style="width:52%"></div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header" style="padding-bottom:14px"><div class="card-title">Log Transaksi Online Terbaru</div></div>
+        <table class="tbl">
+          <thead><tr><th>Trx ID</th><th>Tanggal</th><th>Platform</th><th>Produk</th><th>Qty</th><th>Nominal</th><th>Status Pengiriman</th></tr></thead>
+          <tbody>
+            <tr><td style="font-family:var(--mono);font-size:10px">SP-20260420-001</td><td>20 Apr</td><td><span class="bdg bdg-yellow">🟠 Shopee</span></td><td>Skin Fish 100g</td><td>3</td><td>Rp 135.000</td><td><span class="bdg bdg-cyan">Dikirim</span></td></tr>
+            <tr><td style="font-family:var(--mono);font-size:10px">TP-20260420-088</td><td>20 Apr</td><td><span class="bdg bdg-green">🟢 Tokopedia</span></td><td>Abon Ikan 150g</td><td>2</td><td>Rp 98.000</td><td><span class="bdg bdg-blue">Dikemas</span></td></tr>
+            <tr><td style="font-family:var(--mono);font-size:10px">SP-20260420-002</td><td>20 Apr</td><td><span class="bdg bdg-yellow">🟠 Shopee</span></td><td>Nugget Ikan 500g</td><td>5</td><td>Rp 325.000</td><td><span class="bdg bdg-green">Selesai</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ════════ ANALITIK ════════ -->
+    <div class="section" id="sec-analitik">
+      <div class="grid-2" style="margin-bottom:14px">
+        <div class="card">
+          <div class="card-header"><div class="card-title">Analisis Penjualan per Area</div><div class="card-sub">Offline + Online · Bulan April</div></div>
+          <div class="card-body">
+            <div class="chart-wrap" style="height:220px"><canvas id="areaChart"></canvas></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Performa per Marketing</div><div class="card-sub">Target vs Aktual bulan ini</div></div>
+          <div class="card-body">
+            <div class="pbar-wrap"><div class="pbar-top"><span class="pbar-label">Budi Santoso — Gresik</span><span class="pbar-val" style="color:var(--seafoam)">112%</span></div><div class="pbar"><div class="pbar-fill" style="width:100%;background:linear-gradient(90deg,var(--seafoam),#34D399)"></div></div></div>
+            <div class="pbar-wrap"><div class="pbar-top"><span class="pbar-label">Andi Pratama — Surabaya</span><span class="pbar-val" style="color:var(--seafoam)">98%</span></div><div class="pbar"><div class="pbar-fill" style="width:98%"></div></div></div>
+            <div class="pbar-wrap"><div class="pbar-top"><span class="pbar-label">Sari Dewi — Bali</span><span class="pbar-val">86%</span></div><div class="pbar"><div class="pbar-fill" style="width:86%"></div></div></div>
+            <div class="pbar-wrap"><div class="pbar-top"><span class="pbar-label">Rita Wulan — Banyuwangi</span><span class="pbar-val" style="color:var(--sand)">74%</span></div><div class="pbar"><div class="pbar-fill" style="width:74%;background:linear-gradient(90deg,var(--sand),#FBBF24)"></div></div></div>
+            <div class="pbar-wrap"><div class="pbar-top"><span class="pbar-label">Fajar Hidayat — Jember</span><span class="pbar-val" style="color:var(--coral)">61%</span></div><div class="pbar"><div class="pbar-fill" style="width:61%;background:linear-gradient(90deg,var(--coral),#F87171)"></div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><div class="card-title">Deteksi Tren Penjualan</div><div class="card-sub">AI-generated insight dari Gemini</div></div>
+          <div class="card-body">
+            <div class="chart-wrap" style="height:160px"><canvas id="trendChart"></canvas></div>
+            <div style="margin-top:14px;padding:12px;background:var(--cyan-50);border:1px solid var(--cyan-100);border-radius:8px">
+              <div style="font-size:11px;font-weight:600;color:var(--cyan-600);margin-bottom:6px">🤖 Insight Gemini AI</div>
+              <div style="font-size:12px;color:var(--muted);line-height:1.6">Tren penjualan <strong style="color:var(--text)">Skin Fish</strong> naik 23% dalam 3 minggu terakhir, terutama di area Surabaya dan Gresik. Stok W-BWI perlu segera diisi — proyeksi habis dalam <strong style="color:var(--coral)">4 hari</strong>. Permintaan Abon Ikan dari channel online meningkat 31% — pertimbangkan alokasi produksi tambahan.</div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Analisis per Cabang</div><div class="card-sub">Performa toko berdasarkan penjualan bersih</div></div>
+          <div class="card-body">
+            <div class="area-item"><div class="area-rank">1</div><div class="area-name">Toko Bahari Surabaya</div><div class="area-bar"><div class="area-bar-fill" style="width:100%"></div></div><div class="area-val">Rp 36M</div></div>
+            <div class="area-item"><div class="area-rank">2</div><div class="area-name">Maju Gresik</div><div class="area-bar"><div class="area-bar-fill" style="width:82%"></div></div><div class="area-val">Rp 30M</div></div>
+            <div class="area-item"><div class="area-rank">3</div><div class="area-name">Indomaret Denpasar</div><div class="area-bar"><div class="area-bar-fill" style="width:67%"></div></div><div class="area-val">Rp 24M</div></div>
+            <div class="area-item"><div class="area-rank">4</div><div class="area-name">Alfamart Sidoarjo</div><div class="area-bar"><div class="area-bar-fill" style="width:53%"></div></div><div class="area-val">Rp 19M</div></div>
+            <div class="area-item"><div class="area-rank">5</div><div class="area-name">UD Seafood BWI</div><div class="area-bar"><div class="area-bar-fill" style="width:38%"></div></div><div class="area-val">Rp 14M</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ KEUANGAN ════════ -->
+    <div class="section" id="sec-keuangan">
+      <div class="grid-4" style="margin-bottom:14px">
+        <div class="stat-card"><div class="stat-icon si-sea">✅</div><div><div class="stat-val">Rp 237M</div><div class="stat-lbl">Total Pemasukan Apr</div><div class="stat-delta delta-up">↑ 9.1%</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-blue">📤</div><div><div class="stat-val">Rp 148M</div><div class="stat-lbl">Total Pengeluaran Apr</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-cyan">💰</div><div><div class="stat-val">Rp 89M</div><div class="stat-lbl">Laba Bersih Estimasi</div><div class="stat-delta delta-up">Margin 37.6%</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-red">⚠️</div><div><div class="stat-val">Rp 47M</div><div class="stat-lbl">Total Piutang Beredar</div><div class="stat-delta delta-dn">3 outlet jatuh tempo</div></div></div>
+      </div>
+
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-header"><div class="card-title">KPI Keuangan</div></div>
+          <div class="card-body">
+            <div class="kpi-block"><div class="kpi-label">Gross Profit Margin</div><div class="kpi-value">37.6%</div><div class="kpi-note">Target: 35% · ✓ Di atas target</div></div>
+            <div class="kpi-block"><div class="kpi-label">Days Sales Outstanding</div><div class="kpi-value">18 hari</div><div class="kpi-note">Rata-rata piutang tertagih</div></div>
+            <div class="kpi-block"><div class="kpi-label">Cash Conversion Cycle</div><div class="kpi-value">24 hari</div><div class="kpi-note">Perlu dipercepat ke <21 hari</div></div>
+          </div>
+        </div>
+        <div class="card" style="grid-column:span 2">
+          <div class="card-header"><div class="card-title">⚠️ Alert Keuangan — Perlu Tindakan</div></div>
+          <div class="card-body">
+            <div class="alert-item alert-red"><span class="alert-icon">🚨</span><div><div class="alert-title">Transaksi Anomali — Outlet Melati Bali</div><div class="alert-sub">3 order dalam 1 jam dengan nominal total Rp 28M — di atas rata-rata 4× lipat. Kemungkinan duplikasi atau fraud.</div></div><span class="alert-time">1 jam lalu</span></div>
+            <div class="alert-item alert-yellow"><span class="alert-icon">⏰</span><div><div class="alert-title">Jatuh Tempo Invoice — Toko Bahari Sby</div><div class="alert-sub">Invoice INV-20260405-044 senilai Rp 18.4M jatuh tempo hari ini. Belum ada konfirmasi pembayaran.</div></div><span class="alert-time">Hari ini</span></div>
+            <div class="alert-item alert-blue"><span class="alert-icon">🔄</span><div><div class="alert-title">Rekonsiliasi Otomatis Selesai</div><div class="alert-sub">94 transaksi dicocokkan, 3 transaksi perlu verifikasi manual. Selisih Rp 240.000 ditemukan.</div></div><span class="alert-time">2 jam lalu</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card gap-top">
+        <div class="card-header" style="padding-bottom:14px"><div class="card-title">Buku Kas — pembukuan</div><div class="card-sub">Pencatatan otomatis dari setiap invoice yang lunas</div></div>
+        <table class="tbl">
+          <thead><tr><th>Tgl</th><th>Buku ID</th><th>Invoice Ref</th><th>Jenis</th><th>Nominal</th><th>Keterangan</th></tr></thead>
+          <tbody>
+            <tr><td>20 Apr</td><td style="font-family:var(--mono);font-size:10px">BK-20260420-081</td><td style="font-family:var(--mono);font-size:10px;color:var(--muted)">INV-0420-052</td><td><span class="bdg bdg-green">Pemasukan</span></td><td style="color:var(--seafoam);font-weight:600">+Rp 45.0M</td><td>Pelunasan Outlet Maju Gresik</td></tr>
+            <tr><td>20 Apr</td><td style="font-family:var(--mono);font-size:10px">BK-20260420-080</td><td style="font-family:var(--mono);font-size:10px;color:var(--muted)">INV-0420-050</td><td><span class="bdg bdg-red">Pengeluaran</span></td><td style="color:var(--coral);font-weight:600">-Rp 18.4M</td><td>Pembelian bahan baku supplier</td></tr>
+            <tr><td>19 Apr</td><td style="font-family:var(--mono);font-size:10px">BK-20260419-079</td><td style="font-family:var(--mono);font-size:10px;color:var(--muted)">INV-0419-047</td><td><span class="bdg bdg-green">Pemasukan</span></td><td style="color:var(--seafoam);font-weight:600">+Rp 32.5M</td><td>Pembayaran Toko Bahari DP</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ════════ INVOICE ════════ -->
+    <div class="section" id="sec-invoice">
+      <div class="grid-4" style="margin-bottom:14px">
+        <div class="stat-card"><div class="stat-icon si-sea">✅</div><div><div class="stat-val">184</div><div class="stat-lbl">Invoice Lunas Bulan Ini</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-sand">⏳</div><div><div class="stat-val">23</div><div class="stat-lbl">Invoice Pending</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-red">❗</div><div><div class="stat-val">7</div><div class="stat-lbl">Invoice Jatuh Tempo</div><div class="stat-delta delta-dn">Perlu follow-up</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-blue">🤖</div><div><div class="stat-val">100%</div><div class="stat-lbl">Invoice Dibuat Otomatis</div><div class="stat-delta delta-up">Oleh n8n workflow</div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header" style="padding-bottom:14px"><div class="card-title">Daftar Invoice — invoice_pembayaran</div></div>
+        <table class="tbl">
+          <thead><tr><th>Invoice ID</th><th>Order Ref</th><th>Outlet</th><th>Total</th><th>Terbayar</th><th>Belum Bayar</th><th>Jatuh Tempo</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td style="font-family:var(--mono);font-size:10px">INV-20260420-052</td><td style="font-family:var(--mono);font-size:10px;color:var(--muted)">PO-185</td><td>Maju Gresik</td><td>Rp 45.0M</td><td style="color:var(--seafoam)">Rp 45.0M</td><td style="color:var(--muted)">—</td><td>30 Apr</td><td><span class="bdg bdg-green">Lunas</span></td></tr>
+            <tr><td style="font-family:var(--mono);font-size:10px">INV-20260420-051</td><td style="font-family:var(--mono);font-size:10px;color:var(--muted)">PO-183</td><td>Indomaret Denpasar</td><td>Rp 12.0M</td><td style="color:var(--seafoam)">Rp 6.0M</td><td style="color:var(--coral);font-weight:600">Rp 6.0M</td><td>25 Apr</td><td><span class="bdg bdg-yellow">Parsial</span></td></tr>
+            <tr><td style="font-family:var(--mono);font-size:10px">INV-20260405-044</td><td style="font-family:var(--mono);font-size:10px;color:var(--muted)">PO-152</td><td>Toko Bahari Sby</td><td>Rp 18.4M</td><td style="color:var(--muted)">—</td><td style="color:var(--coral);font-weight:600">Rp 18.4M</td><td style="color:var(--coral);font-weight:600">20 Apr !</td><td><span class="bdg bdg-red">Jatuh Tempo</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ════════ CS CHATBOT ════════ -->
+    <div class="section" id="sec-cs">
+      <div class="grid-4" style="margin-bottom:14px">
+        <div class="stat-card"><div class="stat-icon si-blue">💬</div><div><div class="stat-val">1,847</div><div class="stat-lbl">Pesan Ditangani AI</div><div class="stat-delta delta-up">↑ 31% bulan ini</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-sea">⚡</div><div><div class="stat-val">94.2%</div><div class="stat-lbl">Resolved tanpa eskalasi</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-cyan">⏱️</div><div><div class="stat-val">1.4 dtk</div><div class="stat-lbl">Rata-rata Response Time</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-sand">📚</div><div><div class="stat-val">47</div><div class="stat-lbl">FAQ terindeks (RAG)</div></div></div>
+      </div>
+
+      <div class="grid-13">
+        <div class="card">
+          <div class="card-header"><div class="card-title">Simulasi CS Chatbot</div><div class="card-sub">Powered by Gemini + pgvector RAG · GOWA WhatsApp</div></div>
+          <div style="max-height:320px;overflow-y:auto;border-bottom:1px solid var(--border)">
+            <div class="chat-wrap">
+              <div class="bubble user">Status order PO-20260420-182 gimana ya?</div>
+              <div class="bubble-meta" style="text-align:right;font-size:9px;color:var(--hint);font-family:var(--mono);padding-right:4px">Customer · 14:05</div>
+              <div class="bubble bot">✅ Order <strong>PO-20260420-182</strong> atas nama UD Seafood Banyuwangi sudah <strong>dikonfirmasi</strong> dan sedang diproses di gudang W-BWI. Estimasi pengiriman besok, 21 April 2026. Total 150 pcs Skin Fish. Ada lagi yang bisa saya bantu? 🐟</div>
+              <div class="bubble-meta bot-meta">CalioFish CS Bot · 14:05</div>
+              <div class="bubble user">Harga Skin Fish per dus berapa?</div>
+              <div class="bubble-meta" style="text-align:right;font-size:9px;color:var(--hint);font-family:var(--mono);padding-right:4px">Customer · 14:06</div>
+              <div class="bubble bot">Harga <strong>Skin Fish</strong> CalioFish:<br>• Per pcs: Rp 15.000<br>• Per dus (100 pcs): Rp 1.400.000 (hemat Rp 100rb!)<br>• Min order: 1 dus<br><br>Mau langsung pesan? Kirim format: <em>"order dari [nama outlet] pesan Skin Fish X dus"</em> 🙌</div>
+              <div class="chat-typing"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>
+            </div>
+          </div>
+          <div style="padding:12px 14px;display:flex;gap:8px">
+            <input style="flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;font-family:var(--font);outline:none;color:var(--text)" placeholder="Kirim pesan test...">
+            <button class="action-btn btn-primary">Kirim</button>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="card">
+            <div class="card-header"><div class="card-title">FAQ Manager</div><div class="card-sub">faq_cs + pgvector</div></div>
+            <div class="card-body" style="padding-top:10px">
+              <div class="feed-item" style="padding:8px 0"><div class="feed-icon fi-blue" style="font-size:12px;width:28px;height:28px">❓</div><div class="feed-text"><div class="feed-title">Status order</div><div class="feed-sub">47 pertanyaan terlatih</div></div></div>
+              <div class="feed-item" style="padding:8px 0"><div class="feed-icon fi-cyan" style="font-size:12px;width:28px;height:28px">💰</div><div class="feed-text"><div class="feed-title">Harga & produk</div><div class="feed-sub">31 pertanyaan terlatih</div></div></div>
+              <div class="feed-item" style="padding:8px 0"><div class="feed-icon fi-green" style="font-size:12px;width:28px;height:28px">🚚</div><div class="feed-text"><div class="feed-title">Pengiriman</div><div class="feed-sub">18 pertanyaan terlatih</div></div></div>
+              <button class="action-btn btn-outline" style="width:100%;margin-top:6px;justify-content:center">+ Tambah FAQ</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title">Eskalasi ke Human</div></div>
+            <div class="card-body" style="padding-top:10px">
+              <div class="alert-item alert-yellow" style="margin-bottom:6px"><span class="alert-icon">⚠️</span><div><div class="alert-title" style="font-size:11px">Komplain pengiriman rusak</div><div class="alert-sub" style="font-size:10px">UD Seafood BWI · 2 jam lalu</div></div></div>
+              <div class="alert-item alert-blue" style="margin-bottom:0"><span class="alert-icon">❓</span><div><div class="alert-title" style="font-size:11px">Negosiasi harga khusus</div><div class="alert-sub" style="font-size:10px">Superindo Malang · 4 jam lalu</div></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ HR & REKRUTMEN ════════ -->
+    <div class="section" id="sec-hr">
+      <div class="grid-4" style="margin-bottom:14px">
+        <div class="stat-card"><div class="stat-icon si-blue">👥</div><div><div class="stat-val">47</div><div class="stat-lbl">Total Karyawan Aktif</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-sea">📋</div><div><div class="stat-val">12</div><div class="stat-lbl">CV Masuk Bulan Ini</div><div class="stat-delta delta-up">AI auto-screening</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-cyan">⭐</div><div><div class="stat-val">78.4</div><div class="stat-lbl">Avg. Skor Performa</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-sand">🎯</div><div><div class="stat-val">3</div><div class="stat-lbl">Posisi Sedang Dibuka</div></div></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><div class="card-title">Screening CV Otomatis</div><div class="card-sub">master_rekrutmen · AI scoring oleh Gemini</div></div>
+          <div class="card-body">
+            <div class="cv-card">
+              <div class="cv-top">
+                <div class="cv-avatar">BW</div>
+                <div><div class="cv-name">Bintang Wicaksono</div><div class="cv-pos">Sales Marketing · Surabaya</div></div>
+                <div class="cv-score"><div class="score-val score-high">92</div><div class="score-lbl">AI Score</div></div>
+              </div>
+              <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:8px">5 tahun pengalaman sales FMCG, familiar dengan distribusi produk olahan ikan. Pernah handle 80+ outlet di Surabaya Raya.</div>
+              <div style="display:flex;gap:6px"><span class="bdg bdg-green">✓ Sangat Direkomendasikan</span><button class="action-btn btn-outline" style="padding:3px 8px;font-size:10px">Lihat CV</button></div>
+            </div>
+            <div class="cv-card">
+              <div class="cv-top">
+                <div class="cv-avatar">RL</div>
+                <div><div class="cv-name">Rini Lestari</div><div class="cv-pos">Admin Gudang · Banyuwangi</div></div>
+                <div class="cv-score"><div class="score-val score-mid">71</div><div class="score-lbl">AI Score</div></div>
+              </div>
+              <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:8px">2 tahun pengalaman admin logistik. Familiar dengan sistem inventory manual, perlu training Supabase.</div>
+              <div style="display:flex;gap:6px"><span class="bdg bdg-yellow">⚠️ Pertimbangkan</span><button class="action-btn btn-outline" style="padding:3px 8px;font-size:10px">Lihat CV</button></div>
+            </div>
+            <div class="cv-card">
+              <div class="cv-top">
+                <div class="cv-avatar">DS</div>
+                <div><div class="cv-name">Dimas Setiawan</div><div class="cv-pos">Sales Marketing · Bali</div></div>
+                <div class="cv-score"><div class="score-val score-low">44</div><div class="score-lbl">AI Score</div></div>
+              </div>
+              <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:8px">Pengalaman kurang relevan. Background di retail fashion, tidak ada pengalaman distribusi food.</div>
+              <div style="display:flex;gap:6px"><span class="bdg bdg-red">✗ Tidak Direkomendasikan</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Performa Karyawan</div><div class="card-sub">log_performa_karyawan · April 2026</div></div>
+          <div class="card-body">
+            <div class="chart-wrap" style="height:200px"><canvas id="perfChart"></canvas></div>
+            <div style="margin-top:14px">
+              <div class="pbar-wrap"><div class="pbar-top"><span class="pbar-label">Budi Santoso</span><span class="pbar-val" style="color:var(--seafoam)">94/100</span></div><div class="pbar"><div class="pbar-fill" style="width:94%;background:linear-gradient(90deg,var(--seafoam),#34D399)"></div></div></div>
+              <div class="pbar-wrap"><div class="pbar-top"><span class="pbar-label">Andi Pratama</span><span class="pbar-val">88/100</span></div><div class="pbar"><div class="pbar-fill" style="width:88%"></div></div></div>
+              <div class="pbar-wrap"><div class="pbar-top"><span class="pbar-label">Rita Wulan</span><span class="pbar-val" style="color:var(--sand)">72/100</span></div><div class="pbar"><div class="pbar-fill" style="width:72%;background:linear-gradient(90deg,var(--sand),#FBBF24)"></div></div></div>
+              <div class="pbar-wrap"><div class="pbar-top"><span class="pbar-label">Fajar Hidayat</span><span class="pbar-val" style="color:var(--coral)">58/100</span></div><div class="pbar"><div class="pbar-fill" style="width:58%;background:linear-gradient(90deg,var(--coral),#F87171)"></div></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ RISK & COMPLIANCE ════════ -->
+    <div class="section" id="sec-risk">
+      <div class="grid-4" style="margin-bottom:14px">
+        <div class="stat-card"><div class="stat-icon si-red">🚨</div><div><div class="stat-val">3</div><div class="stat-lbl">Alert Aktif</div><div class="stat-delta delta-dn">Perlu tindakan segera</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-sea">✅</div><div><div class="stat-val">98.7%</div><div class="stat-lbl">Compliance Score</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-blue">📋</div><div><div class="stat-val">4,218</div><div class="stat-lbl">Log Aktivitas Bulan Ini</div></div></div>
+        <div class="stat-card"><div class="stat-icon si-sand">🔍</div><div><div class="stat-val">2</div><div class="stat-lbl">Transaksi Mencurigakan</div><div class="stat-delta delta-dn">Dalam investigasi</div></div></div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:14px">
+        <div class="card">
+          <div class="card-header"><div class="card-title">🚨 Active Risk Alerts</div></div>
+          <div class="card-body">
+            <div class="alert-item alert-red"><span class="alert-icon">🔴</span><div><div class="alert-title">Anomali transaksi — Outlet Melati Bali</div><div class="alert-sub">3 order ≥ Rp 28M dalam 1 jam — melebihi threshold 4× rata-rata. Rule: fraud_detection_rule_01</div></div><span class="alert-time">1 jam</span></div>
+            <div class="alert-item alert-red"><span class="alert-icon">🔴</span><div><div class="alert-title">Akses data diluar jam kerja</div><div class="alert-sub">Login dari IP 36.x.x.x (tidak dikenal) pukul 02.14 WIB. User: marketing_fajar.</div></div><span class="alert-time">Semalam</span></div>
+            <div class="alert-item alert-yellow"><span class="alert-icon">🟡</span><div><div class="alert-title">Stok keluar melebihi order</div><div class="alert-sub">Stok Nugget W-BWI keluar 580 pcs, order hanya 520 pcs. Selisih 60 pcs tidak terekonsiliasi.</div></div><span class="alert-time">2 hari lalu</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Compliance Monitoring</div><div class="card-sub">Rule-based checks berjalan tiap 15 menit</div></div>
+          <div class="card-body">
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;justify-content:space-between;align-items:center"><div class="dot-status"><span class="ds-dot ds-green"></span><span style="font-size:12px">Threshold transaksi normal</span></div><span class="bdg bdg-green">Pass</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center"><div class="dot-status"><span class="ds-dot ds-green"></span><span style="font-size:12px">Semua invoice memiliki order ref</span></div><span class="bdg bdg-green">Pass</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center"><div class="dot-status"><span class="ds-dot ds-red"></span><span style="font-size:12px">Akses jam tidak wajar</span></div><span class="bdg bdg-red">Fail</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center"><div class="dot-status"><span class="ds-dot ds-red"></span><span style="font-size:12px">Rekonsiliasi stok vs order</span></div><span class="bdg bdg-red">Fail</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center"><div class="dot-status"><span class="ds-dot ds-green"></span><span style="font-size:12px">Pembukuan balanced</span></div><span class="bdg bdg-green">Pass</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center"><div class="dot-status"><span class="ds-dot ds-green"></span><span style="font-size:12px">RLS Supabase aktif</span></div><span class="bdg bdg-green">Pass</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header" style="padding-bottom:14px"><div class="card-title">Audit Trail — log_aktivitas</div><div class="card-sub">Semua aktivitas sistem direkam secara otomatis</div></div>
+        <table class="tbl">
+          <thead><tr><th>Timestamp</th><th>Actor</th><th>Aktivitas</th><th>Sumber</th><th>IP</th><th>Flag Risiko</th></tr></thead>
+          <tbody>
+            <tr><td style="font-family:var(--mono);font-size:10px">20 Apr 14:32:11</td><td style="font-weight:600">n8n System</td><td>INSERT master_order PO-20260420-185</td><td>WhatsApp</td><td style="font-family:var(--mono);font-size:10px">43.x.x.x</td><td><span class="bdg bdg-green">Clear</span></td></tr>
+            <tr><td style="font-family:var(--mono);font-size:10px">20 Apr 13:24:08</td><td style="font-weight:600">marketing_budi</td><td>UPDATE stok_cabang — Maju Gresik</td><td>Next.js App</td><td style="font-family:var(--mono);font-size:10px">114.x.x.x</td><td><span class="bdg bdg-green">Clear</span></td></tr>
+            <tr><td style="font-family:var(--mono);font-size:10px">20 Apr 02:14:55</td><td style="font-weight:600;color:var(--coral)">marketing_fajar</td><td>READ master_order — bulk export 500 rows</td><td>Unknown IP</td><td style="font-family:var(--mono);font-size:10px;color:var(--coral)">36.x.x.x</td><td><span class="bdg bdg-red">🚨 HIGH</span></td></tr>
+            <tr><td style="font-family:var(--mono);font-size:10px">19 Apr 22:47:30</td><td style="font-weight:600">n8n Scheduler</td><td>SYNC Supabase → Google Sheets (export)</td><td>n8n Cron</td><td style="font-family:var(--mono);font-size:10px">internal</td><td><span class="bdg bdg-green">Clear</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ════════ MASTER DATA ════════ -->
+    <div class="section" id="sec-master">
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-header"><div class="card-title">Master Produk</div><div class="card-sub">master_produk</div></div>
+          <div class="card-body">
+            <table class="tbl">
+              <thead><tr><th>Produk</th><th>Harga Jual</th><th>Modal</th><th>Margin</th></tr></thead>
+              <tbody>
+                <tr><td>Skin Fish 100g</td><td>Rp 15.000</td><td>Rp 9.000</td><td style="color:var(--seafoam);font-weight:600">40%</td></tr>
+                <tr><td>Abon Ikan 150g</td><td>Rp 49.000</td><td>Rp 28.000</td><td style="color:var(--seafoam);font-weight:600">43%</td></tr>
+                <tr><td>Nugget Ikan 500g</td><td>Rp 65.000</td><td>Rp 40.000</td><td style="color:var(--seafoam);font-weight:600">38%</td></tr>
+                <tr><td>Kerupuk Ikan 200g</td><td>Rp 28.000</td><td>Rp 16.000</td><td style="color:var(--seafoam);font-weight:600">43%</td></tr>
+              </tbody>
+            </table>
+            <button class="action-btn btn-outline" style="width:100%;margin-top:10px;justify-content:center">+ Tambah Produk</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Master Outlet</div><div class="card-sub">master_outlet</div></div>
+          <div class="card-body">
+            <table class="tbl">
+              <thead><tr><th>Outlet</th><th>Kota</th><th>Kontak</th></tr></thead>
+              <tbody>
+                <tr><td>Maju Gresik</td><td>Gresik</td><td style="font-family:var(--mono);font-size:10px">0812-xxxx</td></tr>
+                <tr><td>Indomaret Denpasar</td><td>Denpasar</td><td style="font-family:var(--mono);font-size:10px">0821-xxxx</td></tr>
+                <tr><td>Toko Bahari Sby</td><td>Surabaya</td><td style="font-family:var(--mono);font-size:10px">0856-xxxx</td></tr>
+                <tr><td>UD Seafood BWI</td><td>Banyuwangi</td><td style="font-family:var(--mono);font-size:10px">0877-xxxx</td></tr>
+              </tbody>
+            </table>
+            <button class="action-btn btn-outline" style="width:100%;margin-top:10px;justify-content:center">+ Tambah Outlet</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Master Karyawan</div><div class="card-sub">master_karyawan</div></div>
+          <div class="card-body">
+            <table class="tbl">
+              <thead><tr><th>Nama</th><th>Posisi</th><th>Area</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td>Budi Santoso</td><td>Marketing</td><td>Gresik</td><td><span class="bdg bdg-green">Aktif</span></td></tr>
+                <tr><td>Andi Pratama</td><td>Marketing</td><td>Surabaya</td><td><span class="bdg bdg-green">Aktif</span></td></tr>
+                <tr><td>Rita Wulan</td><td>Marketing</td><td>Banyuwangi</td><td><span class="bdg bdg-green">Aktif</span></td></tr>
+                <tr><td>Fajar Hidayat</td><td>Marketing</td><td>Jember</td><td><span class="bdg bdg-yellow">Warning</span></td></tr>
+              </tbody>
+            </table>
+            <button class="action-btn btn-outline" style="width:100%;margin-top:10px;justify-content:center">+ Tambah Karyawan</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ INTEGRASI ════════ -->
+    <div class="section" id="sec-integration">
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-header"><div class="card-title">Status Integrasi</div><div class="card-sub">Semua koneksi eksternal</div></div>
+          <div class="card-body">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                <div><div style="font-size:13px;font-weight:500">GOWA WhatsApp Bridge</div><div style="font-size:10px;color:var(--hint);font-family:var(--mono)">6285157991798@s.whatsapp.net</div></div>
+                <span class="bdg bdg-green">✓ Connected</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                <div><div style="font-size:13px;font-weight:500">Gemini Flash API</div><div style="font-size:10px;color:var(--hint);font-family:var(--mono)">models/gemini-3-flash-preview</div></div>
+                <span class="bdg bdg-green">✓ Active</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                <div><div style="font-size:13px;font-weight:500">Supabase PostgreSQL</div><div style="font-size:10px;color:var(--hint);font-family:var(--mono)">13 tables · pgvector enabled</div></div>
+                <span class="bdg bdg-green">✓ Healthy</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                <div><div style="font-size:13px;font-weight:500">Shopee Seller API</div><div style="font-size:10px;color:var(--hint);font-family:var(--mono)">shop_id: 1234567</div></div>
+                <span class="bdg bdg-cyan">Syncing</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                <div><div style="font-size:13px;font-weight:500">Tokopedia API</div><div style="font-size:10px;color:var(--hint);font-family:var(--mono)">Reconnecting...</div></div>
+                <span class="bdg bdg-yellow">Rate Limit</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                <div><div style="font-size:13px;font-weight:500">Google Sheets Sync</div><div style="font-size:10px;color:var(--hint);font-family:var(--mono)">Read-only display · 1 jam sekali</div></div>
+                <span class="bdg bdg-gray">Scheduled</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="grid-column:span 2">
+          <div class="card-header"><div class="card-title">n8n Workflow Monitor</div><div class="card-sub">3 workflows aktif · Error tracking</div></div>
+          <div class="card-body">
+            <table class="tbl">
+              <thead><tr><th>Workflow</th><th>Status</th><th>Eksekusi Hari Ini</th><th>Error</th><th>Avg. Duration</th></tr></thead>
+              <tbody>
+                <tr><td><strong>CalioFish Order Parser</strong></td><td><span class="bdg bdg-green">Running</span></td><td>12 eksekusi</td><td style="color:var(--seafoam)">0 error</td><td style="font-family:var(--mono)">2.1 dtk</td></tr>
+                <tr><td><strong>Stok Alert Monitor</strong></td><td><span class="bdg bdg-green">Running</span></td><td>96 eksekusi (tiap 15 mnt)</td><td style="color:var(--seafoam)">0 error</td><td style="font-family:var(--mono)">0.4 dtk</td></tr>
+                <tr><td><strong>Sheets Sync Scheduler</strong></td><td><span class="bdg bdg-gray">Scheduled</span></td><td>6 eksekusi</td><td style="color:var(--seafoam)">0 error</td><td style="font-family:var(--mono)">4.8 dtk</td></tr>
+                <tr><td><strong>Invoice Auto-Generator</strong></td><td><span class="bdg bdg-blue">Standby</span></td><td>12 eksekusi</td><td style="color:var(--seafoam)">0 error</td><td style="font-family:var(--mono)">1.9 dtk</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="watermark">CalioFish Automation Dashboard · Prototype v2.0 · Next.js + Supabase + n8n + GOWA + Gemini</div>
+  </div>
+</div>
+
+<script>
+// NAV
+const titles = {overview:'Overview',order:'Order Management',gudang:'Gudang Pusat',cabang:'Stok Cabang',online:'Penjualan Online',analitik:'Analitik & Tren',keuangan:'Keuangan & Akuntansi',invoice:'Invoice & Tagihan',cs:'CS Chatbot',hr:'HR & Rekrutmen',risk:'Risk & Compliance',master:'Master Data',integration:'Integrasi'};
+const crumbs = {overview:'CalioFish / Dashboard',order:'CalioFish / Phase 1 / Order Management',gudang:'CalioFish / Phase 1 / Gudang Pusat',cabang:'CalioFish / Phase 1 / Stok Cabang',online:'CalioFish / Phase 1 / Penjualan Online',analitik:'CalioFish / Phase 1 / Analitik & Tren',keuangan:'CalioFish / Phase 1 / Keuangan',invoice:'CalioFish / Phase 2 / Invoice',cs:'CalioFish / Phase 2 / CS Chatbot',hr:'CalioFish / Phase 3 / HR & Rekrutmen',risk:'CalioFish / Phase 4 / Risk & Compliance',master:'CalioFish / Config / Master Data',integration:'CalioFish / Config / Integrasi'};
+function go(id, el) {
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('on'));
+  document.querySelectorAll('.sb-item').forEach(i=>i.classList.remove('active'));
+  document.getElementById('sec-'+id).classList.add('on');
+  el.classList.add('active');
+  document.getElementById('page-title').textContent = titles[id]||id;
+  document.getElementById('page-crumb').textContent = crumbs[id]||'CalioFish';
+  setTimeout(initCharts, 50);
+}
+
+// MINI TABS
+document.querySelectorAll('.mtab').forEach(t=>t.addEventListener('click',function(){
+  this.closest('.mtabs').querySelectorAll('.mtab').forEach(x=>x.classList.remove('on'));
+  this.classList.add('on');
+}));
+
+// CHARTS
+const ocean = ['#163F7A','#2567B4','#4A8FD4','#80B8E8','#BDD9F4'];
+const cyan  = ['#0470A8','#0891B2','#0EA5C9','#38BDF8','#7DD3F6'];
+const mix   = ['#1A5096','#0891B2','#0D9488','#D97706','#6B7280'];
+let chartsInit = false;
+
+function initCharts() {
+  if (chartsInit) return;
+  chartsInit = true;
+
+  // Revenue bar
+  const rCtx = document.getElementById('revenueChart');
+  if(rCtx) new Chart(rCtx, {
+    type:'bar',
+    data:{
+      labels:['Nov','Des','Jan','Feb','Mar','Apr'],
+      datasets:[
+        {label:'Offline',data:[180,195,172,210,248,284],backgroundColor:'rgba(26,80,150,.75)',borderRadius:4,borderSkipped:false},
+        {label:'Online',data:[88,102,94,121,148,238],backgroundColor:'rgba(8,145,178,.5)',borderRadius:4,borderSkipped:false}
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:10}}},y:{grid:{color:'#EBF3FC'},ticks:{font:{size:10},callback:v=>'Rp '+v+'M'}}}}
+  });
+
+  // Donut
+  const dCtx = document.getElementById('donutChart');
+  if(dCtx) new Chart(dCtx, {
+    type:'doughnut',
+    data:{labels:['Skin Fish','Abon','Nugget','Kerupuk','Lain'],datasets:[{data:[38,27,19,10,6],backgroundColor:['#163F7A','#0891B2','#0D9488','#D97706','#94A3B8'],borderWidth:2,borderColor:'#fff'}]},
+    options:{responsive:false,plugins:{legend:{display:false}},cutout:'68%'}
+  });
+
+  // Online chart
+  const oCtx = document.getElementById('onlineChart');
+  if(oCtx) new Chart(oCtx, {
+    type:'line',
+    data:{
+      labels:['Nov','Des','Jan','Feb','Mar','Apr'],
+      datasets:[
+        {label:'Shopee',data:[62,78,71,88,112,142],borderColor:'#D97706',backgroundColor:'rgba(217,119,6,.1)',tension:.4,fill:true,borderWidth:2,pointRadius:3},
+        {label:'Tokopedia',data:[44,58,52,68,82,96],borderColor:'#0891B2',backgroundColor:'rgba(8,145,178,.1)',tension:.4,fill:true,borderWidth:2,pointRadius:3}
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:10}}},y:{grid:{color:'#EBF3FC'},ticks:{font:{size:10},callback:v=>'Rp '+v+'M'}}}}
+  });
+
+  // Area bar
+  const aCtx = document.getElementById('areaChart');
+  if(aCtx) new Chart(aCtx, {
+    type:'bar',
+    data:{
+      labels:['Surabaya','Gresik','Sidoarjo','Bali','Malang','Jember','Banyuwangi'],
+      datasets:[{label:'Penjualan (Rp Jt)',data:[84,61,49,39,32,28,20],backgroundColor:'rgba(26,80,150,.7)',borderRadius:4,borderSkipped:false}]
+    },
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'#EBF3FC'},ticks:{font:{size:10},callback:v=>'Rp '+v+'M'}},y:{grid:{display:false},ticks:{font:{size:10}}}}}
+  });
+
+  // Trend line
+  const tCtx = document.getElementById('trendChart');
+  if(tCtx) new Chart(tCtx, {
+    type:'line',
+    data:{
+      labels:['W1','W2','W3','W4','W5','W6','W7','W8','W9','W10','W11','W12'],
+      datasets:[
+        {label:'Skin Fish',data:[80,88,85,92,98,102,108,115,118,124,131,140],borderColor:'#163F7A',backgroundColor:'rgba(26,63,122,.08)',tension:.4,fill:true,borderWidth:2,pointRadius:2},
+        {label:'Abon Ikan',data:[55,58,60,65,62,68,72,78,82,88,92,98],borderColor:'#0891B2',backgroundColor:'rgba(8,145,178,.08)',tension:.4,fill:true,borderWidth:2,pointRadius:2}
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:9}}},y:{grid:{color:'#EBF3FC'},ticks:{font:{size:9}}}}}
+  });
+
+  // Perf radar
+  const pCtx = document.getElementById('perfChart');
+  if(pCtx) new Chart(pCtx, {
+    type:'radar',
+    data:{
+      labels:['Penjualan','Retur','Koleksi','Outlet Baru','Kepuasan'],
+      datasets:[
+        {label:'Budi',data:[94,88,92,85,96],borderColor:'#163F7A',backgroundColor:'rgba(26,63,122,.12)',borderWidth:2,pointRadius:3},
+        {label:'Andi',data:[88,90,85,80,88],borderColor:'#0891B2',backgroundColor:'rgba(8,145,178,.12)',borderWidth:2,pointRadius:3}
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{r:{ticks:{font:{size:9}},grid:{color:'#EBF3FC'}}}}
+  });
+}
+
+// init on load
+initCharts();
+</script>
+</body>
+</html>

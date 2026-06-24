@@ -1,0 +1,493 @@
+env WA Service (n8n version):
+Repository=aldinokemal2104/go-whatsapp-web-multidevice
+Version=latest
+1 APP_BASIC_AUTH=FB8f1wve:A2pYeE8ugwrfz8vOx0oddAX6
+2 WHATSAPP_WEBHOOK=https://n8n-6hzd3mcefdqu.emas.sumopod.my.id/webhook-test/97b57d4c-f696-47aa-ba66-68c57f687ecd,https://n8n-6hzd3mcefdqu.emas.sumopod.my.id/webhook/97b57d4c-f696-47aa-ba66-68c57f687ecd
+3 WHATSAPP_WEBHOOK_SECRET=wfa-sekolah-wfa-anywhere-0987654321
+4 APP_ACCOUNT_VALIDATION=false
+
+WA API:
+Host_URL=https://gowa-qojnvbfadugj.timun.sumopod.my.id
+Username=FB8f1wve
+Password=A2pYeE8ugwrfz8vOx0oddAX6
+Device_ID=1f1b13d5-b2a9-4fc4-9b1c-324628171a98
+
+Workflow Design Filter Incoming Chat (n8n version):
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "97b57d4c-f696-47aa-ba66-68c57f687ecd",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -224,
+        336
+      ],
+      "id": "3ff637d1-6f8c-4e3d-9077-6820addbfc3b",
+      "name": "WA Chat Trigger",
+      "webhookId": "97b57d4c-f696-47aa-ba66-68c57f687ecd"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        224,
+        432
+      ],
+      "id": "d482537f-8540-4c86-9951-2d368099b824",
+      "name": "~ Do Nothing ~"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        672,
+        336
+      ],
+      "id": "6d1d85ec-79a0-4d03-a58b-7505757899f4",
+      "name": "~ No Operation ~"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "568117cb-7b2f-49a9-a67b-9849254f54de",
+              "leftValue": "={{ $json.body.event }}",
+              "rightValue": "message",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        0,
+        336
+      ],
+      "id": "2c7e9ad8-ab18-4dc1-a4b5-22d2bcf3c7a1",
+      "name": "is Message?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "bc6316a9-d955-46fc-8621-02a7633a9f48",
+              "leftValue": "={{ $('WA Chat Trigger').item.json.body.payload.chat_id }}",
+              "rightValue": "g.us",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        224,
+        240
+      ],
+      "id": "c1e8989f-0a1f-4770-9554-5fce63514a6f",
+      "name": "chat Group?"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "BliGhG4KTnFxutuA",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/BliGhG4KTnFxutuA"
+        },
+        "options": {}
+      },
+      "id": "e64e2d97-7e4d-47f1-9688-aa66f190336d",
+      "name": "Execute CalioFish CRM",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        896,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8e83ad19-bb11-49a1-9ead-b684ca207457",
+              "leftValue": "={{ $json.body.payload.chat_id }}",
+              "rightValue": "120363293055467760@g.us",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        240
+      ],
+      "id": "139fef81-961c-447e-a4f6-d9ca5b5f1757",
+      "name": "If Group"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8e83ad19-bb11-49a1-9ead-b684ca207457",
+              "leftValue": "={{ $json.body.device_id }}",
+              "rightValue": "6285157991798",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        144
+      ],
+      "id": "1ef416a9-17e1-43e7-92bf-055552cf5230",
+      "name": "If Admin"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        896,
+        48
+      ],
+      "id": "b26c35d4-4026-43d4-8464-0b6ce107a644",
+      "name": "~ Ignore ~"
+    }
+  ],
+  "connections": {
+    "WA Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "is Message?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "is Message?": {
+      "main": [
+        [
+          {
+            "node": "chat Group?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "~ Do Nothing ~",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "chat Group?": {
+      "main": [
+        [
+          {
+            "node": "If Group",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "If Group": {
+      "main": [
+        [
+          {
+            "node": "If Admin",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "~ No Operation ~",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Admin": {
+      "main": [
+        [
+          {
+            "node": "~ Ignore ~",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute CalioFish CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b58633a868672948f6419b5ff771d2005f0283aeeb247c7b03ef2692db14f67f"
+  }
+}
+
+Node WA Humanized Workflow (n8n version):
+{
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "sendChatPresence",
+        "phoneNumber": "={{ $('Execute Workflow Trigger').item.json.wa_number }}"
+      },
+      "type": "@aldinokemal2104/n8n-nodes-gowa.gowa",
+      "typeVersion": 1,
+      "position": [
+        1216,
+        -256
+      ],
+      "id": "9a8b5527-973b-4c58-be7d-47aa623a87d5",
+      "name": "Start Typing",
+      "credentials": {
+        "goWhatsappApi": {
+          "id": "vWtfUCX6M9Q7CAHF",
+          "name": "GOWA Development Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "readMessage",
+        "phoneOrGroupId": "={{ $('Execute Workflow Trigger').first().json.wa_number }}",
+        "messageId": "={{ $('Execute Workflow Trigger').first().json.id_message }}"
+      },
+      "type": "@aldinokemal2104/n8n-nodes-gowa.gowa",
+      "typeVersion": 1,
+      "position": [
+        992,
+        -256
+      ],
+      "id": "507c808a-4590-4bc1-8381-9e5fab217dc0",
+      "name": "Read Message",
+      "credentials": {
+        "goWhatsappApi": {
+          "id": "vWtfUCX6M9Q7CAHF",
+          "name": "GOWA Development Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Start Typing": {
+      "main": [
+        []
+      ]
+    },
+    "Read Message": {
+      "main": [
+        [
+          {
+            "node": "Start Typing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b58633a868672948f6419b5ff771d2005f0283aeeb247c7b03ef2692db14f67f"
+  }
+}
+{
+  "nodes": [
+    {
+      "parameters": {
+        "phoneNumber": "=6285157991798",
+        "message": "the message here"
+      },
+      "type": "@aldinokemal2104/n8n-nodes-gowa.gowa",
+      "typeVersion": 1,
+      "position": [
+        1728,
+        -256
+      ],
+      "id": "019a3423-1990-4e7e-899c-95da5b0b6e63",
+      "name": "Success Message",
+      "credentials": {
+        "goWhatsappApi": {
+          "id": "vWtfUCX6M9Q7CAHF",
+          "name": "GOWA Development Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "sendChatPresence",
+        "phoneNumber": "=6285157991798"
+      },
+      "type": "@aldinokemal2104/n8n-nodes-gowa.gowa",
+      "typeVersion": 1,
+      "position": [
+        1056,
+        -256
+      ],
+      "id": "9e0453e0-907d-44d6-a6ec-6484728a1461",
+      "name": "Start Typing",
+      "credentials": {
+        "goWhatsappApi": {
+          "id": "vWtfUCX6M9Q7CAHF",
+          "name": "GOWA Development Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 2.5
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1280,
+        -256
+      ],
+      "id": "c16c046b-d542-4c4c-a030-e1d271f5f246",
+      "name": "Wait",
+      "webhookId": "7c59a119-077d-4cae-88ab-d6910e13e760"
+    },
+    {
+      "parameters": {
+        "operation": "sendChatPresence",
+        "phoneNumber": "=6285157991798",
+        "chatPresenceAction": "stop"
+      },
+      "type": "@aldinokemal2104/n8n-nodes-gowa.gowa",
+      "typeVersion": 1,
+      "position": [
+        1504,
+        -256
+      ],
+      "id": "0eb91b58-4f23-44f8-9fcc-732a740ae95c",
+      "name": "Stop Typing",
+      "credentials": {
+        "goWhatsappApi": {
+          "id": "vWtfUCX6M9Q7CAHF",
+          "name": "GOWA Development Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Start Typing": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Stop Typing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stop Typing": {
+      "main": [
+        [
+          {
+            "node": "Success Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b58633a868672948f6419b5ff771d2005f0283aeeb247c7b03ef2692db14f67f"
+  }
+}

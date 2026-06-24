@@ -1,0 +1,462 @@
+berikut kami rumuskan detail kebutuhan kami berdasarkan report : 
+
+1. Produksi: 
+a) Monitoring hasil produksi meliputi data 
+Tanggal produksi 
+Jenis produksi : produksi basah/produksi kering
+Jumlah bahan baku (kg)
+Hasil produksi (kg)/(kg) & (pcs)
+Jumlah hpp produksi perbatch (rupiah)
+
+b) Monitoring stok kemasan 
+Tanggal
+Kemasan produk :(fish skin @varian)/abon
+Masuk : 
+Keluar :
+
+c) Monitoring stok bumbu
+Tanggal 
+Jenis bumbu : soto/rendang/sambal matah/original
+Masuk : 
+Keluar : 
+
+d) Monitoring stok kardus packing
+Tanggal
+Ukuran kardus : 
+
+
+2. Wearhouse 
+a) Monitoring stok produk 
+Tanggal : 
+Jenis produk : fish skin @varian/abon
+Produk masuk : pcs 
+Produk keluar : pcs 
+
+
+3. DISTRIBUSI
+a) Monitoring distribusi produk
+Jenis produk : fish skin @varian/abon
+Tipe keluar : shopee/tiktok/outlet/distributor/reseller/enduser/ekspor/Sample
+Jumlah produk yg keluar : (pcs)
+Total produk seluruhnya : fish skin/abon (pcs)
+
+
+4. Marketing 
+a) Monitoring penjualan per outlet
+Tanggal
+Nama outlet
+Tlp outlet
+Alamat
+Status : TOP/konsinyasi
+Pic marketing
+Jumlah Orderan baru
+Jumlah Sisa stok 
+Total tagihan 
+Total payment
+Sisa tagihan
+
+b) Monitoring Kinerja Sales 
+Tanggal :
+Jenis penjualan : B2B/B2C
+Target penjualan / bulan
+Target new outlet
+Total outlet aktif 
+Total outlet baru :
+Target omset harian :
+Omset harian : (Rp)
+Omset MTD : (rp)
+Presentase : (%)
+
+c) Monitoring penjualan online
+Tanggal 
+Jenis marketplace :shopee/tiktok
+Target penjualan / bulan : (rp)
+Target omset harian :
+Omset harian : (rp)
+Omset MTD : (rp)
+Presentase : (%)
+
+
+5. KOL/AFFILIATE/INFLUENCER
+a) DATABASE AFFILIATE (nama, nama akun medsos, no hp, alamat, jenis postingan, media upload, ratecard, link unggahan
+b) Distribusi sample 
+Tanggal
+Jenis sample : fish skin@varian/abon 
+Total produk : 
+Total Biaya ekspedisi :
+
+6. HISTORY REPORT
+REPORT Marketing Offline
+Tanggal : 06/06/2026
+Target bulanan(konsinyasi):5.000.000
+Jumlah outlet aktif : 28
+Omset harian : 1.218.000
+Omset MTD : 3.339.900
+Persentase (%) :66,79 %
+GAP :1.660.100
+
+REPORT PAKET KIRIMAN
+06/06/26
+shopee :  2 paket
+Offline :  18 paket 
+Affiliate : 0 paket 
+Influencer : 0
+
+Produk yang keluar: 
+Fs original : 80
+Fs sambal matah: 80
+Fs soto : 82
+Fs rendang : 80
+Abon 90 : 84
+
+Report PEMBERSIHAN KULIT AREA BANYUWANGI
+06/06/2026
+
+Kulit beku : 10.6 kg
+Setelah bersih : 6,3 kg
+
+REPORT MARKETING ONLINE 
+05/06/26
+
+Shopee
+Target MTD : 10.000.000
+Omset harian : 74.500
+Total omset MTD : 1.196.444
+Persentase (%) : 12%
+GAP : 8.803.556
+TIKTOK
+Target MTD : 2.000.000
+Omset harian : 0
+Total omset MTD : 0
+Persentase (%) : 0%
+GAP : 2.000.000
+
+REPORT Marketing Offline
+Tanggal : 08/06/2026
+Target bulanan(konsinyasi):5.000.000
+Jumlah outlet aktif : 29
+Omset harian : 490.000
+Omset MTD : 3.829.900
+Persentase (%) :76,59%
+GAP :1.170.100
+
+REPORT MARKETING ONLINE 
+08/06/26
+
+Shopee
+Target MTD : 10.000.000
+Omset harian : 374.698
+Total omset MTD : 1.600.138
+Persentase (%) : 16%
+GAP : 8.399.862
+TIKTOK
+Target MTD : 2.000.000
+Omset harian : 0
+Total omset MTD : 0
+Persentase (%) : 0%
+GAP : 2.000.000
+
+REPORT PRODUKSI
+09/06/26
+Jenis produksi : Abon Tuna
+Berat : 2 kg 
+Total hasil produk : 24 pcs
+
+Report pembersihan
+09/06/2026
+
+Kulit kotor : 10 kg
+Kulit bersih : 6.080 kg
+
+REPORT Marketing Offline
+Tanggal : 09/06/2026
+Target bulanan(konsinyasi):5.000.000
+Jumlah outlet aktif : 29
+Omset harian : 0
+Omset MTD : 3.829.900
+Persentase (%) :76,59%
+GAP :1.170.100
+
+REPORT PAKET KIRIMAN
+09/06/26
+shopee : 7  paket
+Offline :   1 paket 
+Affiliate : 0 paket 
+Influencer : 1 paket
+Sample outlet : 1 paket
+
+Produk yang keluar: 
+Fs original : 20
+Fs sambal matah: 17
+Fs soto : 14
+Fs rendang : 15
+Abon 90 : 11
+
+REPORT MARKETING ONLINE 
+09/06/26
+
+Shopee
+Target MTD : 10.000.000
+Omset harian : 609.830
+Total omset MTD : 2.209.968
+Persentase (%) : 22,1%
+GAP : 7.790.032
+TIKTOK
+Target MTD : 2.000.000
+Omset harian : 0
+Total omset MTD : 0
+Persentase (%) : 0%
+GAP : 2.000.000
+
+REPORT Marketing Offline
+Tanggal : 10/06/2026
+Target bulanan(konsinyasi):5.000.000
+Jumlah outlet aktif : 29
+Omset harian : 207.000
+Omset MTD : 4.036.900
+Persentase (%) :80,738%
+GAP :963.100
+
+Report pembersihan kulit
+10/6/2026
+
+Kulit kotor : 10.5 kg
+Kulit bersih : 7 kg
+
+Report bagian produksi
+10/06/2026
+
+Jenis produksi : menggoreng
+Bahan baku : 12.125 kg
+Jadi : 15.765 kg
+
+REPORT MARKETING ONLINE 
+09/06/26
+
+Shopee
+Target MTD : 10.000.000
+Omset harian : 136.500
+Total omset MTD : 2.374.468
+Persentase (%) : 23,7%
+GAP : 7.625.532
+
+TIKTOK
+Target MTD : 2.000.000
+Omset harian : 0
+Total omset MTD : 0
+Persentase (%) : 0%
+GAP : 2.000.000
+
+10/06/26
+shopee : 3  paket
+Offline :  2   paket 
+Affiliate : 1 paket 
+Influencer : 0 paket
+Sample outlet : 0  paket
+
+Produk yang keluar: 
+Fs original : 35
+Fs sambal matah: 30
+Fs soto : 10
+Fs rendang : 11
+Abon 90 : 4
+
+REPORT MARKETING ONLINE 
+11/06/26
+
+Shopee
+Target MTD : 10.000.000
+Omset harian : 384.937
+Total omset MTD : 2.876.405
+Persentase (%) : 28,8%
+GAP : 7.123.595
+
+TIKTOK
+Target MTD : 2.000.000
+Omset harian : 0
+Total omset MTD : 0
+Persentase (%) : 0%
+GAP : 2.000.000
+
+REPORT Marketing Offline
+Tanggal : 11/06/2026
+Target bulanan(konsinyasi):5.000.000
+Jumlah outlet aktif : 29
+Omset harian : 0
+Omset MTD : 4.036.900
+Persentase (%) :80,738%
+GAP :963.100
+
+REPORT Marketing Offline
+Tanggal : 12/06/2026
+Target bulanan(konsinyasi):5.000.000
+Jumlah outlet aktif : 29
+Omset harian : 527.500
+Omset MTD : 4.564.500
+Persentase (%) :91,29%
+GAP :435.500
+
+REPORT PAKET KIRIMAN
+13/06/26
+shopee : 4  paket
+Offline :   2 paket 
+Affiliate : 0 paket 
+Influencer : 0 paket
+Sample outlet : 0 paket
+
+Produk yang keluar: 
+Fs original : 110
+Fs sambal matah: 70
+Fs soto : 10
+Fs rendang : 12
+Abon 90 : 3
+
+Report tim produksi
+13/06/2026
+
+Kegiatan : menggoreng
+Bahan baku : 8.955
+Bahan jadi : 12.150
+
+REPORT PAKET KIRIMAN
+14/06/26
+shopee : 1  paket
+Offline :   0 paket 
+Affiliate : 6 paket 
+Influencer : 0 paket
+Sample outlet : 0 paket
+
+Produk yang keluar: 
+Fs original : 3
+Fs sambal matah:0 
+Fs soto : 0
+Fs rendang : 6
+Abon 90 : 0
+
+REPORT Marketing Offline
+Tanggal : 15/06/2026
+Target bulanan(konsinyasi):5.000.000
+Jumlah outlet aktif : 29
+Omset harian : 231.000
+Omset MTD : 4.795.500
+Persentase (%) :95,91%
+GAP :204.500
+
+REPORT PAKET KIRIMAN
+15/06/26
+shopee : 1  paket
+Offline :   1 paket 
+Affiliate : 0 paket 
+Influencer : 0 paket
+Sample outlet : 0 paket
+
+Produk yang keluar: 
+Fs original : 5
+Fs sambal matah: 4
+Fs soto : 4
+Fs rendang : 4
+Abon 90 : 0
+
+REPORT PAKET KIRIMAN
+16/06/26
+shopee : 8 paket
+Offline :  1 paket 
+Affiliate : 0 paket 
+Influencer : 0 paket
+Sample outlet : 0 paket
+
+Produk yang keluar: 
+Fs original : 10
+Fs sambal matah: 1
+Fs soto : 0
+Fs rendang : 0
+Abon 90 : 14
+
+Report pembersihan kulit
+17/06/2026
+
+Bahan beku : 10.600
+Bahan bersih : 6,600
+
+REPORT PAKET KIRIMAN
+17/06/26
+shopee : 6 paket
+Offline :  0 paket 
+Affiliate : 7 paket 
+Influencer : 0 paket
+Sample outlet : 0 paket
+
+Produk yang keluar: 
+Fs original : 13
+Fs sambal matah: 3
+Fs soto : 1
+Fs rendang : 1
+Abon 90 : 1
+
+REPORT Marketing Offline
+Tanggal : 17/06/2026
+Target bulanan(konsinyasi):5.000.000
+Jumlah outlet aktif : 29
+Omset harian : 504.000
+Omset MTD : 5.299.500
+Persentase (%) :105%
+GAP :+299.500
+
+REPORT PEMBERSIHAN KULIT
+18/06/2026
+
+BAHAN BEKU : 10,6
+BAHAN BERSIH : 7,2
+
+Report tim produksi
+18/06/2026
+
+Aktivitas : menimbang 3kg abon
+Jadi : 32 pcs
+
+REPORT PAKET KIRIMAN
+18/06/26
+shopee : 9 paket
+Tiktok : 1 paket
+Offline :  0 paket 
+Affiliate : 3 paket 
+Influencer : 0 paket
+Sample outlet : 0 paket
+
+Produk yang keluar: 
+Fs original : 6
+Fs sambal matah: 0
+Fs soto : 0
+Fs rendang : 1
+Abon 90 : 21
+
+REPORT Marketing Offline
+Tanggal : 18/06/2026
+Target bulanan(konsinyasi):5.000.000
+Jumlah outlet aktif : 29
+Omset harian : 835.800
+Omset MTD : 6.135.300
+Persentase (%) :122%
+GAP :+1.135.300
+
+Report hasil pembersihan 
+19/06/2026
+
+Bahan kotor : 9,3 kg
+Bahan bersih : 6.530
+
+REPORT PAKET KIRIMAN
+19/06/26
+shopee : 3 paket
+Tiktok : 0 paket
+Offline :  0 paket 
+Affiliate : 0 paket 
+Influencer : 0 paket
+Sample outlet : 0 paket
+
+Produk yang keluar: 
+Fs original : 0
+Fs sambal matah: 0
+Fs soto : 0
+Fs rendang : 0
+Abon 90 : 3
