@@ -246,11 +246,11 @@ export async function POST(req: Request) {
            _sum: { omset_harian: true },
            where: { date: { gte: startOfMonth, lte: endOfMonth } }
         });
-        const currentMtd = agg._sum.omset_harian || 0;
+        const currentMtd = Number(agg._sum.omset_harian ?? 0);
         const targetObj = await prisma.systemSetting.findUnique({ where: { key: 'offline_target_bulanan' }});
-        const targetVal = targetObj?.value || 0;
-        const gap = targetVal - currentMtd;
-        const percentage = targetVal > 0 ? ((currentMtd / targetVal) * 100).toFixed(1) : 0;
+        const targetVal = Number(targetObj?.value ?? 0);
+        const gap = Number(targetVal) - Number(currentMtd);
+        const percentage = Number(targetVal) > 0 ? ((Number(currentMtd) / Number(targetVal)) * 100).toFixed(1) : 0;
 
         replyMsg = `✅ *Marketing Offline* ${parsedData.date} tercatat.\n` + 
                    `💰 Omset Hari Ini: Rp ${(data.omset_harian || 0).toLocaleString('id-ID')}\n` +
@@ -317,14 +317,14 @@ export async function POST(req: Request) {
            _sum: { omset_harian: true },
            where: { platform: data.platform, date: { gte: startOfMonth, lte: endOfMonth } }
         });
-        const currentMtd = agg._sum.omset_harian || 0;
+        const currentMtd = Number(agg._sum.omset_harian ?? 0);
         
         let targetKey = 'shopee_target_mtd';
         if (pf.includes('tiktok')) targetKey = 'tiktok_target_mtd';
         const targetObj = await prisma.systemSetting.findUnique({ where: { key: targetKey }});
-        const targetVal = targetObj?.value || 0;
-        const gap = targetVal - currentMtd;
-        const percentage = targetVal > 0 ? ((currentMtd / targetVal) * 100).toFixed(1) : 0;
+        const targetVal = Number(targetObj?.value ?? 0);
+        const gap = Number(targetVal) - Number(currentMtd);
+        const percentage = Number(targetVal) > 0 ? ((Number(currentMtd) / Number(targetVal)) * 100).toFixed(1) : 0;
 
         replyMsg = `✅ *Marketing Online (${data.platform})* ${parsedData.date} tercatat.\n` + 
                    `💰 Omset Hari Ini: Rp ${(data.omset_harian || 0).toLocaleString('id-ID')}\n` +
