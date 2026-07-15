@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { GowaPayload, sendMessage, sendChatPresence } from '@/lib/whatsapp';
+import { GowaPayload, sendMessage, sendChatPresence, readMessage } from '@/lib/whatsapp';
 import { parseWhatsAppReport } from '@/lib/ai-parser';
 import { prisma } from '@/lib/prisma';
 
@@ -97,6 +97,8 @@ export async function POST(req: Request) {
     });
     const employeeId = employee ? employee.id : null;
 
+    // Read the message first for a humanized feel
+    await readMessage(payload.chat_id, payload.id);
     await sendChatPresence(payload.chat_id, 'composing');
     const parsedData = await parseWhatsAppReport(payload.body);
 
@@ -109,7 +111,7 @@ export async function POST(req: Request) {
     if (parsedData.is_ambiguous && parsedData.clarification_message) {
       await sendChatPresence(payload.chat_id, 'paused');
       const msg = `⚠️ *Laporan Kurang Jelas*\n\n${parsedData.clarification_message}`;
-      await sendMessage(payload.chat_id, msg);
+      await sendMessage(payload.chat_id, msg, payload.id);
       return NextResponse.json({ status: 'clarified', reason: 'requested user clarification', clarification_message: msg });
     }
 
@@ -616,7 +618,7 @@ export async function POST(req: Request) {
     }
 
     await sendChatPresence(payload.chat_id, 'paused');
-    await sendMessage(payload.chat_id, replyMsg);
+    await sendMessage(payload.chat_id, replyMsg, payload.id);
 
     return NextResponse.json({ status: 'success', parsedData, replyMsg });
   } catch (error) {

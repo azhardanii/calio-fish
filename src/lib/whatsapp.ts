@@ -65,9 +65,18 @@ export async function readMessage(chatId: string, messageId: string) {
   }
 }
 
-export async function sendMessage(phoneNumber: string, message: string) {
+export async function sendMessage(phoneNumber: string, message: string, replyMessageId?: string) {
   if (!GOWA_HOST || phoneNumber === 'TEST_CHAT_ID') return { status: 'mocked' };
   try {
+    const bodyPayload: any = {
+      phone: phoneNumber,
+      message: message,
+      is_group: phoneNumber.endsWith('@g.us'),
+    };
+    if (replyMessageId) {
+      bodyPayload.reply_message_id = replyMessageId;
+    }
+
     const res = await fetch(`${GOWA_HOST}/send/message/text`, {
       method: 'POST',
       headers: {
@@ -75,11 +84,7 @@ export async function sendMessage(phoneNumber: string, message: string) {
         Authorization: getBasicAuth(),
         'X-Device-Id': GOWA_DEVICE_ID || '',
       },
-      body: JSON.stringify({
-        phone: phoneNumber,
-        message: message,
-        is_group: phoneNumber.endsWith('@g.us'),
-      }),
+      body: JSON.stringify(bodyPayload),
     });
     return res.json();
   } catch (error) {
