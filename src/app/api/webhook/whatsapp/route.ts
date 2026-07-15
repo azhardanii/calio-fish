@@ -49,8 +49,27 @@ export async function POST(req: Request) {
     }
 
     const senderNumber = payload.from || '';
+    const sender = payload.from_name || senderNumber || 'Unknown';
+    const groupId = payload.chat_id || 'Personal Chat';
+
+    // 1. Cek apakah grup ini dicentang (diizinkan)
+    const groupSetting = await prisma.systemSetting.findUnique({ where: { key: 'WA_GROUP_ID' } });
+    let allowedGroups = (process.env.WA_GROUP_ID || '120363293055467760@g.us').split(',').map(g => g.trim());
+    if (groupSetting && groupSetting.value) {
+      allowedGroups = groupSetting.value.split(',').map(g => g.trim()).filter(Boolean);
+    }
+
+    if (!allowedGroups.includes(payload.chat_id) && payload.chat_id !== 'TEST_CHAT_ID') {
+      return NextResponse.json({ status: 'ignored', reason: 'unauthorized sender, not target group' });
+    }
+
+    // Jika sampai di sini, berarti grupnya DICENTANG. Kita cetak log-nya:
+    console.log(`\n[Webhook - GRUP TERDAFTAR] Pesan dari: ${sender} (${senderNumber})\nDi Grup ID: ${groupId}\nIsi Pesan:\n${payload.body}\n`);
+
+    // 2. Cek apakah pengirim adalah nomor bot/admin itu sendiri (mencegah infinite loop)
     if (senderNumber.includes(ADMIN_PHONE)) {
-      return NextResponse.json({ status: 'ignored', reason: 'message from bot' });
+      console.log(`[Webhook - DIBATALKAN] Pesan dikirim oleh nomor Admin/Bot sendiri, proses dihentikan.`);
+      return NextResponse.json({ status: 'ignored', reason: 'message from bot/admin' });
     }
 
     if (processedMessageIds.has(payload.id)) {
@@ -62,19 +81,6 @@ export async function POST(req: Request) {
       const firstItem = processedMessageIds.values().next().value;
       if (firstItem) processedMessageIds.delete(firstItem);
     }
-
-    const groupSetting = await prisma.systemSetting.findUnique({ where: { key: 'WA_GROUP_ID' } });
-    let allowedGroups = (process.env.WA_GROUP_ID || '120363293055467760@g.us').split(',').map(g => g.trim());
-    if (groupSetting && groupSetting.value) {
-      allowedGroups = groupSetting.value.split(',').map(g => g.trim()).filter(Boolean);
-    }
-
-    if (!allowedGroups.includes(payload.chat_id) && payload.chat_id !== 'TEST_CHAT_ID') {
-      return NextResponse.json({ status: 'ignored', reason: 'unauthorized sender, not target group' });
-    }
-
-    const sender = payload.from_name || payload.from || 'Unknown';
-    console.log(`[Webhook - DITERIMA] Pesan masuk dari: ${sender}\nMessage:\n${payload.body}`);
 
     // Lookup employee by phone number
     const cleanPhone = (payload.from || '').replace(/\D/g, '');
