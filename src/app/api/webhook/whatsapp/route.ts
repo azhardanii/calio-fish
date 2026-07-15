@@ -44,6 +44,13 @@ export async function POST(req: Request) {
     const payload = body.payload;
     if (!payload) return NextResponse.json({ status: 'ignored', reason: 'no payload' });
 
+    const textBody = (payload.body || '').trim().toLowerCase();
+    const isTriggered = textBody.startsWith('/lapor') || textBody.startsWith('!lapor') || textBody.startsWith('#lapor') || textBody.startsWith('lapor');
+    
+    if (!isTriggered) {
+      return NextResponse.json({ status: 'ignored', reason: 'no trigger prefix' });
+    }
+
     if (payload.is_from_me) {
       return NextResponse.json({ status: 'ignored', reason: 'message from self' });
     }
@@ -93,9 +100,10 @@ export async function POST(req: Request) {
     await sendChatPresence(payload.chat_id, 'composing');
     const parsedData = await parseWhatsAppReport(payload.body);
 
-    if (!parsedData || !parsedData.report_type) {
+    if (!parsedData || !parsedData.report_type || parsedData.report_type === 'NONE') {
       await sendChatPresence(payload.chat_id, 'paused');
-      return NextResponse.json({ status: 'ignored', reason: 'unparseable or not a report' });
+      console.log('[Webhook - DIABAIKAN] Pesan terdeteksi sebagai obrolan biasa (Bukan Laporan).');
+      return NextResponse.json({ status: 'ignored', reason: 'unparseable or casual chat' });
     }
 
     if (parsedData.is_ambiguous && parsedData.clarification_message) {
@@ -155,7 +163,7 @@ export async function POST(req: Request) {
                    destination_id: destId
                  }
                });
-               replyMsg = `✅ *Produksi Hasil* ${parsedData.date} dicatat! Stok ${product.short_name} bertambah ${data.hasil_pcs} pcs (masuk Gudang Banyuwangi).`;
+               replyMsg = `✅ *Produksi Hasil* ${parsedData.date} dicatat!\nStok ${product.short_name} bertambah ${data.hasil_pcs} pcs.\n📦 Sisa Stok saat ini: *${newBalance.toLocaleString('id-ID')} pcs*`;
              } else {
                replyMsg = `✅ *Produksi Hasil* ${parsedData.date} dicatat! (SKU Produk tidak ditemukan untuk penambahan stok)`;
              }
@@ -231,7 +239,23 @@ export async function POST(req: Request) {
             }
           }
         });
-        replyMsg = `✅ *Marketing Offline* ${parsedData.date} tercatat.\nOmset: Rp ${(data.omset_harian || 0).toLocaleString('id-ID')}`;
+        const tDate = new Date(parsedData.date);
+        const startOfMonth = new Date(tDate.getFullYear(), tDate.getMonth(), 1);
+        const endOfMonth = new Date(tDate.getFullYear(), tDate.getMonth() + 1, 0, 23, 59, 59, 999);
+        const agg = await prisma.marketingOffline.aggregate({
+           _sum: { omset_harian: true },
+           where: { date: { gte: startOfMonth, lte: endOfMonth } }
+        });
+        const currentMtd = agg._sum.omset_harian || 0;
+        const targetObj = await prisma.systemSetting.findUnique({ where: { key: 'offline_target_bulanan' }});
+        const targetVal = targetObj?.value || 0;
+        const gap = targetVal - currentMtd;
+        const percentage = targetVal > 0 ? ((currentMtd / targetVal) * 100).toFixed(1) : 0;
+
+        replyMsg = `✅ *Marketing Offline* ${parsedData.date} tercatat.\n` + 
+                   `💰 Omset Hari Ini: Rp ${(data.omset_harian || 0).toLocaleString('id-ID')}\n` +
+                   `📈 Total MTD: Rp ${currentMtd.toLocaleString('id-ID')}\n` +
+                   `🎯 Kekurangan Target: Rp ${gap > 0 ? gap.toLocaleString('id-ID') : '0 (Tercapai!)'} (${percentage}%)`;
 
       } else if (parsedData.report_type === 'MARKETING_ONLINE') {
         await prisma.$transaction(async (tx) => {
@@ -285,7 +309,27 @@ export async function POST(req: Request) {
             }
           }
         });
-        replyMsg = `✅ *Marketing Online (${data.platform})* ${parsedData.date} berhasil dicatat!`;
+        const tDate = new Date(parsedData.date);
+        const startOfMonth = new Date(tDate.getFullYear(), tDate.getMonth(), 1);
+        const endOfMonth = new Date(tDate.getFullYear(), tDate.getMonth() + 1, 0, 23, 59, 59, 999);
+        const pf = (data.platform || '').toLowerCase();
+        const agg = await prisma.marketingOnline.aggregate({
+           _sum: { omset_harian: true },
+           where: { platform: data.platform, date: { gte: startOfMonth, lte: endOfMonth } }
+        });
+        const currentMtd = agg._sum.omset_harian || 0;
+        
+        let targetKey = 'shopee_target_mtd';
+        if (pf.includes('tiktok')) targetKey = 'tiktok_target_mtd';
+        const targetObj = await prisma.systemSetting.findUnique({ where: { key: targetKey }});
+        const targetVal = targetObj?.value || 0;
+        const gap = targetVal - currentMtd;
+        const percentage = targetVal > 0 ? ((currentMtd / targetVal) * 100).toFixed(1) : 0;
+
+        replyMsg = `✅ *Marketing Online (${data.platform})* ${parsedData.date} tercatat.\n` + 
+                   `💰 Omset Hari Ini: Rp ${(data.omset_harian || 0).toLocaleString('id-ID')}\n` +
+                   `📈 Total MTD: Rp ${currentMtd.toLocaleString('id-ID')}\n` +
+                   `🎯 Kekurangan Target: Rp ${gap > 0 ? gap.toLocaleString('id-ID') : '0 (Tercapai!)'} (${percentage}%)`;
       
       } else if (parsedData.report_type === 'MARKETING_ONLINE_MULTI') {
         await prisma.$transaction(async (tx) => {

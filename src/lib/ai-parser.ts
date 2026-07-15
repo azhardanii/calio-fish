@@ -12,6 +12,7 @@ CRITICAL PARSING RULES:
 3. Replace missing values with null or 0 where appropriate. DO NOT guess percentages if not provided.
 4. Return ONLY a valid JSON object. No markdown blocks.
 5. AMBIGUITY CHECK: ONLY set "is_ambiguous" to true IF the input is TRULY unparseable or missing CRITICAL data for the targeted report_type. If data like "omset" is provided but "target" is missing, DO NOT mark as ambiguous (just use 0 or null). If it IS ambiguous, the "clarification_message" MUST clearly state EXACTLY what is missing, and provide a STRICT, EXACT example of how the user should type the message. The message must not be vague.
+6. CONVERSATION FILTER: Not all messages are data reports. If the message is a casual chat, question, greeting, or general discussion (e.g., "Gimana stok hari ini?", "Barang besok dikirim ya", "Oke siap"), you MUST set "report_type" to "NONE" and leave data empty. DO NOT force conversational chats into a report structure. Only parse if the user explicitly intends to submit numeric data or formal reporting points.
 
 Format:
 {
