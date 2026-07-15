@@ -14,12 +14,20 @@ import {
   Settings,
   MapPin,
   Package,
-  Network
+  Network,
+  Gauge,
+  Warehouse as WarehouseIcon
 } from "lucide-react";
 
 const navSections = [
   {
-    title: "Reporting Dashboard",
+    title: "Dashboard",
+    items: [
+      { name: "Overview", href: "/overview", icon: Gauge },
+    ]
+  },
+  {
+    title: "Reporting",
     items: [
       { name: "Marketing", href: "/marketing", icon: TrendingUp },
       { name: "Produksi", href: "/produksi", icon: Factory },
@@ -30,7 +38,8 @@ const navSections = [
     items: [
       { name: "Karyawan", href: "/karyawan", icon: Users },
       { name: "Database Outlet", href: "/outlet", icon: MapPin },
-      { name: "Warehouse", href: "/warehouse", icon: Package },
+      { name: "Database Produk", href: "/produk", icon: PackageCheck },
+      { name: "Warehouse", href: "/warehouse", icon: WarehouseIcon },
       { name: "Distribusi Sample", href: "/distribusi-sample", icon: Gift },
       { name: "Affiliator", href: "/affiliator", icon: Network },
     ]
@@ -38,7 +47,7 @@ const navSections = [
   {
     title: "Pengaturan",
     items: [
-      { name: "Pengaturan Target", href: "/settings", icon: Settings },
+      { name: "Pengaturan", href: "/settings", icon: Settings },
     ]
   }
 ];
@@ -60,8 +69,8 @@ export function Sidebar() {
           <div key={idx}>
             <div className="sb-section">{section.title}</div>
             {section.items.map((item) => {
-              const isActive = pathname.startsWith(item.href);
-                
+              const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+
               return (
                 <Link key={item.name} href={item.href} style={{ textDecoration: 'none' }}>
                   <div className={`sb-item ${isActive ? 'active' : ''}`}>

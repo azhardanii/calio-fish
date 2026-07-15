@@ -1,0 +1,248 @@
+[
+  {
+    "nama": "Misterpia (Karangploso)",
+    "alamat": "Jalan Raya Karangploso KM.4, Ruko No.3, Karangploso Wetan, Kepuharjo, Karang Ploso, Malang Regency, East Java 65152",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Misterpia (Bunga Cengkeh)",
+    "alamat": "Jalan Bunga Cengkeh No.04 Tulusrejo Lowokwaru, East Java",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Bluder Kapas",
+    "alamat": "Karangploso",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Bluder Malang Larisindo",
+    "alamat": "",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Lumpur Muda Mudi Jaya",
+    "alamat": "",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "The Java",
+    "alamat": "",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Sensa Pusat Oleh Oleh",
+    "alamat": "",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Bakso Mercon Cak Kar",
+    "alamat": "Jl Kertanegara Singosari Malang",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Kopi Tot Tot",
+    "alamat": "Kayu Tangan",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Bu Clara",
+    "alamat": "Kayu Tangan",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Toko Keripik Tempe Rahayu",
+    "alamat": "Jl Raden Temenggung Suryo 84 Purwantoro Blimbing",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Toko Oleh Oleh Central",
+    "alamat": "Jl Sanan No.24 Rt005 Rw014 Purwantoro Blimbing",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Toko Sisma 2",
+    "alamat": "Jl Raya Wendit Barat No.06 Lowoksoro, Mangliawan Pakis Malang",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "TI Oleh Oleh",
+    "alamat": "Jalan Raya, Dusun Bakalan 01 Bakalan, Kec. Bululawang Malang",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Bubur Ayam Kawitan",
+    "alamat": "Senandung - Araya Peak",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "K3Mart Kayutangan",
+    "alamat": "Kayutangan",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "K3Mart TP1",
+    "alamat": "",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Rina",
+    "alamat": "",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Wicaksono",
+    "alamat": "Jl. Candi Agung II Mojolangu Lowokwaru Malang",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Yuli",
+    "alamat": "Sumenep",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Pia Cap Mangkok",
+    "alamat": "Jl Semeru",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Mini Market Delta Makmur",
+    "alamat": "Jl. Dr Soetomo GS 275/276 Sidoarjo",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Legong Bali",
+    "alamat": "Jl Jenggolo no.23 Sidoarjo",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "KenDedes Pusat Oleh Oleh",
+    "alamat": "",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Sii imoet 1",
+    "alamat": "",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Sii imoet 2",
+    "alamat": "",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "K3Mart (Malioboro)",
+    "alamat": "",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "K3Mart (Semarang Kota Lama)",
+    "alamat": "",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "K3Mart (Semarang Pemuda)",
+    "alamat": "",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Quenched",
+    "alamat": "",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Arum Manis",
+    "alamat": "",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "K3Mart Lippo Mall Puri",
+    "alamat": "",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "K3Mart Tunjungan",
+    "alamat": "",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "K3Mart Gading Serpong",
+    "alamat": "",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Istana Grosir",
+    "alamat": "",
+    "pic": "Citra",
+    "status": "Active"
+  },
+  {
+    "nama": "Ratu Osing",
+    "alamat": "",
+    "pic": "Nanda",
+    "status": "Active"
+  },
+  {
+    "nama": "Oreng Osing",
+    "alamat": "",
+    "pic": "Nanda",
+    "status": "Active"
+  },
+  {
+    "nama": "Pelangi Sari",
+    "alamat": "",
+    "pic": "Nanda",
+    "status": "Active"
+  },
+  {
+    "nama": "Mentari Resto",
+    "alamat": "",
+    "pic": "Nanda",
+    "status": "Active"
+  },
+  {
+    "nama": "Daniel Home Industri",
+    "alamat": "",
+    "pic": "Nanda",
+    "status": "Active"
+  },
+  {
+    "nama": "KDS Genteng",
+    "alamat": "",
+    "pic": "Nanda",
+    "status": "Active"
+  }
+]

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createKaryawan, updateKaryawan, deleteKaryawan } from '@/app/actions';
 
 export function EmployeeManager({ employees }: { employees: any[] }) {
@@ -52,31 +53,31 @@ export function EmployeeManager({ employees }: { employees: any[] }) {
 
   return (
     <>
-      <div className="flex items-center justify-between border-b pb-2 mb-4">
+      <div className="flex items-center justify-between pb-2 mb-4">
         <h2 className="text-2xl font-semibold text-gray-800">Database Karyawan</h2>
         <button onClick={() => openModal()} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 text-sm rounded-lg font-medium shadow transition-colors">
           + Tambah Karyawan
         </button>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              <th className="p-3">Nama</th>
-              <th className="p-3">Posisi</th>
-              <th className="p-3">No. HP (WA)</th>
-              <th className="p-3">Status</th>
-              <th className="p-3 text-right">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
+      <div className="overflow-x-auto mt-4">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nama</TableHead>
+              <TableHead>Posisi</TableHead>
+              <TableHead>No. HP (WA)</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Aksi</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {employees.map((e) => (
-              <tr key={e.id} className="border-b hover:bg-gray-50 transition-colors">
-                <td className="p-3 font-bold">{e.nama}</td>
-                <td className="p-3">{e.posisi || '-'}</td>
-                <td className="p-3">{e.no_hp || '-'}</td>
-                <td className="p-3">
+              <TableRow key={e.id} className="hover:bg-gray-50 transition-colors">
+                <TableCell className="font-bold">{e.nama}</TableCell>
+                <TableCell>{e.posisi || '-'}</TableCell>
+                <TableCell>{e.no_hp || '-'}</TableCell>
+                <TableCell>
                   <span style={{
                     background: e.status_aktif ? '#dcfce7' : '#f3f4f6',
                     color: e.status_aktif ? '#15803d' : '#4b5563',
@@ -84,22 +85,22 @@ export function EmployeeManager({ employees }: { employees: any[] }) {
                   }}>
                     {e.status_aktif ? 'Aktif' : 'Non-Aktif'}
                   </span>
-                </td>
-                <td className="p-3 text-right space-x-2">
+                </TableCell>
+                <TableCell className="text-right space-x-2">
                   <button onClick={() => openModal(e)} className="text-blue-600 hover:text-blue-800">Edit</button>
                   <button onClick={() => handleDelete(e.id)} className="text-red-600 hover:text-red-800">Hapus</button>
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
             {employees.length === 0 && (
-              <tr>
-                <td colSpan={5} className="text-center text-gray-500 py-8">
+              <TableRow>
+                <TableCell colSpan={5} className="text-center text-gray-500 py-8">
                   Belum ada data karyawan.
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {isModalOpen && (
@@ -112,8 +113,19 @@ export function EmployeeManager({ employees }: { employees: any[] }) {
                 <input required type="text" className="w-full border rounded p-2" value={formData.nama || ''} onChange={e => setFormData({...formData, nama: e.target.value})} />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Posisi</label>
-                <input type="text" className="w-full border rounded p-2" value={formData.posisi || ''} onChange={e => setFormData({...formData, posisi: e.target.value})} />
+                <label className="block text-sm font-medium mb-1">Posisi / Role</label>
+                <select 
+                  className="w-full border rounded p-2" 
+                  value={formData.posisi || ''} 
+                  onChange={e => setFormData({...formData, posisi: e.target.value})}
+                  required
+                >
+                  <option value="" disabled>Pilih Role...</option>
+                  <option value="Owner">Owner</option>
+                  <option value="Admin">Admin</option>
+                  <option value="Marketing">Marketing</option>
+                  <option value="Staff Produksi">Staff Produksi</option>
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">No HP (Pastikan awalan 62)</label>

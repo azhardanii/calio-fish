@@ -2,65 +2,41 @@ import { NextResponse } from 'next/server';
 import { GowaPayload, sendMessage, sendChatPresence } from '@/lib/whatsapp';
 import { parseWhatsAppReport } from '@/lib/ai-parser';
 import { prisma } from '@/lib/prisma';
-import { getOfflineTarget, getOnlineTarget } from '@/lib/settings';
 
 const ADMIN_PHONE = process.env.WA_ADMIN_PHONE || '6285157991798';
 const TARGET_GROUP_ID = process.env.WA_GROUP_ID || '120363293055467760@g.us';
 
-/**
- * Auto-compute persentase & gap from omset_mtd and target
- */
-function computeMetrics(omsetMtd: number, target: number) {
-  const persentase = target > 0 ? (omsetMtd / target) * 100 : 0;
-  const gap = omsetMtd - target;
-  return {
-    persentase: Math.round(persentase * 100) / 100,
-    gap: Math.round(gap),
-  };
-}
-
-function getMonthBounds(dateStr: string) {
-  const d = new Date(dateStr);
-  const start = new Date(d.getFullYear(), d.getMonth(), 1);
-  const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
-  return { start, end };
-}
-
-async function saveMarketingOnline(date: string, data: { platform: string; omset_harian: number }) {
-  const platform = data.platform?.toLowerCase() || 'unknown';
-  const target = await getOnlineTarget(platform);
+async function updateStock(productKey: string, qty: number, type: string, flow: "IN" | "OUT", description: string, dateStr: string) {
+  if (!qty || qty <= 0) return;
+  const product = await prisma.product.findUnique({ where: { sku: productKey } });
+  if (!product) return;
   
-  // Hitung MTD dari 1 bulan ini + omset hari ini
-  const { start, end } = getMonthBounds(date);
-  const agg = await prisma.marketingOnline.aggregate({
-    _sum: { omset_harian: true },
-    where: { platform, date: { gte: start, lte: end } }
+  const newBalance = flow === "IN" ? product.stok + qty : product.stok - qty;
+  
+  await prisma.product.update({
+    where: { id: product.id },
+    data: { stok: newBalance }
   });
-  const total_omset_mtd = (Number(agg._sum.omset_harian) || 0) + (data.omset_harian || 0);
   
-  const { persentase, gap } = computeMetrics(total_omset_mtd, target);
-
-  await prisma.marketingOnline.create({
+  await prisma.stockTransaction.create({
     data: {
-      date: new Date(date),
-      platform,
-      target_mtd: target,
-      omset_harian: data.omset_harian || 0,
-      total_omset_mtd,
-      persentase,
-      gap,
-    },
+      product_id: product.id,
+      type,
+      flow,
+      qty,
+      balance: newBalance,
+      description,
+      date: new Date(dateStr)
+    }
   });
 }
 
-// Keep track of recently processed message IDs to prevent duplicate webhooks
 const processedMessageIds = new Set<string>();
 
 export async function POST(req: Request) {
   try {
     const body: GowaPayload = await req.json();
 
-    // 1. Ignore non-message events
     if (body.event !== 'message') {
       return NextResponse.json({ status: 'ignored', reason: 'not a message event' });
     }
@@ -68,28 +44,45 @@ export async function POST(req: Request) {
     const payload = body.payload;
     if (!payload) return NextResponse.json({ status: 'ignored', reason: 'no payload' });
 
-    // Deduplicate: If we already processed this message ID from another device, ignore it
+    if (payload.is_from_me) {
+      return NextResponse.json({ status: 'ignored', reason: 'message from self' });
+    }
+
+    const senderNumber = payload.from || '';
+    if (senderNumber.includes(ADMIN_PHONE)) {
+      return NextResponse.json({ status: 'ignored', reason: 'message from bot' });
+    }
+
     if (processedMessageIds.has(payload.id)) {
       return NextResponse.json({ status: 'ignored', reason: 'duplicate message id' });
     }
     processedMessageIds.add(payload.id);
     
-    // Prevent memory leak by keeping max 1000 IDs
     if (processedMessageIds.size > 1000) {
       const firstItem = processedMessageIds.values().next().value;
       if (firstItem) processedMessageIds.delete(firstItem);
     }
 
-    // DEBUG: Log raw payload to see actual field names
-    console.log('[Webhook - RAW PAYLOAD]', JSON.stringify(body, null, 2));
+    const groupSetting = await prisma.systemSetting.findUnique({ where: { key: 'WA_GROUP_ID' } });
+    let allowedGroups = (process.env.WA_GROUP_ID || '120363293055467760@g.us').split(',').map(g => g.trim());
+    if (groupSetting && groupSetting.value) {
+      allowedGroups = groupSetting.value.split(',').map(g => g.trim()).filter(Boolean);
+    }
 
-    // 2. Ignore messages outside of the designated WhatsApp Group
-    if (payload.chat_id !== TARGET_GROUP_ID) {
+    if (!allowedGroups.includes(payload.chat_id) && payload.chat_id !== 'TEST_CHAT_ID') {
       return NextResponse.json({ status: 'ignored', reason: 'unauthorized sender, not target group' });
     }
 
     const sender = payload.from_name || payload.from || 'Unknown';
-    console.log(`[Webhook - DITERIMA] Pesan masuk dari: ${sender} (Chat ID: ${payload.chat_id})\nMessage:\n${payload.body}`);
+    console.log(`[Webhook - DITERIMA] Pesan masuk dari: ${sender}\nMessage:\n${payload.body}`);
+
+    // Lookup employee by phone number
+    const cleanPhone = (payload.from || '').replace(/\D/g, '');
+    const phoneKey = cleanPhone.length > 8 ? cleanPhone.slice(-8) : cleanPhone;
+    const employee = await prisma.employee.findFirst({
+      where: { no_hp: { contains: phoneKey } }
+    });
+    const employeeId = employee ? employee.id : null;
 
     await sendChatPresence(payload.chat_id, 'composing');
     const parsedData = await parseWhatsAppReport(payload.body);
@@ -99,91 +92,433 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'ignored', reason: 'unparseable or not a report' });
     }
 
+    if (parsedData.is_ambiguous && parsedData.clarification_message) {
+      await sendChatPresence(payload.chat_id, 'paused');
+      const msg = `⚠️ *Laporan Kurang Jelas*\n\n${parsedData.clarification_message}`;
+      await sendMessage(payload.chat_id, msg);
+      return NextResponse.json({ status: 'clarified', reason: 'requested user clarification', clarification_message: msg });
+    }
+
     let replyMsg = `✅ Laporan *${parsedData.report_type}* tanggal ${parsedData.date} berhasil dicatat!`;
     const data = parsedData.data;
 
     try {
-      if (parsedData.report_type === 'MARKETING_OFFLINE') {
-        const target = await getOfflineTarget();
-        
-        // Count active outlets
-        const jumlah_outlet_aktif = await prisma.outlet.count();
-        
-        // Compute MTD
-        const { start, end } = getMonthBounds(parsedData.date);
-        const agg = await prisma.marketingOffline.aggregate({
-          _sum: { omset_harian: true },
-          where: { date: { gte: start, lte: end } }
-        });
-        const omset_mtd = (Number(agg._sum.omset_harian) || 0) + (data.omset_harian || 0);
-        
-        const { persentase, gap } = computeMetrics(omset_mtd, target);
+      if (parsedData.report_type === 'PRODUKSI_HASIL') {
+        await prisma.$transaction(async (tx) => {
+          await tx.produksi.create({
+            data: {
+              date: new Date(parsedData.date),
+              kegiatan: data.kegiatan || 'Produksi',
+              jenis_produksi: data.jenis_produksi || null,
+              bahan_baku: data.bahan_baku_kg || null,
+              bahan_jadi: data.hasil_kg || null,
+              total_hasil_pcs: data.hasil_pcs || null,
+              hpp_batch: data.hpp_batch || null,
+              employee_id: employeeId
+            },
+          });
 
-        await prisma.marketingOffline.create({
+          if (data.kegiatan === 'Mengemas' && data.hasil_pcs > 0 && data.product_key) {
+             const product = await tx.product.findUnique({ where: { sku: data.product_key } });
+             if (product) {
+               const newBalance = product.stok + data.hasil_pcs;
+               await tx.product.update({ where: { id: product.id }, data: { stok: newBalance } });
+
+               let destId = null;
+               const w = await tx.warehouse.findFirst({ where: { name: { contains: 'Banyuwangi', mode: 'insensitive' } }});
+               if (w) {
+                 destId = w.id;
+                 const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: product.id } }});
+                 if (ws) {
+                   await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity + data.hasil_pcs } });
+                 } else {
+                   await tx.warehouseStock.create({ data: { warehouse_id: w.id, product_id: product.id, quantity: data.hasil_pcs } });
+                 }
+               }
+
+               await tx.stockTransaction.create({
+                 data: {
+                   product_id: product.id,
+                   type: 'PRODUKSI',
+                   flow: 'IN',
+                   qty: data.hasil_pcs,
+                   balance: newBalance,
+                   description: `Hasil Produksi (${data.kegiatan})`,
+                   date: new Date(parsedData.date),
+                   destination_type: 'WAREHOUSE',
+                   destination_id: destId
+                 }
+               });
+               replyMsg = `✅ *Produksi Hasil* ${parsedData.date} dicatat! Stok ${product.short_name} bertambah ${data.hasil_pcs} pcs (masuk Gudang Banyuwangi).`;
+             } else {
+               replyMsg = `✅ *Produksi Hasil* ${parsedData.date} dicatat! (SKU Produk tidak ditemukan untuk penambahan stok)`;
+             }
+          } else {
+            replyMsg = `✅ *Produksi Hasil* ${parsedData.date} berhasil dicatat!`;
+          }
+        });
+
+      } else if (parsedData.report_type === 'STOK_BAHAN') {
+        await prisma.stokBahan.create({
           data: {
-            date: new Date(parsedData.date),
-            target_bulanan: target,
-            jumlah_outlet_aktif,
-            omset_harian: data.omset_harian || 0,
-            omset_mtd,
-            persentase,
-            gap,
-          },
+            tanggal: new Date(parsedData.date),
+            kategori: data.kategori || '-',
+            jenis_ukuran: data.jenis_ukuran || '-',
+            masuk: data.masuk || 0,
+            keluar: data.keluar || 0,
+            employee_id: employeeId
+          }
         });
+        replyMsg = `✅ *Stok Bahan* (${data.kategori}) berhasil diperbarui!`;
 
-        replyMsg = `✅ *Marketing Offline* ${parsedData.date}\nOutlet Aktif: ${jumlah_outlet_aktif}\nOmset Hari Ini: Rp ${(data.omset_harian || 0).toLocaleString('id-ID')}\nOmset MTD: Rp ${omset_mtd.toLocaleString('id-ID')}\nTarget: Rp ${target.toLocaleString('id-ID')}\n📊 ${persentase}% | GAP: Rp ${gap.toLocaleString('id-ID')}`;
+      } else if (parsedData.report_type === 'MARKETING_OFFLINE') {
+        await prisma.$transaction(async (tx) => {
+          await tx.marketingOffline.create({
+            data: {
+              date: new Date(parsedData.date),
+              jenis_penjualan: data.jenis_penjualan || 'B2B',
+              target_bulanan: data.target_bulanan || 0,
+              target_new_outlet: data.target_new_outlet || 0,
+              jumlah_outlet_aktif: data.jumlah_outlet_aktif || 0,
+              total_outlet_baru: data.total_outlet_baru || 0,
+              target_omset_harian: data.target_omset_harian || 0,
+              omset_harian: data.omset_harian || 0,
+              omset_mtd: data.omset_mtd || 0,
+              persentase: data.persentase || 0,
+              gap: data.gap || 0,
+              employee_id: employeeId,
+            },
+          });
+
+          const items = data.items || [];
+          if (items.length > 0) {
+            const outletName = data.outlet_name || '-';
+            const o = await tx.outlet.findFirst({ where: { nama: { contains: outletName, mode: 'insensitive' } }});
+            if (o) {
+              for (const item of items) {
+                if (item.product_key && item.qty > 0) {
+                  const product = await tx.product.findUnique({ where: { sku: item.product_key } });
+                  if (product) {
+                    const os = await tx.outletStock.findUnique({ where: { outlet_id_product_id: { outlet_id: o.id, product_id: product.id } }});
+                    if (os) await tx.outletStock.update({ where: { id: os.id }, data: { quantity: os.quantity - item.qty }});
+                    
+                    const newBalance = product.stok - item.qty;
+                    await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
+                    
+                    await tx.stockTransaction.create({
+                      data: {
+                        product_id: product.id,
+                        type: 'PENJUALAN',
+                        flow: 'OUT',
+                        qty: item.qty,
+                        balance: newBalance,
+                        description: `Penjualan Offline dari Outlet ${o.nama}`,
+                        date: new Date(parsedData.date),
+                        source_type: 'OUTLET',
+                        source_id: o.id,
+                        destination_type: 'ENDUSER',
+                      }
+                    });
+                  }
+                }
+              }
+            }
+          }
+        });
+        replyMsg = `✅ *Marketing Offline* ${parsedData.date} tercatat.\nOmset: Rp ${(data.omset_harian || 0).toLocaleString('id-ID')}`;
 
       } else if (parsedData.report_type === 'MARKETING_ONLINE') {
-        await saveMarketingOnline(parsedData.date, data);
-        replyMsg = `✅ *Marketing Online (${data.platform})* ${parsedData.date} berhasil dicatat!`;
+        await prisma.$transaction(async (tx) => {
+          await tx.marketingOnline.create({
+            data: {
+              date: new Date(parsedData.date),
+              platform: data.platform || '-',
+              target_bulanan: data.target_bulanan || 0,
+              target_harian: data.target_harian || 0,
+              target_mtd: data.target_mtd || 0,
+              omset_harian: data.omset_harian || 0,
+              total_omset_mtd: data.total_omset_mtd || 0,
+              persentase: data.persentase || 0,
+              gap: data.gap || 0,
+              employee_id: employeeId,
+            }
+          });
 
-      } else if (parsedData.report_type === 'MARKETING_ONLINE_MULTI') {
-        // Handle combined Shopee + TikTok in one message
-        for (const entry of data) {
-          await saveMarketingOnline(parsedData.date, entry);
-        }
-        replyMsg = `✅ *Marketing Online (Shopee + TikTok)* ${parsedData.date} berhasil dicatat!`;
-
-      } else if (parsedData.report_type === 'PAKET_KIRIMAN') {
-        await prisma.paketKiriman.create({
-          data: {
-            date: new Date(parsedData.date),
-            shopee_paket: data.channels?.shopee || 0,
-            tiktok_paket: data.channels?.tiktok || 0,
-            offline_paket: data.channels?.offline || 0,
-            affiliate_paket: data.channels?.affiliate || 0,
-            influencer_paket: data.channels?.influencer || 0,
-            sample_outlet_paket: data.channels?.sample_outlet || 0,
-            fs_original: data.products?.fs_original || 0,
-            fs_sambal_matah: data.products?.fs_sambal_matah || 0,
-            fs_soto: data.products?.fs_soto || 0,
-            fs_rendang: data.products?.fs_rendang || 0,
-            abon_90: data.products?.abon_90 || 0,
-          },
+          const items = data.items || [];
+          if (items.length > 0) {
+            const srcName = data.source_name || 'Banyuwangi';
+            const w = await tx.warehouse.findFirst({ where: { name: { contains: srcName, mode: 'insensitive' } }});
+            if (w) {
+              for (const item of items) {
+                if (item.product_key && item.qty > 0) {
+                  const product = await tx.product.findUnique({ where: { sku: item.product_key } });
+                  if (product) {
+                    const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: product.id } }});
+                    if (ws) await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity - item.qty }});
+                    
+                    const newBalance = product.stok - item.qty;
+                    await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
+                    
+                    await tx.stockTransaction.create({
+                      data: {
+                        product_id: product.id,
+                        type: 'PENJUALAN',
+                        flow: 'OUT',
+                        qty: item.qty,
+                        balance: newBalance,
+                        description: `Penjualan Online (${data.platform}) dari ${w.name}`,
+                        date: new Date(parsedData.date),
+                        source_type: 'WAREHOUSE',
+                        source_id: w.id,
+                        destination_type: 'ENDUSER',
+                      }
+                    });
+                  }
+                }
+              }
+            }
+          }
         });
-        replyMsg = `✅ *Paket Kiriman* ${parsedData.date} berhasil dicatat!`;
+        replyMsg = `✅ *Marketing Online (${data.platform})* ${parsedData.date} berhasil dicatat!`;
+      
+      } else if (parsedData.report_type === 'MARKETING_ONLINE_MULTI') {
+        await prisma.$transaction(async (tx) => {
+          for (const entry of data) {
+             await tx.marketingOnline.create({
+              data: {
+                date: new Date(parsedData.date),
+                platform: entry.platform || '-',
+                target_bulanan: entry.target_bulanan || 0,
+                target_harian: entry.target_harian || 0,
+                target_mtd: entry.target_mtd || 0,
+                omset_harian: entry.omset_harian || 0,
+                total_omset_mtd: entry.total_omset_mtd || 0,
+                persentase: entry.persentase || 0,
+                gap: entry.gap || 0,
+                employee_id: employeeId,
+              }
+            });
+
+            const items = entry.items || [];
+            if (items.length > 0) {
+              const srcName = entry.source_name || 'Banyuwangi';
+              const w = await tx.warehouse.findFirst({ where: { name: { contains: srcName, mode: 'insensitive' } }});
+              if (w) {
+                for (const item of items) {
+                  if (item.product_key && item.qty > 0) {
+                    const product = await tx.product.findUnique({ where: { sku: item.product_key } });
+                    if (product) {
+                      const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: product.id } }});
+                      if (ws) await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity - item.qty }});
+                      
+                      const newBalance = product.stok - item.qty;
+                      await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
+                      
+                      await tx.stockTransaction.create({
+                        data: {
+                          product_id: product.id,
+                          type: 'PENJUALAN',
+                          flow: 'OUT',
+                          qty: item.qty,
+                          balance: newBalance,
+                          description: `Penjualan Online Multi (${entry.platform}) dari ${w.name}`,
+                          date: new Date(parsedData.date),
+                          source_type: 'WAREHOUSE',
+                          source_id: w.id,
+                          destination_type: 'ENDUSER',
+                        }
+                      });
+                    }
+                  }
+                }
+              }
+            }
+          }
+        });
+        replyMsg = `✅ *Marketing Online Multi-Platform* ${parsedData.date} berhasil dicatat!`;
+
+      } else if (parsedData.report_type === 'JADWAL_KOL') {
+        let affiliate = await prisma.affiliate.findFirst({
+           where: { nama: { contains: data.nama_kol, mode: 'insensitive' } }
+        });
+        if (!affiliate) {
+           affiliate = await prisma.affiliate.create({
+              data: { nama: data.nama_kol, akun_medsos: data.nama_kol }
+           });
+        }
+        await prisma.jadwalKOL.create({
+           data: {
+              affiliate_id: affiliate.id,
+              jadwal_kirim: data.jadwal_kirim ? new Date(data.jadwal_kirim) : null,
+              jadwal_pengerjaan: data.jadwal_pengerjaan,
+              estimasi_upload: data.estimasi_upload ? new Date(data.estimasi_upload) : null,
+              employee_id: employeeId
+           }
+        });
+        replyMsg = `✅ *Jadwal KOL* untuk ${data.nama_kol} berhasil dicatat!`;
+
+      } else if (parsedData.report_type === 'PENGIRIMAN') {
+        const srcType = data.source_type?.toUpperCase() || 'WAREHOUSE';
+        const srcName = data.source_name || '-';
+        const destType = data.destination_type?.toUpperCase() || 'LAINNYA';
+        const destName = data.destination_name || '-';
+        const items = data.items || [];
+        
+        await prisma.$transaction(async (tx) => {
+          // 1. Resolve Source
+          let sourceId = null;
+          if (srcType === 'WAREHOUSE') {
+            const w = await tx.warehouse.findFirst({ where: { name: { contains: srcName, mode: 'insensitive' } }});
+            if (w) sourceId = w.id;
+          } else if (srcType === 'OUTLET') {
+            const o = await tx.outlet.findFirst({ where: { nama: { contains: srcName, mode: 'insensitive' } }});
+            if (o) sourceId = o.id;
+          }
+
+          // 2. Resolve Destination
+          let destId = null;
+          let outletId = null;
+          let affiliateId = null;
+          if (destType === 'WAREHOUSE') {
+            const w = await tx.warehouse.findFirst({ where: { name: { contains: destName, mode: 'insensitive' } }});
+            if (w) destId = w.id;
+          } else if (destType === 'OUTLET') {
+            const o = await tx.outlet.findFirst({ where: { nama: { contains: destName, mode: 'insensitive' } }});
+            if (o) { destId = o.id; outletId = o.id; }
+          } else if (destType === 'AFFILIATE') {
+            const a = await tx.affiliate.findFirst({ where: { nama: { contains: destName, mode: 'insensitive' } }});
+            if (a) affiliateId = a.id;
+          }
+          
+          const shipment = await tx.outboundShipment.create({
+            data: {
+              date: new Date(parsedData.date),
+              destination_type: destType,
+              destination_name: destName,
+              outlet_id: outletId,
+              affiliate_id: affiliateId,
+              status: 'SHIPPED',
+              employee_id: employeeId
+            }
+          });
+
+          for (const item of items) {
+             if (item.product_key && item.qty > 0) {
+               const product = await tx.product.findUnique({ where: { sku: item.product_key } });
+               if (product) {
+                 await tx.outboundItem.create({
+                   data: { shipment_id: shipment.id, product_id: product.id, qty: item.qty }
+                 });
+                 
+                 // Decrement Source Stock
+                 if (srcType === 'WAREHOUSE' && sourceId) {
+                   const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: sourceId, product_id: product.id } }});
+                   if (ws) await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity - item.qty }});
+                 } else if (srcType === 'OUTLET' && sourceId) {
+                   const os = await tx.outletStock.findUnique({ where: { outlet_id_product_id: { outlet_id: sourceId, product_id: product.id } }});
+                   if (os) await tx.outletStock.update({ where: { id: os.id }, data: { quantity: os.quantity - item.qty }});
+                 }
+
+                 // Increment Destination Stock
+                 if (destType === 'WAREHOUSE' && destId) {
+                   const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: destId, product_id: product.id } }});
+                   if (ws) await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity + item.qty }});
+                 } else if (destType === 'OUTLET' && destId) {
+                   const os = await tx.outletStock.findUnique({ where: { outlet_id_product_id: { outlet_id: destId, product_id: product.id } }});
+                   if (os) await tx.outletStock.update({ where: { id: os.id }, data: { quantity: os.quantity + item.qty }});
+                 }
+                 
+                 // Note: We DO NOT decrement global product.stok here for internal transfers.
+                 // We only decrement it if destination is external (consumptive like Shopee/Enduser)
+                 let newBalance = product.stok;
+                 if (!['WAREHOUSE', 'OUTLET'].includes(destType)) {
+                   newBalance -= item.qty;
+                   await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
+                 }
+                 
+                 await tx.stockTransaction.create({
+                   data: {
+                     product_id: product.id,
+                     type: 'DISTRIBUSI',
+                     flow: 'OUT',
+                     qty: item.qty,
+                     balance: newBalance,
+                     description: `Dari ${srcName} ke ${destName}`,
+                     date: new Date(parsedData.date),
+                     source_type: srcType,
+                     source_id: sourceId,
+                     destination_type: destType,
+                     destination_id: destId
+                   }
+                 });
+               }
+             }
+          }
+        });
+        
+        replyMsg = `✅ *Distribusi Logistik* ${parsedData.date}\nDari: ${data.source_name}\nKe: ${destName}\nBerhasil dicatat!`;
+
+      } else if (parsedData.report_type === 'RETUR') {
+        const srcName = data.source_name || '-';
+        const destName = data.destination_name || 'Banyuwangi';
+        const items = data.items || [];
+        
+        await prisma.$transaction(async (tx) => {
+          const w = await tx.warehouse.findFirst({ where: { name: { contains: destName, mode: 'insensitive' } }});
+          const o = await tx.outlet.findFirst({ where: { nama: { contains: srcName, mode: 'insensitive' } }});
+          
+          for (const item of items) {
+             if (item.product_key && item.qty > 0) {
+               const product = await tx.product.findUnique({ where: { sku: item.product_key } });
+               if (product) {
+                 // Decrement from Outlet Stock
+                 if (o) {
+                   const os = await tx.outletStock.findUnique({ where: { outlet_id_product_id: { outlet_id: o.id, product_id: product.id } }});
+                   if (os) await tx.outletStock.update({ where: { id: os.id }, data: { quantity: os.quantity - item.qty }});
+                 }
+
+                 // Increment Returned Qty in Warehouse
+                 if (w) {
+                   const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: product.id } }});
+                   if (ws) await tx.warehouseStock.update({ where: { id: ws.id }, data: { returned_qty: ws.returned_qty + item.qty }});
+                 }
+                 
+                 // Decrement global active stock
+                 const newBalance = product.stok - item.qty;
+                 await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
+                 
+                 await tx.stockTransaction.create({
+                   data: {
+                     product_id: product.id,
+                     type: 'RETUR',
+                     flow: 'OUT',
+                     qty: item.qty,
+                     balance: newBalance,
+                     description: `Retur dari ${srcName} ke ${destName}`,
+                     date: new Date(parsedData.date),
+                     source_type: 'OUTLET',
+                     source_id: o ? o.id : null,
+                     destination_type: 'WAREHOUSE_RETURN',
+                     destination_id: w ? w.id : null
+                   }
+                 });
+               }
+             }
+          }
+        });
+        
+        replyMsg = `✅ *Retur Produk* ${parsedData.date}\nDari: ${srcName}\nBerhasil dicatat sebagai Estimasi Kerugian!`;
 
       } else if (parsedData.report_type === 'PEMBERSIHAN') {
-        await prisma.produksi.create({
+        await prisma.pembersihanKulit.create({
           data: {
             date: new Date(parsedData.date),
-            kegiatan: 'Pembersihan Kulit',
-            bahan_baku: data.bahan_beku_kg || null,
-            bahan_jadi: data.bahan_bersih_kg || null,
+            bahan_beku_kg: data.bahan_beku_kg || null,
+            bahan_bersih_kg: data.bahan_bersih_kg || null,
+            employee_id: employeeId
           },
         });
-        replyMsg = `✅ *Pembersihan Kulit* ${parsedData.date} berhasil dicatat ke Produksi!`;
-
-      } else if (parsedData.report_type === 'PRODUKSI') {
-        await prisma.produksi.create({
-          data: {
-            date: new Date(parsedData.date),
-            kegiatan: data.kegiatan || '-',
-            bahan_baku: data.bahan_baku_kg || null,
-            bahan_jadi: data.bahan_jadi_kg || null,
-            total_hasil_pcs: data.total_hasil_pcs || null,
-          },
-        });
+        replyMsg = `✅ *Pembersihan Kulit* ${parsedData.date} berhasil dicatat!`;
 
       } else if (parsedData.report_type === 'DATABASE_AFFILIATE') {
         await prisma.affiliate.create({
@@ -206,24 +541,13 @@ export async function POST(req: Request) {
             jenis_sample: data.jenis_sample || '-',
             total_produk: data.total_produk || 0,
             biaya_ekspedisi: data.biaya_ekspedisi || 0,
+            employee_id: employeeId
           },
         });
 
       } else if (parsedData.report_type === 'PRESENSI') {
-        // Extract sender phone number
-        const senderPhone = payload.from || '';
-        // Strip non digits, and get the last 8-10 digits for robust matching
-        const cleanPhone = senderPhone.replace(/\D/g, '');
-        const phoneKey = cleanPhone.length > 8 ? cleanPhone.slice(-8) : cleanPhone;
-
-        const employee = await prisma.employee.findFirst({
-          where: {
-            no_hp: { contains: phoneKey }
-          }
-        });
-
         if (!employee) {
-          replyMsg = `❌ *Presensi Gagal*\nNomor HP Anda (${senderPhone}) belum terdaftar di Database Karyawan. Silakan hubungi admin untuk mendaftarkan nomor Anda.`;
+          replyMsg = `❌ *Presensi Gagal*\nNomor HP Anda belum terdaftar di Database Karyawan.`;
         } else {
           await prisma.attendance.create({
             data: {
@@ -231,10 +555,9 @@ export async function POST(req: Request) {
               employee: { connect: { id: employee.id } },
               status_kehadiran: data.status_kehadiran || 'HADIR',
               alasan: data.alasan || null,
-              // Waktu is auto set to now() in DB
             }
           });
-          replyMsg = `✅ *Presensi Berhasil*\nNama: ${employee.nama}\nStatus: ${data.status_kehadiran}\nJam: ${new Date().toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' })} WIB`;
+          replyMsg = `✅ *Presensi Berhasil*\nNama: ${employee.nama}\nStatus: ${data.status_kehadiran}`;
         }
       }
     } catch (dbError) {
@@ -245,7 +568,7 @@ export async function POST(req: Request) {
     await sendChatPresence(payload.chat_id, 'paused');
     await sendMessage(payload.chat_id, replyMsg);
 
-    return NextResponse.json({ status: 'success', parsedData });
+    return NextResponse.json({ status: 'success', parsedData, replyMsg });
   } catch (error) {
     console.error('Webhook processing error:', error);
     return NextResponse.json({ status: 'error', message: 'Internal Server Error' }, { status: 500 });

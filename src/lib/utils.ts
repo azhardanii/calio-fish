@@ -6,9 +6,8 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatCurrency(val: number) {
-  return new Intl.NumberFormat('id-ID', { 
-    style: 'currency', 
-    currency: 'IDR', 
-    maximumFractionDigits: 0 
-  }).format(val);
+  const isNegative = val < 0;
+  const absVal = Math.abs(val);
+  const formatted = Math.round(absVal).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return (isNegative ? '-Rp ' : 'Rp ') + formatted;
 }

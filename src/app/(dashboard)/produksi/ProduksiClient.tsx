@@ -11,6 +11,7 @@ interface Produksi {
   bahan_baku: number | null;
   bahan_jadi: number | null;
   total_hasil_pcs: number | null;
+  employee_name?: string;
 }
 
 export function ProduksiClient({ initialData }: { initialData: Produksi[] }) {
@@ -51,7 +52,8 @@ export function ProduksiClient({ initialData }: { initialData: Produksi[] }) {
     return data;
   }, [initialData, filterKegiatan, filterDateRange]);
 
-  const uniqueKegiatan = Array.from(new Set(initialData.map(p => p.kegiatan)));
+  const defaultKegiatan = ['Pembersihan', 'Menggoreng', 'Menjemur', 'Menimbang', 'Mengemas'];
+  const uniqueKegiatan = Array.from(new Set([...defaultKegiatan, ...initialData.map(p => p.kegiatan)]));
 
   return (
     <div className="space-y-6">
@@ -93,6 +95,7 @@ export function ProduksiClient({ initialData }: { initialData: Produksi[] }) {
                 <TableHead>Bahan Baku (kg)</TableHead>
                 <TableHead>Bahan Jadi (kg)</TableHead>
                 <TableHead>Total Hasil (pcs)</TableHead>
+                <TableHead>Diinput Oleh</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -103,11 +106,12 @@ export function ProduksiClient({ initialData }: { initialData: Produksi[] }) {
                   <TableCell>{p.bahan_baku ? `${Number(p.bahan_baku)} kg` : '-'}</TableCell>
                   <TableCell>{p.bahan_jadi ? `${Number(p.bahan_jadi)} kg` : '-'}</TableCell>
                   <TableCell className="font-bold">{p.total_hasil_pcs ? `${p.total_hasil_pcs} pcs` : '-'}</TableCell>
+                  <TableCell className="text-gray-600">{p.employee_name || 'Sistem'}</TableCell>
                 </TableRow>
               ))}
               {filteredData.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-gray-500 py-8">Belum ada data produksi.</TableCell>
+                  <TableCell colSpan={6} className="text-center text-gray-500 py-8">Belum ada data produksi.</TableCell>
                 </TableRow>
               )}
             </TableBody>

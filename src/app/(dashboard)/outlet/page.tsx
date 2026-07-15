@@ -1,36 +1,32 @@
-import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { prisma } from '@/lib/prisma';
+'use client';
 
+import React from 'react';
+import useSWR from 'swr';
+import { Card, CardContent } from '@/components/ui/card';
 import { OutletManager } from './OutletManager';
 
-export default async function OutletPage() {
-  const outlets = await prisma.outlet.findMany({
-    orderBy: { created_at: 'desc' },
-  });
+export default function OutletPage() {
+  const { data: outlets, isLoading } = useSWR('/api/data/outlets');
 
-  // Convert decimal to number for Client Component
-  const serializedOutlets = outlets.map(o => ({
-    ...o,
-    tagihan: Number(o.tagihan),
-    payment: Number(o.payment),
-    sisa_tagihan: Number(o.sisa_tagihan),
-  }));
+  if (isLoading && !outlets) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 36, height: 36, border: '4px solid #e5e7eb', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+          <div style={{ color: '#6b7280', fontSize: 14 }}>Memuat data outlet...</div>
+        </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight text-gray-900">Database Outlet</h1>
-      </div>
-
-      <div className="space-y-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-        <Card className="hover:shadow-lg transition-shadow duration-300">
-          <CardContent className="pt-6">
-            <OutletManager outlets={serializedOutlets} />
-          </CardContent>
-        </Card>
-      </div>
+    <div className="space-y-6">
+      <Card>
+        <CardContent className="pt-6">
+          <OutletManager outlets={outlets || []} />
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -82,22 +82,22 @@ async function main() {
             gap: data.gap || 0
           }
         });
-      } else if (parsedData.report_type === 'PAKET_KIRIMAN') {
-        await prisma.paketKiriman.create({
-          data: {
-            date: new Date(parsedData.date),
-            shopee_paket: data.channels?.shopee || 0,
-            offline_paket: data.channels?.offline || 0,
-            affiliate_paket: data.channels?.affiliate || 0,
-            influencer_paket: data.channels?.influencer || 0,
-            sample_outlet_paket: data.channels?.sample_outlet || 0,
-            fs_original: data.products?.fs_original || 0,
-            fs_sambal_matah: data.products?.fs_sambal_matah || 0,
-            fs_soto: data.products?.fs_soto || 0,
-            fs_rendang: data.products?.fs_rendang || 0,
-            abon_90: data.products?.abon_90 || 0,
-          }
-        });
+      // } else if (parsedData.report_type === 'PAKET_KIRIMAN') {
+      //   await prisma.paketKiriman.create({
+      //     data: {
+      //       date: new Date(parsedData.date),
+      //       shopee_paket: data.channels?.shopee || 0,
+      //       offline_paket: data.channels?.offline || 0,
+      //       affiliate_paket: data.channels?.affiliate || 0,
+      //       influencer_paket: data.channels?.influencer || 0,
+      //       sample_outlet_paket: data.channels?.sample_outlet || 0,
+      //       fs_original: data.products?.fs_original || 0,
+      //       fs_sambal_matah: data.products?.fs_sambal_matah || 0,
+      //       fs_soto: data.products?.fs_soto || 0,
+      //       fs_rendang: data.products?.fs_rendang || 0,
+      //       abon_90: data.products?.abon_90 || 0,
+      //     }
+      //   });
       } else if (parsedData.report_type === 'PEMBERSIHAN') {
         await prisma.pembersihanKulit.create({
           data: {

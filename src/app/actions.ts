@@ -23,18 +23,43 @@ export async function createOutlet(data: any) {
   if (data.tagihan !== undefined) data.tagihan = Number(data.tagihan);
   if (data.payment !== undefined) data.payment = Number(data.payment);
   if (data.sisa_tagihan !== undefined) data.sisa_tagihan = Number(data.sisa_tagihan);
-  if (data.order_baru !== undefined) data.order_baru = Number(data.order_baru);
-  if (data.sisa_stok !== undefined) data.sisa_stok = Number(data.sisa_stok);
+  if (data.tagihan !== undefined) data.tagihan = Number(data.tagihan);
+  if (data.payment !== undefined) data.payment = Number(data.payment);
+  if (data.sisa_tagihan !== undefined) data.sisa_tagihan = Number(data.sisa_tagihan);
 
-  await prisma.outlet.create({ data });
+  const res = await prisma.outlet.create({ 
+    data: {
+      nama: data.nama,
+      tlp: data.tlp,
+      alamat: data.alamat,
+      status: data.status,
+      pic: data.pic,
+      order_baru: data.order_baru,
+      tagihan: data.tagihan,
+      payment: data.payment,
+      sisa_tagihan: data.sisa_tagihan,
+    } 
+  });
+
+  const activeProducts = await prisma.product.findMany({ where: { is_active: true } });
+  if (activeProducts.length > 0) {
+    await prisma.outletStock.createMany({
+      data: activeProducts.map(p => ({
+        outlet_id: res.id,
+        product_id: p.id,
+        quantity: 0
+      }))
+    });
+  }
+
   revalidatePath('/outlet');
+  return res;
 }
 export async function updateOutlet(id: string, data: any) {
   if (data.tagihan !== undefined) data.tagihan = Number(data.tagihan);
   if (data.payment !== undefined) data.payment = Number(data.payment);
   if (data.sisa_tagihan !== undefined) data.sisa_tagihan = Number(data.sisa_tagihan);
   if (data.order_baru !== undefined) data.order_baru = Number(data.order_baru);
-  if (data.sisa_stok !== undefined) data.sisa_stok = Number(data.sisa_stok);
 
   await prisma.outlet.update({ where: { id }, data });
   revalidatePath('/outlet');
@@ -58,4 +83,61 @@ export async function updateAffiliator(id: string, data: any) {
 export async function deleteAffiliator(id: string) {
   await prisma.affiliate.delete({ where: { id } });
   revalidatePath('/affiliator');
+}
+
+// Product
+export async function createProduct(data: any) {
+  if (data.base_price !== undefined) data.base_price = Number(data.base_price);
+  if (data.stok !== undefined) data.stok = Number(data.stok);
+  await prisma.product.create({ data });
+  revalidatePath('/produk');
+}
+export async function updateProduct(id: string, data: any) {
+  if (data.base_price !== undefined) data.base_price = Number(data.base_price);
+  
+  // Pisahkan stok dari data utama agar tidak ter-update sembarangan tanpa lewat ledger
+  const { stok, ...updateData } = data;
+  
+  await prisma.product.update({ where: { id }, data: updateData });
+  revalidatePath('/produk');
+}
+export async function deleteProduct(id: string) {
+  await prisma.product.delete({ where: { id } });
+  revalidatePath('/produk');
+}
+
+export async function getProductHistory(product_id: string) {
+  return await prisma.stockTransaction.findMany({
+    where: { product_id },
+    orderBy: { created_at: 'desc' }
+  });
+}
+
+export async function adjustStockOpname(id: string, newStok: number, note: string) {
+  const product = await prisma.product.findUnique({ where: { id } });
+  if (!product) return;
+  
+  const diff = newStok - product.stok;
+  if (diff === 0) return; // No change
+  
+  // Update Product Stock
+  await prisma.product.update({
+    where: { id },
+    data: { stok: newStok }
+  });
+  
+  // Create Ledger Entry
+  await prisma.stockTransaction.create({
+    data: {
+      product_id: id,
+      type: 'OPNAME',
+      flow: diff > 0 ? 'IN' : 'OUT',
+      qty: Math.abs(diff),
+      balance: newStok,
+      description: note || 'Penyesuaian Manual (Stock Opname)',
+      date: new Date()
+    }
+  });
+  
+  revalidatePath('/produk');
 }

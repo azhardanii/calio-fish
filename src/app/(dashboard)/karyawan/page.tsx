@@ -1,19 +1,29 @@
+'use client';
+
 import React from 'react';
+import useSWR from 'swr';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs } from '@/components/ui/tabs';
-import { prisma } from '@/lib/prisma';
 import { EmployeeManager } from './EmployeeManager';
 
-export default async function KaryawanPage() {
-  const [employees, attendances] = await Promise.all([
-    prisma.employee.findMany({ orderBy: { nama: 'asc' } }),
-    prisma.attendance.findMany({ 
-      orderBy: { waktu: 'desc' },
-      include: { employee: true },
-      take: 50 // Limit to recent 50
-    })
-  ]);
+export default function KaryawanPage() {
+  const { data, isLoading } = useSWR('/api/data/employees');
+
+  if (isLoading && !data) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 36, height: 36, border: '4px solid #e5e7eb', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+          <div style={{ color: '#6b7280', fontSize: 14 }}>Memuat data karyawan...</div>
+        </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  const employees = data?.employees || [];
+  const attendances = data?.attendances || [];
 
   const tabs = [
     {
@@ -21,7 +31,7 @@ export default async function KaryawanPage() {
       label: 'Presensi',
       content: (
         <section className="space-y-6">
-          <Card className="hover:shadow-lg transition-shadow duration-300">
+          <Card>
             <CardHeader>
               <CardTitle>Riwayat Presensi Terbaru</CardTitle>
             </CardHeader>
@@ -36,7 +46,7 @@ export default async function KaryawanPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {attendances.map((a) => (
+                  {attendances.map((a: any) => (
                     <TableRow key={a.id} className="hover:bg-gray-50 transition-colors">
                       <TableCell>
                         <div className="font-medium">{new Date(a.waktu).toLocaleDateString('id-ID')}</div>
@@ -45,9 +55,9 @@ export default async function KaryawanPage() {
                       <TableCell className="font-bold">{a.employee.nama}</TableCell>
                       <TableCell>
                         <span style={{
-                          background: a.status_kehadiran.toUpperCase() === 'HADIR' ? '#dcfce7' : 
+                          background: a.status_kehadiran.toUpperCase() === 'HADIR' ? '#dcfce7' :
                                       a.status_kehadiran.toUpperCase() === 'IZIN' ? '#fef9c3' : '#fef2f2',
-                          color: a.status_kehadiran.toUpperCase() === 'HADIR' ? '#15803d' : 
+                          color: a.status_kehadiran.toUpperCase() === 'HADIR' ? '#15803d' :
                                  a.status_kehadiran.toUpperCase() === 'IZIN' ? '#a16207' : '#b91c1c',
                           padding: '2px 8px', borderRadius: 12, fontWeight: 600, fontSize: 12
                         }}>
@@ -74,7 +84,7 @@ export default async function KaryawanPage() {
       label: 'Database Karyawan',
       content: (
         <section className="space-y-6">
-          <Card className="hover:shadow-lg transition-shadow duration-300">
+          <Card>
             <CardContent className="pt-6">
               <EmployeeManager employees={employees} />
             </CardContent>
@@ -85,14 +95,8 @@ export default async function KaryawanPage() {
   ];
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight text-gray-900">Karyawan</h1>
-      </div>
-
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-        <Tabs tabs={tabs} />
-      </div>
+    <div className="space-y-6">
+      <Tabs tabs={tabs} />
     </div>
   );
 }

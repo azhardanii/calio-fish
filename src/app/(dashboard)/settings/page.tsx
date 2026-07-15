@@ -64,7 +64,7 @@ export default function SettingsPage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight text-gray-900">⚙️ Pengaturan Target</h1>
+      <h1 className="text-3xl font-bold tracking-tight text-gray-900">⚙️ Pengaturan Sistem</h1>
       <p className="text-gray-500 text-sm">
         Ubah target bulanan di sini. Perubahan <strong>tidak</strong> akan mengubah data historis yang sudah tercatat — hanya laporan <strong>baru</strong> yang akan menggunakan target terbaru.
       </p>
@@ -159,6 +159,168 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Pengaturan Integrasi WhatsApp</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div style={{ padding: '16px 20px', background: '#f9fafb', borderRadius: 12, border: '1px solid #e5e7eb' }}>
+            <div style={{ fontWeight: 600, color: '#111827', marginBottom: 12 }}>Grup WhatsApp yang Dipantau</div>
+            <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>Pilih satu atau lebih grup WhatsApp untuk diproses laporannya oleh sistem (pastikan bot sudah diundang ke dalam grup tersebut).</p>
+            <WaGroupSelector />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function WaGroupSelector() {
+  const [groups, setGroups] = useState<any[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [groupsRes, settingsRes] = await Promise.all([
+          fetch(`/api/whatsapp/groups?t=${Date.now()}`).then(r => r.json()),
+          fetch('/api/system-settings').then(r => r.json())
+        ]);
+
+        if (groupsRes?.results?.data) {
+          setGroups(groupsRes.results.data);
+        } else if (groupsRes?.data) {
+          setGroups(groupsRes.data);
+        } else if (Array.isArray(groupsRes)) {
+          setGroups(groupsRes);
+        }
+
+        if (settingsRes?.WA_GROUP_ID) {
+          setSelectedIds(settingsRes.WA_GROUP_ID.split(',').map((id: string) => id.trim()));
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  const handleToggle = (id: string) => {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await fetch('/api/system-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'WA_GROUP_ID', value: selectedIds.join(',') }),
+      });
+      setToast('✅ Grup WhatsApp berhasil disimpan!');
+      setTimeout(() => setToast(''), 3000);
+    } catch (err) {
+      setToast('❌ Gagal menyimpan grup');
+      setTimeout(() => setToast(''), 3000);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 40, gap: 16, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', marginBottom: 16 }}>
+      <div style={{ width: 36, height: 36, border: '3px solid #e5e7eb', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <div style={{ fontSize: 14, color: '#6b7280', fontWeight: 500 }}>Memuat daftar grup dari WhatsApp...</div>
+    </div>
+  );
+
+  return (
+    <div>
+      {toast && (
+        <div style={{
+          position: 'fixed', top: 20, right: 20, zIndex: 9999,
+          background: toast.startsWith('✅') ? '#22c55e' : '#ef4444',
+          color: '#fff', padding: '12px 20px', borderRadius: 8, fontWeight: 600,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
+        }}>
+          {toast}
+        </div>
+      )}
+      <div style={{ marginBottom: 16 }}>
+        <input
+          type="text"
+          placeholder="Cari nama grup..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, outline: 'none' }}
+          onFocus={e => e.currentTarget.style.borderColor = '#3b82f6'}
+          onBlur={e => e.currentTarget.style.borderColor = '#e5e7eb'}
+        />
+      </div>
+      <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', marginBottom: 16 }}>
+        {groups.length === 0 ? (
+          <div style={{ padding: 16, fontSize: 14, color: '#6b7280', textAlign: 'center' }}>Tidak ada grup ditemukan atau GOWA belum terkoneksi.</div>
+        ) : (
+          groups
+            .filter(g => {
+              const jid = g.jid || g.id || g.JID;
+              const name = g.Name || g.name || g.subject || g.DisplayName || jid;
+              return name.toLowerCase().includes(searchQuery.toLowerCase());
+            })
+            .map(g => {
+              const jid = g.jid || g.id || g.JID;
+              const name = g.Name || g.name || g.subject || g.DisplayName || jid;
+            
+            // Create initials avatar
+            const initials = name.substring(0, 2).toUpperCase();
+            const colors = ['#ef4444', '#f97316', '#f59e0b', '#10b981', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef', '#f43f5e'];
+            const colorIndex = jid.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0) % colors.length;
+            const bgColor = colors[colorIndex];
+
+            return (
+              <label key={jid} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                <input
+                  type="checkbox"
+                  checked={selectedIds.includes(jid)}
+                  onChange={() => handleToggle(jid)}
+                  style={{ width: 20, height: 20, accentColor: '#3b82f6', cursor: 'pointer', flexShrink: 0 }}
+                />
+                
+                <div style={{ width: 44, height: 44, borderRadius: '50%', background: bgColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 600, flexShrink: 0, boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+                  {initials}
+                </div>
+                
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, color: '#1f2937', fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
+                  <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 2 }}>{jid}</div>
+                </div>
+              </label>
+            );
+          })
+        )}
+      </div>
+      <button
+        onClick={handleSave}
+        disabled={saving || loading}
+        style={{
+          padding: '10px 24px', borderRadius: 8, border: 'none',
+          background: '#3b82f6', color: '#fff', fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer',
+          width: '100%', fontSize: 15, transition: 'background 0.2s'
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = '#2563eb'}
+        onMouseLeave={e => e.currentTarget.style.background = '#3b82f6'}
+      >
+        {saving ? 'Menyimpan...' : 'Simpan Pengaturan Grup'}
+      </button>
     </div>
   );
 }
