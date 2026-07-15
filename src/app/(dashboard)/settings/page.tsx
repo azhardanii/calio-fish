@@ -25,6 +25,7 @@ export default function SettingsPage() {
   const [editValue, setEditValue] = useState('');
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
 
   useEffect(() => {
     fetch('/api/settings')
@@ -33,6 +34,7 @@ export default function SettingsPage() {
         setSettings((prev) =>
           prev.map((s) => ({ ...s, value: map[s.key] ?? s.value }))
         );
+        setIsLoadingSettings(false);
       });
   }, []);
 
@@ -136,12 +138,16 @@ export default function SettingsPage() {
                     </>
                   ) : (
                     <>
-                      <span style={{
-                        fontWeight: 700, fontSize: 18, color: '#059669',
-                        fontFamily: 'monospace',
-                      }}>
-                        {formatRupiah(s.value)}
-                      </span>
+                      {isLoadingSettings ? (
+                        <div style={{ width: 22, height: 22, border: '3px solid #e5e7eb', borderTopColor: '#059669', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                      ) : (
+                        <span style={{
+                          fontWeight: 700, fontSize: 18, color: '#059669',
+                          fontFamily: 'monospace',
+                        }}>
+                          {formatRupiah(s.value)}
+                        </span>
+                      )}
                       <button
                         onClick={() => { setEditing(s.key); setEditValue(String(s.value)); }}
                         style={{
@@ -275,6 +281,15 @@ function WaGroupSelector() {
               const jid = g.jid || g.id || g.JID;
               const name = g.Name || g.name || g.subject || g.DisplayName || jid;
               return name.toLowerCase().includes(searchQuery.toLowerCase());
+            })
+            .sort((a, b) => {
+              const aJid = a.jid || a.id || a.JID;
+              const bJid = b.jid || b.id || b.JID;
+              const aChecked = selectedIds.includes(aJid);
+              const bChecked = selectedIds.includes(bJid);
+              if (aChecked && !bChecked) return -1;
+              if (!aChecked && bChecked) return 1;
+              return 0;
             })
             .map(g => {
               const jid = g.jid || g.id || g.JID;
