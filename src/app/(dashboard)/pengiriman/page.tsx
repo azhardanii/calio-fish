@@ -101,6 +101,9 @@ export default function PengirimanPage() {
         </div>
         <div className="flex space-x-3">
           <PdfExportButton targetId="pengiriman-report" filename="laporan-pengiriman-terpadu" />
+        </div>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
         {/* Total Pengiriman */}
         <div style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', borderRadius: 16, padding: '20px 24px', border: '1px solid #bfdbfe', boxShadow: '0 4px 15px rgba(59, 130, 246, 0.1)', position: 'relative', overflow: 'hidden' }}>
