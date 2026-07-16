@@ -199,7 +199,7 @@ export function ProductManager({ products, transactions }: { products: any[], tr
                   <TableHead>Deskripsi</TableHead>
                   <TableHead className="text-center">In/Out</TableHead>
                   <TableHead className="text-right">Qty</TableHead>
-                  <TableHead className="text-right">Saldo</TableHead>
+                  <TableHead>Diinput Oleh</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -217,7 +217,7 @@ export function ProductManager({ products, transactions }: { products: any[], tr
                     <TableCell className="text-right font-mono font-bold text-gray-700">
                       {h.flow === 'IN' ? '+' : '-'}{h.qty}
                     </TableCell>
-                    <TableCell className="text-right font-bold text-blue-900">{h.balance}</TableCell>
+                    <TableCell className="text-gray-600">Sistem / Webhook</TableCell>
                   </TableRow>
                 ))}
                 {filteredTransactions.length === 0 && (
@@ -302,7 +302,7 @@ export function ProductManager({ products, transactions }: { products: any[], tr
                     <TableHead>Deskripsi</TableHead>
                     <TableHead className="text-center">In/Out</TableHead>
                     <TableHead className="text-right">Perubahan</TableHead>
-                    <TableHead className="text-right">Saldo Akhir</TableHead>
+                    <TableHead>Diinput Oleh</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -319,7 +319,7 @@ export function ProductManager({ products, transactions }: { products: any[], tr
                       <TableCell className="text-right font-mono font-bold text-gray-700">
                         {h.flow === 'IN' ? '+' : '-'}{h.qty}
                       </TableCell>
-                      <TableCell className="text-right font-bold text-blue-900">{h.balance}</TableCell>
+                      <TableCell className="text-gray-600">Sistem / Webhook</TableCell>
                     </TableRow>
                   ))}
                   {historyData.length === 0 && (
