@@ -71,6 +71,7 @@ export async function GET(req: NextRequest) {
     totalEmployees, attendanceToday,
     recentOffline, recentOnline, recentAttendance, recentProduksi,
     onlineFilterByPlatform,
+    shipmentsData,
   ] = await Promise.all([
     prisma.marketingOffline.findFirst({ where: { date: { gte: todayStart, lte: todayEnd } }, orderBy: { created_at: 'desc' } }),
     prisma.marketingOffline.aggregate({ _sum: { omset_harian: true, target_bulanan: true }, where: dateFilter ? { date: dateFilter } : {} }),
@@ -91,6 +92,7 @@ export async function GET(req: NextRequest) {
     prisma.attendance.findMany({ take: 3, orderBy: { created_at: 'desc' }, include: { employee: { select: { nama: true } } } }),
     prisma.produksi.findMany({ take: 2, orderBy: { created_at: 'desc' }, select: { date: true, kegiatan: true, total_hasil_pcs: true, created_at: true } }),
     prisma.marketingOnline.groupBy({ by: ['platform'], _sum: { omset_harian: true }, where: dateFilter ? { date: dateFilter } : {} }),
+    prisma.outboundShipment.findMany({ where: dateFilter ? { date: dateFilter } : {}, include: { items: true } }),
   ]);
 
   // Chart data
@@ -201,6 +203,8 @@ export async function GET(req: NextRequest) {
     allProducts: products.map(p => ({ name: p.short_name || p.name, stok: p.stok })),
     stockDistribution: { factoryStok, storageStok, outletStok, totalKerugian },
     recentFeed: feed.slice(0, 8),
+    totalShipments: shipmentsData.length,
+    totalItemsSent: shipmentsData.reduce((acc, curr) => acc + curr.items.reduce((sum, item) => sum + item.qty, 0), 0),
   };
 
   return NextResponse.json(data);

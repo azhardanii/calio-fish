@@ -405,6 +405,17 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
                   : `${attendanceTodayCount} karyawan sudah lapor presensi`}
               </div>
             </div>
+            
+            {/* Pengiriman */}
+            <div className="kpi-block">
+              <div className="kpi-label">🚚 Total Pengiriman</div>
+              <div className="kpi-value" style={{ fontSize: 28 }}>
+                {(data as any).totalShipments || 0}
+              </div>
+              <div className="kpi-note" style={{ color: 'var(--ocean-600)' }}>
+                📦 {(data as any).totalItemsSent?.toLocaleString('id-ID') || 0} pcs produk terkirim
+              </div>
+            </div>
           </div>
         </div>
 

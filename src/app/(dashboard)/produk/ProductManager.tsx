@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createProduct, updateProduct, deleteProduct, getProductHistory, adjustStockOpname } from '@/app/actions';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
@@ -12,6 +12,39 @@ export function ProductManager({ products, transactions }: { products: any[], tr
 
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [historyData, setHistoryData] = useState<any[]>([]);
+
+  const [logFilter, setLogFilter] = useState('this_month');
+  const [customMonth, setCustomMonth] = useState((new Date().getMonth() + 1).toString());
+  const [customYear, setCustomYear] = useState(new Date().getFullYear().toString());
+
+  const filteredTransactions = useMemo(() => {
+    if (!transactions) return [];
+    
+    return transactions.filter((t: any) => {
+      if (logFilter === 'lifetime') return true;
+      
+      const date = new Date(t.created_at);
+      const now = new Date();
+      
+      if (logFilter === 'this_month') {
+        return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+      }
+      if (logFilter === 'last_month') {
+        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        return date.getMonth() === lastMonth.getMonth() && date.getFullYear() === lastMonth.getFullYear();
+      }
+      if (logFilter === 'this_year') {
+        return date.getFullYear() === now.getFullYear();
+      }
+      if (logFilter === 'last_year') {
+        return date.getFullYear() === now.getFullYear() - 1;
+      }
+      if (logFilter === 'custom') {
+        return date.getMonth() === parseInt(customMonth) - 1 && date.getFullYear() === parseInt(customYear);
+      }
+      return true;
+    });
+  }, [transactions, logFilter, customMonth, customYear]);
 
   const openModal = (product?: any) => {
     if (product) {
@@ -114,7 +147,48 @@ export function ProductManager({ products, transactions }: { products: any[], tr
       {/* Global Stock Log */}
       {transactions && transactions.length > 0 && (
         <div className="mt-12">
-          <h2 className="text-xl font-bold mb-4">Riwayat Mutasi Stok Keseluruhan</h2>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
+            <h2 className="text-xl font-bold">Riwayat Mutasi Stok Keseluruhan</h2>
+            
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={logFilter}
+                onChange={e => setLogFilter(e.target.value)}
+                className="px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="this_month">Bulan Ini</option>
+                <option value="last_month">Bulan Lalu</option>
+                <option value="this_year">Tahun Ini</option>
+                <option value="last_year">Tahun Lalu</option>
+                <option value="lifetime">Lifetime</option>
+                <option value="custom">Custom</option>
+              </select>
+              
+              {logFilter === 'custom' && (
+                <div className="flex items-center gap-2">
+                  <select 
+                    value={customMonth} 
+                    onChange={e => setCustomMonth(e.target.value)}
+                    className="px-3 py-2 border rounded-lg text-sm bg-white"
+                  >
+                    {[...Array(12)].map((_, i) => (
+                      <option key={i+1} value={i+1}>{new Date(0, i).toLocaleString('id-ID', { month: 'short' })}</option>
+                    ))}
+                  </select>
+                  <select 
+                    value={customYear} 
+                    onChange={e => setCustomYear(e.target.value)}
+                    className="px-3 py-2 border rounded-lg text-sm bg-white"
+                  >
+                    {[2024, 2025, 2026, 2027, 2028].map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          </div>
+          
           <div className="overflow-x-auto">
             <Table>
               <TableHeader className="bg-gray-50">
@@ -129,7 +203,7 @@ export function ProductManager({ products, transactions }: { products: any[], tr
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {transactions.map((h: any) => (
+                {filteredTransactions.map((h: any) => (
                   <TableRow key={h.id} className="hover:bg-gray-50">
                     <TableCell className="text-gray-600">{new Date(h.created_at).toLocaleString('id-ID')}</TableCell>
                     <TableCell className="font-bold text-gray-800">{h.productName} <span className="text-xs text-gray-500 font-normal">({h.productSku})</span></TableCell>
@@ -146,6 +220,11 @@ export function ProductManager({ products, transactions }: { products: any[], tr
                     <TableCell className="text-right font-bold text-blue-900">{h.balance}</TableCell>
                   </TableRow>
                 ))}
+                {filteredTransactions.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-gray-500 py-8">Belum ada riwayat mutasi stok untuk periode ini.</TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>

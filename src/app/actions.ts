@@ -141,3 +141,16 @@ export async function adjustStockOpname(id: string, newStok: number, note: strin
   
   revalidatePath('/produk');
 }
+
+// Warehouse
+export async function updateWarehouse(id: string, data: any) {
+  await prisma.warehouse.update({
+    where: { id },
+    data: {
+      name: data.name,
+      type: data.type,
+      address: data.address
+    }
+  });
+  revalidatePath('/warehouse');
+}
