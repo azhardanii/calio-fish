@@ -615,17 +615,6 @@ export async function POST(req: Request) {
         
         replyMsg = `✅ *Retur Produk* ${parsedData.date}\nDari: ${srcName}\nBerhasil dicatat sebagai Estimasi Kerugian!`;
 
-      } else if (parsedData.report_type === 'PEMBERSIHAN') {
-        await prisma.pembersihanKulit.create({
-          data: {
-            date: new Date(parsedData.date),
-            bahan_beku_kg: data.bahan_beku_kg || null,
-            bahan_bersih_kg: data.bahan_bersih_kg || null,
-            employee_id: employeeId
-          },
-        });
-        replyMsg = `✅ *Pembersihan Kulit* ${parsedData.date} berhasil dicatat!`;
-
       } else if (parsedData.report_type === 'DATABASE_AFFILIATE') {
         await prisma.affiliate.create({
           data: {

@@ -30,17 +30,15 @@ Format:
 
 Supported report types & data schema:
 
-1. PRODUKSI_HASIL
-For reporting production output.
+3. PRODUKSI_HASIL
+For reporting production output including cleaning raw skin.
 data: { "jenis_produksi": "basah" | "kering", "bahan_baku_kg": number, "hasil_kg": number, "hasil_pcs": number, "hpp_batch": number, "kegiatan": "Pembersihan" | "Menggoreng" | "Menjemur" | "Menimbang" | "Mengemas", "product_key": string }
+(For cleaning raw skin, use kegiatan="Pembersihan". Map bahan beku to bahan_baku_kg and bahan bersih to hasil_kg)
 
 2. STOK_BAHAN
 For reporting packaging, spices, or cardboard usage.
 data: { "kategori": "KEMASAN" | "BUMBU" | "KARDUS", "jenis_ukuran": string, "masuk": number, "keluar": number }
 
-3. PEMBERSIHAN
-For cleaning raw skin.
-data: { "bahan_beku_kg": number, "bahan_bersih_kg": number }
 
 4. PENGIRIMAN
 For strict logistics tracking (transfers between warehouses or outbound to outlets).

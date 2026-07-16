@@ -128,16 +128,6 @@ model OutboundItem {
   product  Product          @relation(fields: [product_id], references: [id], onDelete: Restrict)
 }
 
-model PembersihanKulit {
-  id              String    @id @default(uuid())
-  date            DateTime  @db.Date
-  bahan_beku_kg   Decimal   @default(0) @db.Decimal(8, 3)
-  bahan_bersih_kg Decimal   @default(0) @db.Decimal(8, 3)
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
-  employee_id     String?
-  employee        Employee? @relation(fields: [employee_id], references: [id], onDelete: SetNull)
-}
 
 model Produksi {
   id              String    @id @default(uuid())
@@ -280,7 +270,7 @@ model Employee {
   produksi           Produksi[]
   stok_bahan         StokBahan[]
   outbound_shipments OutboundShipment[]
-  pembersihan_kulit  PembersihanKulit[]
+
   jadwal_kol         JadwalKOL[]
   distribusi_sample  DistribusiSample[]
   stockTransactions  StockTransaction[]
