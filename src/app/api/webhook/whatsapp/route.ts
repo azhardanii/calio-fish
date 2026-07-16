@@ -124,60 +124,68 @@ export async function POST(req: Request) {
 
     try {
       if (parsedData.report_type === 'PRODUKSI_HASIL') {
+        const activities = Array.isArray(data) ? data : [data];
+        let totalStokAdded = 0;
+        let lastProductShortName = '';
+
         await prisma.$transaction(async (tx) => {
-          await tx.produksi.create({
-            data: {
-              date: new Date(parsedData.date),
-              kegiatan: data.kegiatan || 'Produksi',
-              jenis_produksi: data.jenis_produksi || null,
-              bahan_baku: data.bahan_baku_kg || null,
-              bahan_jadi: data.hasil_kg || null,
-              total_hasil_pcs: data.hasil_pcs || null,
-              hpp_batch: data.hpp_batch || null,
-              employee_id: employeeId
-            },
-          });
+          for (const activity of activities) {
+            await tx.produksi.create({
+              data: {
+                date: new Date(parsedData.date),
+                kegiatan: activity.kegiatan || 'Produksi',
+                jenis_produksi: activity.jenis_produksi || null,
+                bahan_baku: activity.bahan_baku_kg || null,
+                bahan_jadi: activity.hasil_kg || null,
+                total_hasil_pcs: activity.hasil_pcs || null,
+                hpp_batch: activity.hpp_batch || null,
+                employee_id: employeeId
+              },
+            });
 
-          if (data.kegiatan === 'Mengemas' && data.hasil_pcs > 0 && data.product_key) {
-             const product = await tx.product.findUnique({ where: { sku: data.product_key } });
-             if (product) {
-               const newBalance = product.stok + data.hasil_pcs;
-               await tx.product.update({ where: { id: product.id }, data: { stok: newBalance } });
+            if (activity.kegiatan === 'Mengemas' && activity.hasil_pcs > 0 && activity.product_key) {
+               const product = await tx.product.findUnique({ where: { sku: activity.product_key } });
+               if (product) {
+                 const newBalance = product.stok + activity.hasil_pcs;
+                 await tx.product.update({ where: { id: product.id }, data: { stok: newBalance } });
 
-               let destId = null;
-               const w = await tx.warehouse.findFirst({ where: { name: { contains: 'Banyuwangi', mode: 'insensitive' } }});
-               if (w) {
-                 destId = w.id;
-                 const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: product.id } }});
-                 if (ws) {
-                   await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity + data.hasil_pcs } });
-                 } else {
-                   await tx.warehouseStock.create({ data: { warehouse_id: w.id, product_id: product.id, quantity: data.hasil_pcs } });
+                 let destId = null;
+                 const w = await tx.warehouse.findFirst({ where: { name: { contains: 'Banyuwangi', mode: 'insensitive' } }});
+                 if (w) {
+                   destId = w.id;
+                   const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: product.id } }});
+                   if (ws) {
+                     await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity + activity.hasil_pcs } });
+                   } else {
+                     await tx.warehouseStock.create({ data: { warehouse_id: w.id, product_id: product.id, quantity: activity.hasil_pcs } });
+                   }
                  }
+
+                 await tx.stockTransaction.create({
+                   data: {
+                     product_id: product.id,
+                     type: 'PRODUKSI',
+                     flow: 'IN',
+                     qty: activity.hasil_pcs,
+                     balance: newBalance,
+                     description: `Hasil Produksi (${activity.kegiatan})`,
+                     date: new Date(parsedData.date),
+                     destination_type: 'WAREHOUSE',
+                     destination_id: destId,
+                     employee_id: employeeId
+                   }
+                 });
+                 totalStokAdded += activity.hasil_pcs;
+                 lastProductShortName = product.short_name;
                }
-
-               await tx.stockTransaction.create({
-                 data: {
-                   product_id: product.id,
-                   type: 'PRODUKSI',
-                   flow: 'IN',
-                   qty: data.hasil_pcs,
-                   balance: newBalance,
-                   description: `Hasil Produksi (${data.kegiatan})`,
-                   date: new Date(parsedData.date),
-                   destination_type: 'WAREHOUSE',
-                   destination_id: destId,
-                   employee_id: employeeId
-                 }
-               });
-               replyMsg = `✅ *Produksi Hasil* ${parsedData.date} dicatat!\nStok ${product.short_name} bertambah ${data.hasil_pcs} pcs.\n📦 Sisa Stok saat ini: *${newBalance.toLocaleString('id-ID')} pcs*`;
-             } else {
-               replyMsg = `✅ *Produksi Hasil* ${parsedData.date} dicatat! (SKU Produk tidak ditemukan untuk penambahan stok)`;
-             }
-          } else {
-            replyMsg = `✅ *Produksi Hasil* ${parsedData.date} berhasil dicatat!`;
+            }
           }
         });
+        
+        replyMsg = `✅ *${activities.length} Kegiatan Produksi* tanggal ${parsedData.date} dicatat!`;
+        if (totalStokAdded > 0) {
+          replyMsg += `\nStok ${lastProductShortName || 'Produk'} bertambah ${totalStokAdded} pcs.`;
+        }
 
       } else if (parsedData.report_type === 'STOK_BAHAN') {
         await prisma.stokBahan.create({
