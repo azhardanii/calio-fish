@@ -68,7 +68,7 @@ export default function WarehousePage() {
       <div id="warehouse-report" className="grid grid-cols-1 gap-6">
         {warehouses.map((w: any) => {
           const totalKerugian = w.stocks.reduce((acc: number, s: any) => acc + (s.returned_qty * Number(s.product.base_price)), 0);
-          const mapQuery = w.address || w.name;
+          const mapQuery = w.name;
           return (
             <Card key={w.id} className="border-t-4 border-t-blue-600 shadow-md overflow-hidden">
               <div className="grid grid-cols-1 lg:grid-cols-3">
@@ -82,7 +82,7 @@ export default function WarehousePage() {
                       </CardTitle>
                       <div className="flex items-center gap-1 text-sm text-gray-500 mt-2">
                         <MapPin className="w-4 h-4 text-gray-400" />
-                        {w.address || 'Alamat belum diatur'}
+                        Berdasarkan nama lokasi
                       </div>
                     </div>
                     <button onClick={() => openEditModal(w)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition">
@@ -147,11 +147,7 @@ export default function WarehousePage() {
                   <option value="FACTORY">FACTORY (Pabrik)</option>
                   <option value="STORAGE">STORAGE (Gudang Cabang)</option>
                 </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Alamat / Titik Maps</label>
-                <textarea className="w-full border rounded p-2" rows={3} placeholder="Contoh: Jl. Sudirman No. 123, Banyuwangi" value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})}></textarea>
-                <p className="text-xs text-gray-500 mt-1">Alamat ini akan digunakan untuk titik Google Maps.</p>
+                <p className="text-xs text-gray-500 mt-2">Google Maps akan menggunakan nama warehouse sebagai titik lokasi otomatis.</p>
               </div>
               
               <div className="flex justify-end gap-3 pt-4 border-t mt-6">

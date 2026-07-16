@@ -228,7 +228,6 @@ model Warehouse {
   id         String   @id @default(uuid())
   name       String   // e.g. "Banyuwangi (factory)", "Malang (storage branch)"
   type       String   // e.g. "FACTORY", "STORAGE"
-  address    String?
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
   stocks     WarehouseStock[]

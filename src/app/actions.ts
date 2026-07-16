@@ -148,8 +148,7 @@ export async function updateWarehouse(id: string, data: any) {
     where: { id },
     data: {
       name: data.name,
-      type: data.type,
-      address: data.address
+      type: data.type
     }
   });
   revalidatePath('/warehouse');
