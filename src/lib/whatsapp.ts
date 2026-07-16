@@ -86,9 +86,21 @@ export async function sendMessage(phoneNumber: string, message: string, replyMes
       },
       body: JSON.stringify(bodyPayload),
     });
-    return res.json();
+    
+    const resText = await res.text();
+    if (!res.ok) {
+      console.error('GOWA Error Response:', res.status, resText);
+      throw new Error(`GOWA API error: ${res.status} ${resText}`);
+    }
+    
+    try {
+      return JSON.parse(resText);
+    } catch (e) {
+      return { status: 'success', data: resText };
+    }
   } catch (error) {
     console.error('Error sending message', error);
+    return { status: 'error', message: String(error) };
   }
 }
 

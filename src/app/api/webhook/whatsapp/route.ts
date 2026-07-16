@@ -684,7 +684,7 @@ export async function POST(req: Request) {
     }
 
     await sendChatPresence(payload.chat_id, 'paused');
-    await sendMessage(payload.chat_id, replyMsg);
+    await sendMessage(payload.chat_id, replyMsg, payload.id);
 
     return NextResponse.json({ status: 'success', parsedData, replyMsg });
   } catch (error) {
