@@ -45,7 +45,11 @@ export async function POST(req: Request) {
     if (!payload) return NextResponse.json({ status: 'ignored', reason: 'no payload' });
 
     const textBody = (payload.body || '').trim().toLowerCase();
-    const isTriggered = textBody.startsWith('/lapor') || textBody.startsWith('!lapor') || textBody.startsWith('#lapor') || textBody.startsWith('lapor');
+    const isLapor = textBody.startsWith('/lapor') || textBody.startsWith('!lapor') || textBody.startsWith('#lapor') || textBody.startsWith('lapor');
+    const isMasuk = textBody.startsWith('/masuk') || textBody.startsWith('!masuk') || textBody.startsWith('#masuk') || textBody.startsWith('masuk');
+    const isIzin = textBody.startsWith('/izin') || textBody.startsWith('!izin') || textBody.startsWith('#izin') || textBody.startsWith('izin');
+    
+    const isTriggered = isLapor || isMasuk || isIzin;
     
     if (!isTriggered) {
       return NextResponse.json({ status: 'ignored', reason: 'no trigger prefix' });
@@ -104,11 +108,53 @@ export async function POST(req: Request) {
     // Read the message first for a humanized feel
     await readMessage(payload.chat_id, payload.id);
     await sendChatPresence(payload.chat_id, 'composing');
+
+    if (isMasuk || isIzin) {
+        if (!employeeId) {
+            await sendMessage(payload.chat_id, "⚠️ Maaf, nomor HP Anda belum terdaftar di Database Karyawan. Silakan hubungi admin.", payload.id);
+            return NextResponse.json({ status: 'success', reason: 'employee not found' });
+        }
+        
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        
+        const existingPresensi = await prisma.presensi.findFirst({
+            where: {
+                employee_id: employeeId,
+                date: { gte: today }
+            }
+        });
+        
+        if (existingPresensi) {
+            await sendMessage(payload.chat_id, `Halo ${employee?.nama}, Anda sudah tercatat melakukan presensi hari ini (${existingPresensi.status}).`, payload.id);
+            return NextResponse.json({ status: 'success', reason: 'already presensi' });
+        }
+        
+        let status: 'HADIR' | 'IZIN' | 'SAKIT' = isMasuk ? 'HADIR' : 'IZIN';
+        let notes = isIzin ? (payload.body || '').replace(/^\/?izin\s*/i, '').trim() : '';
+        
+        await prisma.presensi.create({
+            data: {
+                employee_id: employeeId,
+                date: new Date(),
+                status: status,
+                notes: notes || null
+            }
+        });
+        
+        await sendMessage(payload.chat_id, `✅ Terima kasih ${employee?.nama}, presensi *${status}* hari ini berhasil dicatat!`, payload.id);
+        return NextResponse.json({ status: 'success', reason: 'presensi recorded' });
+    }
+
     const parsedData = await parseWhatsAppReport(payload.body);
 
     if (!parsedData || !parsedData.report_type || parsedData.report_type === 'NONE') {
       await sendChatPresence(payload.chat_id, 'paused');
       console.log('[Webhook - DIABAIKAN] Pesan terdeteksi sebagai obrolan biasa (Bukan Laporan).');
+      if (isLapor) {
+        const errorMsg = `⚠️ Maaf, format laporan Anda tidak dipahami oleh sistem.\n\nContoh format yang benar:\n1. /lapor tim produksi mengemas...\n2. /lapor outlet malang omset...\n\nSilakan cek kembali *SOP & Template WhatsApp Report*.`;
+        await sendMessage(payload.chat_id, errorMsg, payload.id);
+      }
       return NextResponse.json({ status: 'ignored', reason: 'unparseable or casual chat' });
     }
 

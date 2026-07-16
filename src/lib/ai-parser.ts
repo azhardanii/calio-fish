@@ -76,9 +76,6 @@ data: { "nama_kol": string, "jadwal_kirim": "YYYY-MM-DD", "jadwal_pengerjaan": s
 8. DATABASE_AFFILIATE
 data: { "nama": string, "akun_medsos": string, "no_hp": string, "alamat": string, "jenis_postingan": string, "media_upload": string, "ratecard": number, "link_unggahan": string }
 
-9. PRESENSI
-data: { "status_kehadiran": "HADIR" | "IZIN" | "SAKIT", "alasan": string }
-
 10. DISTRIBUSI_SAMPLE
 For reporting sample products distributed to influencers or marketing.
 data: { "jenis_sample": string, "total_produk": number, "biaya_ekspedisi": number }`;
