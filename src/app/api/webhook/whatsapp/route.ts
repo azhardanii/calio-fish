@@ -118,7 +118,7 @@ export async function POST(req: Request) {
         const today = new Date();
         today.setHours(0,0,0,0);
         
-        const existingPresensi = await prisma.presensi.findFirst({
+        const existingPresensi = await prisma.attendance.findFirst({
             where: {
                 employee_id: employeeId,
                 date: { gte: today }
@@ -126,19 +126,19 @@ export async function POST(req: Request) {
         });
         
         if (existingPresensi) {
-            await sendMessage(payload.chat_id, `Halo ${employee?.nama}, Anda sudah tercatat melakukan presensi hari ini (${existingPresensi.status}).`, payload.id);
+            await sendMessage(payload.chat_id, `Halo ${employee?.nama}, Anda sudah tercatat melakukan presensi hari ini (${existingPresensi.status_kehadiran}).`, payload.id);
             return NextResponse.json({ status: 'success', reason: 'already presensi' });
         }
         
         let status: 'HADIR' | 'IZIN' | 'SAKIT' = isMasuk ? 'HADIR' : 'IZIN';
         let notes = isIzin ? (payload.body || '').replace(/^\/?izin\s*/i, '').trim() : '';
         
-        await prisma.presensi.create({
+        await prisma.attendance.create({
             data: {
                 employee_id: employeeId,
                 date: new Date(),
-                status: status,
-                notes: notes || null
+                status_kehadiran: status,
+                alasan: notes || null
             }
         });
         
@@ -497,233 +497,143 @@ export async function POST(req: Request) {
         });
         replyMsg = `✅ *Jadwal KOL* untuk ${data.nama_kol} berhasil dicatat!`;
 
-      } else if (parsedData.report_type === 'PENGIRIMAN') {
-        const srcType = data.source_type?.toUpperCase() || 'WAREHOUSE';
-        const srcName = data.source_name || '-';
-        const destType = data.destination_type?.toUpperCase() || 'LAINNYA';
-        const destName = data.destination_name || '-';
-        const items = data.items || [];
+      } else if (parsedData.report_type === 'LOGISTIK_MULTI') {
+        const activities = Array.isArray(data) ? data : [data];
+        let totalShipments = 0;
         
         await prisma.$transaction(async (tx) => {
-          // 1. Resolve Source
-          let sourceId = null;
-          if (srcType === 'WAREHOUSE') {
-            const w = await tx.warehouse.findFirst({ where: { name: { contains: srcName, mode: 'insensitive' } }});
-            if (w) sourceId = w.id;
-          } else if (srcType === 'OUTLET') {
-            const o = await tx.outlet.findFirst({ where: { nama: { contains: srcName, mode: 'insensitive' } }});
-            if (o) sourceId = o.id;
-          }
-
-          // 2. Resolve Destination
-          let destId = null;
-          let outletId = null;
-          let affiliateId = null;
-          if (destType === 'WAREHOUSE') {
-            const w = await tx.warehouse.findFirst({ where: { name: { contains: destName, mode: 'insensitive' } }});
-            if (w) destId = w.id;
-          } else if (destType === 'OUTLET') {
-            const o = await tx.outlet.findFirst({ where: { nama: { contains: destName, mode: 'insensitive' } }});
-            if (o) { destId = o.id; outletId = o.id; }
-          } else if (destType === 'AFFILIATE') {
-            const a = await tx.affiliate.findFirst({ where: { nama: { contains: destName, mode: 'insensitive' } }});
-            if (a) affiliateId = a.id;
-          }
-          
-          const shipment = await tx.outboundShipment.create({
-            data: {
-              date: new Date(parsedData.date),
-              shipment_type: 'PENGIRIMAN',
-              source_type: srcType,
-              source_name: srcName,
-              destination_type: destType,
-              destination_name: destName,
-              outlet_id: outletId,
-              affiliate_id: affiliateId,
-              status: 'SHIPPED',
-              employee_id: employeeId
+          for (const route of activities) {
+            const kategori = route.kategori_logistik || 'LAINNYA';
+            const srcType = route.source_type?.toUpperCase() || 'WAREHOUSE';
+            const srcName = route.source_name || '-';
+            const destType = route.destination_type?.toUpperCase() || 'LAINNYA';
+            const destName = route.destination_name || '-';
+            const items = route.items || [];
+            
+            // 1. Resolve Source
+            let sourceId = null;
+            if (srcType === 'WAREHOUSE') {
+              const w = await tx.warehouse.findFirst({ where: { name: { contains: srcName, mode: 'insensitive' } }});
+              if (w) sourceId = w.id;
+            } else if (srcType === 'OUTLET') {
+              const o = await tx.outlet.findFirst({ where: { nama: { contains: srcName, mode: 'insensitive' } }});
+              if (o) sourceId = o.id;
             }
-          });
 
-          for (const item of items) {
-             if (item.product_key && item.qty > 0) {
-               const product = await tx.product.findUnique({ where: { sku: item.product_key } });
-               if (product) {
-                 await tx.outboundItem.create({
-                   data: { shipment_id: shipment.id, product_id: product.id, qty: item.qty }
-                 });
-                 
-                 // Decrement Source Stock
-                 if (srcType === 'WAREHOUSE' && sourceId) {
-                   const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: sourceId, product_id: product.id } }});
-                   if (ws) await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity - item.qty }});
-                 } else if (srcType === 'OUTLET' && sourceId) {
-                   const os = await tx.outletStock.findUnique({ where: { outlet_id_product_id: { outlet_id: sourceId, product_id: product.id } }});
-                   if (os) await tx.outletStock.update({ where: { id: os.id }, data: { quantity: os.quantity - item.qty }});
-                 }
-
-                 // Increment Destination Stock
-                 if (destType === 'WAREHOUSE' && destId) {
-                   const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: destId, product_id: product.id } }});
-                   if (ws) await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity + item.qty }});
-                 } else if (destType === 'OUTLET' && destId) {
-                   const os = await tx.outletStock.findUnique({ where: { outlet_id_product_id: { outlet_id: destId, product_id: product.id } }});
-                   if (os) await tx.outletStock.update({ where: { id: os.id }, data: { quantity: os.quantity + item.qty }});
-                 }
-                 
-                 // Note: We DO NOT decrement global product.stok here for internal transfers.
-                 // We only decrement it if destination is external (consumptive like Shopee/Enduser)
-                 let newBalance = product.stok;
-                 if (!['WAREHOUSE', 'OUTLET'].includes(destType)) {
-                   newBalance -= item.qty;
-                   await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
-                 }
-                 
-                 await tx.stockTransaction.create({
-                   data: {
-                     product_id: product.id,
-                     type: 'DISTRIBUSI',
-                     flow: 'OUT',
-                     qty: item.qty,
-                     balance: newBalance,
-                     description: `Dari ${srcName} ke ${destName}`,
-                     date: new Date(parsedData.date),
-                     source_type: srcType,
-                     source_id: sourceId,
-                     destination_type: destType,
-                     destination_id: destId,
-                     employee_id: employeeId
-                   }
-                 });
-               }
-             }
-          }
-        });
-        
-        replyMsg = `✅ *Distribusi Logistik* ${parsedData.date}\nDari: ${data.source_name}\nKe: ${destName}\nBerhasil dicatat!`;
-
-      } else if (parsedData.report_type === 'RETUR') {
-        const srcName = data.source_name || '-';
-        const destName = data.destination_name || 'Banyuwangi';
-        const items = data.items || [];
-        
-        await prisma.$transaction(async (tx) => {
-          const w = await tx.warehouse.findFirst({ where: { name: { contains: destName, mode: 'insensitive' } }});
-          const o = await tx.outlet.findFirst({ where: { nama: { contains: srcName, mode: 'insensitive' } }});
-          
-          for (const item of items) {
-             if (item.product_key && item.qty > 0) {
-               const product = await tx.product.findUnique({ where: { sku: item.product_key } });
-               if (product) {
-                 // Decrement from Outlet Stock
-                 if (o) {
-                   const os = await tx.outletStock.findUnique({ where: { outlet_id_product_id: { outlet_id: o.id, product_id: product.id } }});
-                   if (os) await tx.outletStock.update({ where: { id: os.id }, data: { quantity: os.quantity - item.qty }});
-                 }
-
-                 // Increment Returned Qty in Warehouse
-                 if (w) {
-                   const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: product.id } }});
-                   if (ws) await tx.warehouseStock.update({ where: { id: ws.id }, data: { returned_qty: ws.returned_qty + item.qty }});
-                 }
-                 
-                 // Decrement global active stock
-                 const newBalance = product.stok - item.qty;
-                 await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
-                 
-                 await tx.stockTransaction.create({
-                   data: {
-                     product_id: product.id,
-                     type: 'RETUR',
-                     flow: 'OUT',
-                     qty: item.qty,
-                     balance: newBalance,
-                     description: `Retur dari ${srcName} ke ${destName}`,
-                     date: new Date(parsedData.date),
-                     source_type: 'OUTLET',
-                     source_id: o ? o.id : null,
-                     destination_type: 'WAREHOUSE_RETURN',
-                     destination_id: w ? w.id : null,
-                     employee_id: employeeId
-                   }
-                 });
-               }
-             }
-          }
-            // Create OutboundShipment for Retur
-            await tx.outboundShipment.create({
+            // 2. Resolve Destination
+            let destId = null;
+            let outletId = null;
+            let affiliateId = null;
+            if (destType === 'WAREHOUSE') {
+              const w = await tx.warehouse.findFirst({ where: { name: { contains: destName, mode: 'insensitive' } }});
+              if (w) destId = w.id;
+            } else if (destType === 'OUTLET') {
+              const o = await tx.outlet.findFirst({ where: { nama: { contains: destName, mode: 'insensitive' } }});
+              if (o) { destId = o.id; outletId = o.id; }
+            } else if (destType === 'AFFILIATE') {
+              const a = await tx.affiliate.findFirst({ where: { nama: { contains: destName, mode: 'insensitive' } }});
+              if (a) affiliateId = a.id;
+            }
+            
+            // 3. Create Shipment Record
+            const shipment = await tx.outboundShipment.create({
               data: {
-                date: new Date(parsedData.date),
-                shipment_type: 'RETUR',
-                source_type: 'OUTLET',
-                source_name: o ? o.nama : srcName,
-                destination_type: 'WAREHOUSE',
-                destination_name: w ? w.name : destName,
-                outlet_id: o ? o.id : null,
-                notes: 'Retur Kerusakan/Stok Sisa',
+                date: parsedData.date ? new Date(parsedData.date) : new Date(),
+                shipment_type: kategori,
+                source_type: srcType,
+                source_name: srcName,
+                destination_type: destType,
+                destination_name: destName,
+                outlet_id: outletId,
+                affiliate_id: affiliateId,
                 status: 'SHIPPED',
-                employee_id: employeeId
+                employee_id: employeeId,
+                notes: kategori === 'SAMPLE' ? `Total Produk: ${route.total_produk || 0} | Biaya Ekspedisi: Rp ${route.biaya_ekspedisi || 0}` : null
               }
             });
+            totalShipments++;
+
+            // Optional: If it's a sample, record to distribusiSample table
+            if (kategori === 'SAMPLE') {
+              await tx.distribusiSample.create({
+                data: {
+                  date: parsedData.date ? new Date(parsedData.date) : new Date(),
+                  jenis_sample: destName,
+                  total_produk: route.total_produk || 0,
+                  biaya_ekspedisi: route.biaya_ekspedisi || 0,
+                  employee_id: employeeId
+                }
+              });
+            }
+
+            // 4. Process Items and Stocks
+            for (const item of items) {
+               if (item.product_key && item.qty > 0) {
+                 const product = await tx.product.findUnique({ where: { sku: item.product_key } });
+                 if (product) {
+                   await tx.outboundItem.create({
+                     data: { shipment_id: shipment.id, product_id: product.id, qty: item.qty }
+                   });
+                   
+                   // Decrement Source Stock
+                   if (srcType === 'WAREHOUSE' && sourceId) {
+                     const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: sourceId, product_id: product.id } }});
+                     if (ws) await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity - item.qty }});
+                   } else if (srcType === 'OUTLET' && sourceId) {
+                     const os = await tx.outletStock.findUnique({ where: { outlet_id_product_id: { outlet_id: sourceId, product_id: product.id } }});
+                     if (os) await tx.outletStock.update({ where: { id: os.id }, data: { quantity: os.quantity - item.qty }});
+                   }
+
+                   // Increment Destination Stock (If internal transfer)
+                   if (destType === 'WAREHOUSE' && destId) {
+                     const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: destId, product_id: product.id } }});
+                     if (ws) {
+                       // If RETUR, add to returned_qty instead of healthy quantity (Based on previous logic)
+                       if (kategori === 'RETUR') {
+                         await tx.warehouseStock.update({ where: { id: ws.id }, data: { returned_qty: ws.returned_qty + item.qty }});
+                       } else {
+                         await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity + item.qty }});
+                       }
+                     }
+                   } else if (destType === 'OUTLET' && destId) {
+                     const os = await tx.outletStock.findUnique({ where: { outlet_id_product_id: { outlet_id: destId, product_id: product.id } }});
+                     if (os) await tx.outletStock.update({ where: { id: os.id }, data: { quantity: os.quantity + item.qty }});
+                   }
+                   
+                   // Decrease global product.stok only if it leaves the internal ecosystem (not to warehouse/outlet)
+                   // But if RETUR, we also decreased it previously because it becomes isolated.
+                   let newBalance = product.stok;
+                   if (!['WAREHOUSE', 'OUTLET'].includes(destType) || kategori === 'RETUR') {
+                     newBalance -= item.qty;
+                     await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
+                   }
+                   
+                   await tx.stockTransaction.create({
+                     data: {
+                       product_id: product.id,
+                       type: kategori === 'RETUR' ? 'RETUR' : 'DISTRIBUSI',
+                       flow: 'OUT',
+                       qty: item.qty,
+                       balance: newBalance,
+                       description: kategori === 'RETUR' ? `Retur dari ${srcName} ke ${destName}` : `Dari ${srcName} ke ${destName}`,
+                       date: parsedData.date ? new Date(parsedData.date) : new Date(),
+                       source_type: srcType,
+                       source_id: sourceId,
+                       destination_type: kategori === 'RETUR' ? 'WAREHOUSE_RETURN' : destType,
+                       destination_id: destId,
+                       employee_id: employeeId
+                     }
+                   });
+                 }
+               }
+            }
+          }
+        }, {
+          maxWait: 5000,
+          timeout: 20000
         });
         
-        replyMsg = `✅ *Retur Produk* ${parsedData.date}\nDari: ${srcName}\nBerhasil dicatat sebagai Estimasi Kerugian!`;
-
-      } else if (parsedData.report_type === 'DATABASE_AFFILIATE') {
-        await prisma.affiliate.create({
-          data: {
-            nama: data.nama || '-',
-            akun_medsos: data.akun_medsos || '-',
-            no_hp: data.no_hp || null,
-            alamat: data.alamat || null,
-            jenis_postingan: data.jenis_postingan || null,
-            media_upload: data.media_upload || null,
-            ratecard: data.ratecard || null,
-            link_unggahan: data.link_unggahan || null,
-          },
-        });
-
-      } else if (parsedData.report_type === 'DISTRIBUSI_SAMPLE') {
-        await prisma.$transaction(async (tx) => {
-          await tx.distribusiSample.create({
-            data: {
-              date: new Date(parsedData.date),
-              jenis_sample: data.jenis_sample || '-',
-              total_produk: data.total_produk || 0,
-              biaya_ekspedisi: data.biaya_ekspedisi || 0,
-              employee_id: employeeId
-            },
-          });
-
-          await tx.outboundShipment.create({
-            data: {
-              date: new Date(parsedData.date),
-              shipment_type: 'SAMPLE',
-              source_type: 'WAREHOUSE',
-              source_name: 'Banyuwangi',
-              destination_type: 'Sample',
-              destination_name: data.jenis_sample || '-',
-              notes: `Total Produk: ${data.total_produk} | Biaya Ekspedisi: Rp ${data.biaya_ekspedisi || 0}`,
-              status: 'SHIPPED',
-              employee_id: employeeId
-            }
-          });
-        });
-
-      } else if (parsedData.report_type === 'PRESENSI') {
-        if (!employee) {
-          replyMsg = `❌ *Presensi Gagal*\nNomor HP Anda belum terdaftar di Database Karyawan.`;
-        } else {
-          await prisma.attendance.create({
-            data: {
-              date: new Date(parsedData.date),
-              employee: { connect: { id: employee.id } },
-              status_kehadiran: data.status_kehadiran || 'HADIR',
-              alasan: data.alasan || null,
-            }
-          });
-          replyMsg = `✅ *Presensi Berhasil*\nNama: ${employee.nama}\nStatus: ${data.status_kehadiran}`;
-        }
+        replyMsg = `✅ *${totalShipments} Rute Logistik* tanggal ${parsedData.date} berhasil diproses dan dicatat!`;
       }
     } catch (dbError) {
       console.error('Database insertion error:', dbError);

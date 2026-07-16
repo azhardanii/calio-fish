@@ -40,24 +40,20 @@ For reporting packaging, spices, or cardboard usage.
 data: { "kategori": "KEMASAN" | "BUMBU" | "KARDUS", "jenis_ukuran": string, "masuk": number, "keluar": number }
 
 
-4. PENGIRIMAN
-For strict logistics tracking (transfers between warehouses or outbound to outlets).
-data: { 
-  "source_type": "string", // "WAREHOUSE" | "OUTLET"
-  "source_name": "string", // e.g. "Banyuwangi", "Malang", "Outlet A"
-  "destination_type": "string", // "WAREHOUSE" | "OUTLET" | "SHOPEE" | "TIKTOK" | "DISTRIBUTOR" | "RESELLER" | "ENDUSER" | "AFFILIATE"
-  "destination_name": "string", // e.g. "Malang", "Outlet A", "Shopee"
-  "items": [ { "product_key": "string", "qty": number } ]
-}
+4. LOGISTIK_MULTI
+For reporting ALL types of logistics, shipping, transfers, retur, online order shipping, or sample distributions. 
+Even if only one route is reported, ALWAYS return an array of objects in 'data'. If multiple routes are mentioned, split them into multiple objects in the array.
+data: [
+  { 
+    "kategori_logistik": "PENGIRIMAN_GUDANG" | "PENGIRIMAN_OUTLET" | "RETUR" | "ONLINE" | "SAMPLE",
+    "source_type": "WAREHOUSE" | "OUTLET",
+    "source_name": "string", // e.g. "Banyuwangi", "Malang", "Outlet A"
+    "destination_type": "WAREHOUSE" | "OUTLET" | "E-COMMERCE" | "SAMPLE" | "AFFILIATE",
+    "destination_name": "string", // e.g. "Malang", "Outlet A", "Shopee", "Influencer Budi"
+    "items": [ { "product_key": "string", "qty": number } ]
+  }
+]
 **IF source or destination is omitted or vague (e.g., just "kirim ke outlet A" without stating FROM WHERE), set is_ambiguous = true and ask: "Harap sebutkan dari mana barang dikirim (misal: dari Banyuwangi ke Outlet A)."**
-
-4b. RETUR
-For returning goods from an Outlet back to a Warehouse.
-data: {
-  "source_name": "string", // name of the Outlet returning the goods
-  "destination_name": "string", // e.g. "Banyuwangi"
-  "items": [ { "product_key": "string", "qty": number } ]
-}
 Map product names EXACTLY to these SKUs: "FS Ori" -> FS-ORI-100, "FS SM" -> FS-SM-100, "FS Soto" -> FS-SOTO-100, "FS Rendang" -> FS-RENDANG-100, "Abon" -> AB-TNA-90. Use these SKUs for product_key in ANY report type.
 
 5. MARKETING_OFFLINE
@@ -75,10 +71,7 @@ data: { "nama_kol": string, "jadwal_kirim": "YYYY-MM-DD", "jadwal_pengerjaan": s
 
 8. DATABASE_AFFILIATE
 data: { "nama": string, "akun_medsos": string, "no_hp": string, "alamat": string, "jenis_postingan": string, "media_upload": string, "ratecard": number, "link_unggahan": string }
-
-10. DISTRIBUSI_SAMPLE
-For reporting sample products distributed to influencers or marketing.
-data: { "jenis_sample": string, "total_produk": number, "biaya_ekspedisi": number }`;
+`;
 
 export async function parseWhatsAppReport(text: string) {
   try {
