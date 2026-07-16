@@ -12,6 +12,7 @@ export default function PengirimanPage() {
   const { data, isLoading } = useSWR('/api/data/pengiriman');
   const [filterType, setFilterType] = useState('ALL');
   const [filterInput, setFilterInput] = useState('');
+  const [detailedShipment, setDetailedShipment] = useState<any>(null);
   const [sortOrder, setSortOrder] = useState('DESC');
   const [visibleCount, setVisibleCount] = useState(50);
   const observerTarget = useRef(null);
@@ -61,6 +62,15 @@ export default function PengirimanPage() {
       },
       { threshold: 1.0 }
     );
+    
+    // Parse URL parameter on initial load
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const searchParam = urlParams.get('search');
+      if (searchParam && !filterInput) {
+        setFilterInput(searchParam);
+      }
+    }
     
     if (observerTarget.current) {
       observer.observe(observerTarget.current);
@@ -187,7 +197,7 @@ export default function PengirimanPage() {
                   const qty = s.items?.reduce((sum: number, item: any) => sum + item.qty, 0) || 0;
                   
                   return (
-                    <TableRow key={s.id} className="hover:bg-gray-50 transition-colors">
+                    <TableRow key={s.id} className="hover:bg-gray-100 transition-colors cursor-pointer" onClick={() => setDetailedShipment(s)}>
                       <TableCell className="whitespace-nowrap">
                         <div className="font-medium text-gray-900">{new Date(s.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
                         <div className="text-xs text-gray-500">{new Date(s.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
@@ -242,6 +252,71 @@ export default function PengirimanPage() {
           </CardContent>
         </Card>
       </div>
+
+      {detailedShipment && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 rounded-t-xl">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Detail Pengiriman</h3>
+                <p className="text-sm text-gray-500 mt-1">ID: {detailedShipment.id}</p>
+              </div>
+              <button onClick={() => setDetailedShipment(null)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                Tutup
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <div className="text-xs text-gray-500 font-medium mb-1">DARI</div>
+                  <div className="font-semibold text-gray-900">{detailedShipment.source_name || '-'}</div>
+                  <div className="text-xs text-gray-500">{detailedShipment.source_type}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 font-medium mb-1">TUJUAN</div>
+                  <div className="font-semibold text-gray-900">{detailedShipment.destination_name || detailedShipment.destination_type}</div>
+                  <div className="text-xs text-gray-500">{detailedShipment.destination_type}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 font-medium mb-1">TANGGAL</div>
+                  <div className="font-semibold text-gray-900">{new Date(detailedShipment.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 font-medium mb-1">TIPE / STATUS</div>
+                  <Badge variant="outline" className={detailedShipment.shipment_type === 'RETUR' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-700 border-blue-200'}>
+                    {detailedShipment.shipment_type || 'PENGIRIMAN'}
+                  </Badge>
+                </div>
+              </div>
+
+              <h4 className="font-semibold text-gray-900 mb-3 border-b pb-2">Produk Terkirim</h4>
+              <div className="space-y-2">
+                {detailedShipment.items?.map((item: any) => (
+                  <div key={item.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <span className="font-medium text-gray-800">{item.product?.name || 'Produk Tidak Dikenal'}</span>
+                    <span className="font-bold text-blue-700 bg-blue-100 px-3 py-1 rounded-full">{item.qty} pcs</span>
+                  </div>
+                ))}
+                {!detailedShipment.items?.length && (
+                  <div className="text-gray-500 italic text-sm text-center py-4">Tidak ada data produk.</div>
+                )}
+              </div>
+              
+              {detailedShipment.notes && (
+                <div className="mt-6 pt-4 border-t border-gray-100">
+                  <h4 className="font-semibold text-gray-900 mb-2">Catatan Tambahan</h4>
+                  <p className="text-sm text-gray-600 bg-yellow-50 p-3 rounded-lg border border-yellow-100">{detailedShipment.notes}</p>
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-gray-100 bg-gray-50/50 rounded-b-xl flex justify-end">
+              <button onClick={() => setDetailedShipment(null)} className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition font-medium">
+                Tutup Detail
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

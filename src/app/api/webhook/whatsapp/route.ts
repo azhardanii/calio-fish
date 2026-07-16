@@ -513,11 +513,19 @@ export async function POST(req: Request) {
             // 1. Resolve Source
             let sourceId = null;
             if (srcType === 'WAREHOUSE') {
-              const w = await tx.warehouse.findFirst({ where: { name: { contains: srcName, mode: 'insensitive' } }});
-              if (w) sourceId = w.id;
+              const ws = await tx.warehouse.findMany({ where: { name: { contains: srcName, mode: 'insensitive' } }});
+              if (ws.length > 1) {
+                const names = ws.map(w => w.name).slice(0, 3).join(', ');
+                throw new Error(`AMBIGUOUS:Ada lebih dari 1 warehouse dengan kata kunci '${srcName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
+              }
+              if (ws.length === 1) sourceId = ws[0].id;
             } else if (srcType === 'OUTLET') {
-              const o = await tx.outlet.findFirst({ where: { nama: { contains: srcName, mode: 'insensitive' } }});
-              if (o) sourceId = o.id;
+              const os = await tx.outlet.findMany({ where: { nama: { contains: srcName, mode: 'insensitive' }, OR: [{ status: 'Aktif' }, { status: null }] }});
+              if (os.length > 1) {
+                const names = os.map(o => o.nama).slice(0, 3).join(', ');
+                throw new Error(`AMBIGUOUS:Ada lebih dari 1 outlet aktif dengan kata kunci '${srcName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
+              }
+              if (os.length === 1) sourceId = os[0].id;
             }
 
             // 2. Resolve Destination
@@ -525,14 +533,26 @@ export async function POST(req: Request) {
             let outletId = null;
             let affiliateId = null;
             if (destType === 'WAREHOUSE') {
-              const w = await tx.warehouse.findFirst({ where: { name: { contains: destName, mode: 'insensitive' } }});
-              if (w) destId = w.id;
+              const ws = await tx.warehouse.findMany({ where: { name: { contains: destName, mode: 'insensitive' } }});
+              if (ws.length > 1) {
+                const names = ws.map(w => w.name).slice(0, 3).join(', ');
+                throw new Error(`AMBIGUOUS:Ada lebih dari 1 warehouse dengan kata kunci '${destName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
+              }
+              if (ws.length === 1) destId = ws[0].id;
             } else if (destType === 'OUTLET') {
-              const o = await tx.outlet.findFirst({ where: { nama: { contains: destName, mode: 'insensitive' } }});
-              if (o) { destId = o.id; outletId = o.id; }
+              const os = await tx.outlet.findMany({ where: { nama: { contains: destName, mode: 'insensitive' }, OR: [{ status: 'Aktif' }, { status: null }] }});
+              if (os.length > 1) {
+                const names = os.map(o => o.nama).slice(0, 3).join(', ');
+                throw new Error(`AMBIGUOUS:Ada lebih dari 1 outlet aktif dengan kata kunci '${destName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
+              }
+              if (os.length === 1) { destId = os[0].id; outletId = os[0].id; }
             } else if (destType === 'AFFILIATE') {
-              const a = await tx.affiliate.findFirst({ where: { nama: { contains: destName, mode: 'insensitive' } }});
-              if (a) affiliateId = a.id;
+              const as = await tx.affiliate.findMany({ where: { nama: { contains: destName, mode: 'insensitive' } }});
+              if (as.length > 1) {
+                const names = as.map(a => a.nama).slice(0, 3).join(', ');
+                throw new Error(`AMBIGUOUS:Ada lebih dari 1 affiliator dengan kata kunci '${destName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
+              }
+              if (as.length === 1) affiliateId = as[0].id;
             }
             
             // 3. Create Shipment Record
@@ -635,9 +655,13 @@ export async function POST(req: Request) {
         
         replyMsg = `✅ *${totalShipments} Rute Logistik* tanggal ${parsedData.date} berhasil diproses dan dicatat!`;
       }
-    } catch (dbError) {
+    } catch (dbError: any) {
       console.error('Database insertion error:', dbError);
-      replyMsg = `❌ Gagal mencatat laporan ${parsedData.report_type} ke database.`;
+      if (dbError?.message && dbError.message.startsWith('AMBIGUOUS:')) {
+        replyMsg = `⚠️ Laporan dibatalkan.\n\n${dbError.message.replace('AMBIGUOUS:', '')}`;
+      } else {
+        replyMsg = `❌ Gagal mencatat laporan ${parsedData.report_type} ke database.`;
+      }
     }
 
     await sendChatPresence(payload.chat_id, 'paused');
