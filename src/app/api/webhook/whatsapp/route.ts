@@ -79,14 +79,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'ignored', reason: 'message from bot/admin' });
     }
 
-    if (processedMessageIds.has(payload.id)) {
-      return NextResponse.json({ status: 'ignored', reason: 'duplicate message id' });
-    }
-    processedMessageIds.add(payload.id);
-    
-    if (processedMessageIds.size > 1000) {
-      const firstItem = processedMessageIds.values().next().value;
-      if (firstItem) processedMessageIds.delete(firstItem);
+    try {
+      if (payload.id) {
+        await prisma.systemSetting.create({
+          data: {
+            key: `msg_${payload.id}`,
+            value: 'processed'
+          }
+        });
+      }
+    } catch (e) {
+      // If unique constraint fails, it means it's already being processed!
+      return NextResponse.json({ status: 'ignored', reason: 'duplicate message id (db lock)' });
     }
 
     // Lookup employee by phone number
