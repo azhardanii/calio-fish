@@ -69,14 +69,14 @@ function ChartTooltip({ active, payload, label, data }: any) {
 export default function OverviewClient({ data, isValidating }: { data: OverviewData, isValidating?: boolean }) {
   const router = useRouter();
   const {
-    filterState, 
-    highlightOmset = { title: 'Omset', value: 0, note: '', isUp: false }, 
+    filterState,
+    highlightOmset = { title: 'Omset', value: 0, note: '', isUp: false },
     totalOmset, totalTarget, totalGap, totalPersentase,
     channels, chartData, totalOutlets, totalSisaTagihan,
     totalEmployees, hadirToday, attendanceTodayCount,
     lowStockProducts, allProducts, recentFeed,
   } = data as any;
-  
+
   const [customMonth, setCustomMonth] = useState(filterState.month || (new Date().getMonth() + 1).toString());
   const [customYear, setCustomYear] = useState(filterState.year || new Date().getFullYear().toString());
   const [isMounted, setIsMounted] = useState(false);
@@ -84,7 +84,7 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
   useEffect(() => {
     setIsMounted(true);
   }, []);
-  
+
   const handleFilter = (f: string) => {
     if (f === 'custom') {
       router.push(`/overview?filter=custom&month=${customMonth}&year=${customYear}`);
@@ -95,7 +95,7 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
 
   return (
     <div style={{ position: 'relative' }}>
-      
+
       {/* ── FILTER TOOLBAR ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div>
@@ -104,21 +104,22 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
             Menampilkan data untuk: <b>{filterState.filterLabel}</b>
           </div>
         </div>
-        
-        <div style={{ 
-          display: 'flex', gap: 8, alignItems: 'center', 
-          overflowX: 'auto', whiteSpace: 'nowrap', 
-          paddingBottom: 4, 
+
+        <div style={{
+          display: 'flex', gap: 8, alignItems: 'center',
+          overflowX: 'auto', whiteSpace: 'nowrap',
+          paddingBottom: 4,
           WebkitOverflowScrolling: 'touch', msOverflowStyle: 'none', scrollbarWidth: 'none',
           maxWidth: '100%'
         }} className="filter-container">
           <style>{`.filter-container::-webkit-scrollbar { display: none; }
           @keyframes spin { to { transform: rotate(360deg); } }
           `}</style>
-          
-          <button 
+
+          <button
             onClick={() => handleFilter('this_month')}
-            style={{ padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: '1px solid', cursor: 'pointer', flexShrink: 0,
+            style={{
+              padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: '1px solid', cursor: 'pointer', flexShrink: 0,
               background: filterState.filter === 'this_month' ? 'var(--ocean-500)' : 'white',
               color: filterState.filter === 'this_month' ? 'white' : 'var(--text)',
               borderColor: filterState.filter === 'this_month' ? 'var(--ocean-500)' : 'var(--border)'
@@ -127,9 +128,10 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
             Bulan Ini
           </button>
 
-          <button 
+          <button
             onClick={() => handleFilter('last_month')}
-            style={{ padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: '1px solid', cursor: 'pointer', flexShrink: 0,
+            style={{
+              padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: '1px solid', cursor: 'pointer', flexShrink: 0,
               background: filterState.filter === 'last_month' ? 'var(--ocean-500)' : 'white',
               color: filterState.filter === 'last_month' ? 'white' : 'var(--text)',
               borderColor: filterState.filter === 'last_month' ? 'var(--ocean-500)' : 'var(--border)'
@@ -137,10 +139,11 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
           >
             Bulan Lalu
           </button>
-          
-          <button 
+
+          <button
             onClick={() => handleFilter('this_year')}
-            style={{ padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: '1px solid', cursor: 'pointer', flexShrink: 0,
+            style={{
+              padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: '1px solid', cursor: 'pointer', flexShrink: 0,
               background: filterState.filter === 'this_year' ? 'var(--ocean-500)' : 'white',
               color: filterState.filter === 'this_year' ? 'white' : 'var(--text)',
               borderColor: filterState.filter === 'this_year' ? 'var(--ocean-500)' : 'var(--border)'
@@ -148,10 +151,11 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
           >
             Tahun Ini
           </button>
-          
-          <button 
+
+          <button
             onClick={() => handleFilter('last_year')}
-            style={{ padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: '1px solid', cursor: 'pointer', flexShrink: 0,
+            style={{
+              padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: '1px solid', cursor: 'pointer', flexShrink: 0,
               background: filterState.filter === 'last_year' ? 'var(--ocean-500)' : 'white',
               color: filterState.filter === 'last_year' ? 'white' : 'var(--text)',
               borderColor: filterState.filter === 'last_year' ? 'var(--ocean-500)' : 'var(--border)'
@@ -160,9 +164,10 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
             Tahun Lalu
           </button>
 
-          <button 
+          <button
             onClick={() => handleFilter('lifetime')}
-            style={{ padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: '1px solid', cursor: 'pointer', flexShrink: 0,
+            style={{
+              padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: '1px solid', cursor: 'pointer', flexShrink: 0,
               background: filterState.filter === 'lifetime' ? 'var(--ocean-500)' : 'white',
               color: filterState.filter === 'lifetime' ? 'white' : 'var(--text)',
               borderColor: filterState.filter === 'lifetime' ? 'var(--ocean-500)' : 'var(--border)'
@@ -170,19 +175,19 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
           >
             Lifetime
           </button>
-          
+
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'white', padding: '4px 6px', borderRadius: 8, border: '1px solid var(--border)', flexShrink: 0 }}>
-            <select 
-              value={customMonth} 
+            <select
+              value={customMonth}
               onChange={e => setCustomMonth(e.target.value)}
               style={{ padding: '4px 8px', border: 'none', background: 'transparent', fontSize: 13, outline: 'none', cursor: 'pointer' }}
             >
               {[...Array(12)].map((_, i) => (
-                <option key={i+1} value={i+1}>{new Date(0, i).toLocaleString('id-ID', { month: 'short' })}</option>
+                <option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('id-ID', { month: 'short' })}</option>
               ))}
             </select>
-            <select 
-              value={customYear} 
+            <select
+              value={customYear}
               onChange={e => setCustomYear(e.target.value)}
               style={{ padding: '4px 8px', border: 'none', background: 'transparent', fontSize: 13, outline: 'none', cursor: 'pointer' }}
             >
@@ -190,9 +195,10 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
                 <option key={y} value={y}>{y}</option>
               ))}
             </select>
-            <button 
+            <button
               onClick={() => handleFilter('custom')}
-              style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer',
+              style={{
+                padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer',
                 background: filterState.filter === 'custom' ? 'var(--ocean-500)' : 'var(--surface)',
                 color: filterState.filter === 'custom' ? 'white' : 'var(--text)'
               }}
@@ -399,28 +405,28 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
                   : `${attendanceTodayCount} karyawan sudah lapor presensi`}
               </div>
             </div>
-            
+
             {/* Pengiriman */}
             <div className="kpi-block">
               <div className="kpi-label">🚚 Logistik & Pengiriman</div>
               <div className="kpi-value" style={{ fontSize: 28 }}>
                 {(data as any).totalShipments || 0}
                 <span style={{ fontSize: 14, color: 'var(--muted)', fontWeight: 500, marginLeft: 6 }}>
-                  Resi / Surat Jalan
+                  Perjalanan
                 </span>
               </div>
               <div className="kpi-note" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                <span style={{ 
-                  background: 'var(--ocean-100)', 
-                  color: 'var(--ocean-700)', 
-                  padding: '2px 8px', 
-                  borderRadius: 6, 
+                <span style={{
+                  background: 'var(--ocean-100)',
+                  color: 'var(--ocean-700)',
+                  padding: '2px 8px',
+                  borderRadius: 6,
                   fontWeight: 700,
                   fontSize: 12
                 }}>
                   {(data as any).totalItemsSent?.toLocaleString('id-ID') || 0} pcs
                 </span>
-                <span style={{ color: 'var(--muted)' }}>Total akumulasi produk terkirim</span>
+                <span style={{ color: 'var(--muted)' }}>Total produk terkirim</span>
               </div>
             </div>
           </div>
@@ -455,14 +461,14 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
                 </div>
               </div>
             )}
-            
+
             {(data as any).stockDistribution?.totalKerugian > 0 && (
               <div style={{ marginBottom: 16, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 10 }}>
                 <div style={{ fontSize: 11, color: '#dc2626', fontWeight: 600 }}>⚠️ Estimasi Kerugian (Retur)</div>
                 <div style={{ fontSize: 16, color: '#991b1b', fontWeight: 700 }}>{formatRp((data as any).stockDistribution.totalKerugian)}</div>
               </div>
             )}
-            
+
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)', marginBottom: 8, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>
               Total Stok Aktif (Sistem)
             </div>
