@@ -126,12 +126,7 @@ export default function WarehousePage() {
         })}
       </div>
       
-      <div className="mt-8 pt-6 border-t flex flex-col items-center justify-center space-y-4 bg-blue-50 p-8 rounded-xl border border-blue-100">
-        <h3 className="text-xl font-bold text-blue-900">Log Pengiriman Pindah ke Halaman Tersendiri</h3>
-        <p className="text-blue-700 text-center max-w-2xl">
-          Untuk memberikan pengalaman yang lebih baik dengan fitur filter, sorting, dan infinite scrolling, 
-          seluruh data log distribusi dan pengiriman barang (Outbound) sekarang dapat diakses secara khusus di Halaman Log Pengiriman.
-        </p>
+      <div className="mt-8 flex justify-center">
         <Link href="/pengiriman" className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition font-semibold shadow-md">
           Lihat Semua Log Pengiriman <ArrowRight className="w-5 h-5" />
         </Link>

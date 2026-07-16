@@ -94,13 +94,7 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
   };
 
   return (
-    <div style={{ position: 'relative', opacity: isValidating ? 0.6 : 1, transition: 'opacity 0.2s ease-in-out', pointerEvents: isValidating ? 'none' : 'auto' }}>
-      {isValidating && (
-        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 9999, display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(255, 255, 255, 0.95)', color: 'var(--ocean-600)', padding: '16px 32px', borderRadius: 30, fontSize: 16, fontWeight: 700, boxShadow: '0 10px 40px rgba(0, 0, 0, 0.15)', backdropFilter: 'blur(8px)', border: '1px solid var(--ocean-100)' }}>
-          <div style={{ width: 24, height: 24, border: '3px solid var(--ocean-200)', borderTopColor: 'var(--ocean-600)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-          Memuat Data...
-        </div>
-      )}
+    <div style={{ position: 'relative' }}>
       
       {/* ── FILTER TOOLBAR ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>

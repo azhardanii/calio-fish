@@ -13,12 +13,12 @@ function OverviewContent() {
 
   const apiUrl = `/api/data/overview?filter=${filter}${month ? `&month=${month}` : ''}${year ? `&year=${year}` : ''}`;
 
-  const { data, isLoading, isValidating } = useSWR(apiUrl, { 
+  const { data, error, isLoading, isValidating } = useSWR(apiUrl, { 
     revalidateOnFocus: false,
     refreshInterval: 90000 
   });
 
-  if (isLoading && !data) {
+  if (isLoading && !data && !error) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
         <div style={{ textAlign: 'center' }}>
@@ -26,6 +26,15 @@ function OverviewContent() {
           <div style={{ color: '#6b7280', fontSize: 14 }}>Memuat data overview...</div>
         </div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-8 text-center text-red-500 bg-red-50 rounded-xl mt-6">
+        <h3 className="text-xl font-bold mb-2">Gagal Memuat Data</h3>
+        <p>Terjadi kesalahan saat mengambil data dari server. Silakan coba muat ulang halaman (F5) atau periksa koneksi database.</p>
       </div>
     );
   }
