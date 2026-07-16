@@ -77,7 +77,7 @@ export async function sendMessage(phoneNumber: string, message: string, replyMes
       bodyPayload.reply_message_id = replyMessageId;
     }
 
-    const res = await fetch(`${GOWA_HOST}/send/message/text`, {
+    const res = await fetch(`${GOWA_HOST}/send/message`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
