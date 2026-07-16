@@ -217,7 +217,7 @@ export function ProductManager({ products, transactions }: { products: any[], tr
                     <TableCell className="text-right font-mono font-bold text-gray-700">
                       {h.flow === 'IN' ? '+' : '-'}{h.qty}
                     </TableCell>
-                    <TableCell className="text-gray-600">Sistem / Webhook</TableCell>
+                    <TableCell className="text-gray-600 capitalize">{h.employee_name}</TableCell>
                   </TableRow>
                 ))}
                 {filteredTransactions.length === 0 && (
@@ -319,7 +319,7 @@ export function ProductManager({ products, transactions }: { products: any[], tr
                       <TableCell className="text-right font-mono font-bold text-gray-700">
                         {h.flow === 'IN' ? '+' : '-'}{h.qty}
                       </TableCell>
-                      <TableCell className="text-gray-600">Sistem / Webhook</TableCell>
+                      <TableCell className="text-gray-600 capitalize">{h.employee_name}</TableCell>
                     </TableRow>
                   ))}
                   {historyData.length === 0 && (

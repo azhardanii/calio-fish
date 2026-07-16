@@ -162,7 +162,8 @@ export async function POST(req: Request) {
                    description: `Hasil Produksi (${data.kegiatan})`,
                    date: new Date(parsedData.date),
                    destination_type: 'WAREHOUSE',
-                   destination_id: destId
+                   destination_id: destId,
+                   employee_id: employeeId
                  }
                });
                replyMsg = `✅ *Produksi Hasil* ${parsedData.date} dicatat!\nStok ${product.short_name} bertambah ${data.hasil_pcs} pcs.\n📦 Sisa Stok saat ini: *${newBalance.toLocaleString('id-ID')} pcs*`;
@@ -233,6 +234,7 @@ export async function POST(req: Request) {
                         source_type: 'OUTLET',
                         source_id: o.id,
                         destination_type: 'ENDUSER',
+                        employee_id: employeeId
                       }
                     });
                   }
@@ -303,6 +305,7 @@ export async function POST(req: Request) {
                         source_type: 'WAREHOUSE',
                         source_id: w.id,
                         destination_type: 'ENDUSER',
+                        employee_id: employeeId
                       }
                     });
                   }
@@ -404,6 +407,7 @@ export async function POST(req: Request) {
                           source_type: 'WAREHOUSE',
                           source_id: w.id,
                           destination_type: 'ENDUSER',
+                          employee_id: employeeId
                         }
                       });
                     }
@@ -529,7 +533,8 @@ export async function POST(req: Request) {
                      source_type: srcType,
                      source_id: sourceId,
                      destination_type: destType,
-                     destination_id: destId
+                     destination_id: destId,
+                     employee_id: employeeId
                    }
                  });
                }
@@ -580,7 +585,8 @@ export async function POST(req: Request) {
                      source_type: 'OUTLET',
                      source_id: o ? o.id : null,
                      destination_type: 'WAREHOUSE_RETURN',
-                     destination_id: w ? w.id : null
+                     destination_id: w ? w.id : null,
+                     employee_id: employeeId
                    }
                  });
                }
