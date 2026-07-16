@@ -99,11 +99,12 @@ async function main() {
       //     }
       //   });
       } else if (parsedData.report_type === 'PEMBERSIHAN') {
-        await prisma.pembersihanKulit.create({
+        await prisma.produksi.create({
           data: {
             date: new Date(parsedData.date),
-            bahan_beku_kg: data.bahan_beku_kg || 0,
-            bahan_bersih_kg: data.bahan_bersih_kg || 0
+            kegiatan: 'Pembersihan',
+            bahan_baku: data.bahan_beku_kg || 0,
+            bahan_jadi: data.bahan_bersih_kg || 0
           }
         });
       } else if (parsedData.report_type === 'PRODUKSI') {
