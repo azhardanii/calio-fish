@@ -93,11 +93,15 @@ model MarketingOnline {
 model OutboundShipment {
   id              String         @id @default(uuid())
   date            DateTime       @db.Date
+  shipment_type   String?        // "ONLINE", "SAMPLE", "OUTLET", "WAREHOUSE", "RETUR", "KOL"
+  source_type     String?        // "WAREHOUSE", "OUTLET"
+  source_name     String?        // e.g. "Banyuwangi", "Outlet Malang"
   destination_type String        // e.g. "E-Commerce", "Outlet", "Affiliate", "Influencer", "Sample"
   destination_name String?       // e.g. "Shopee", "Outlet Cabang A", "Affiliator Budi"
   outlet_id       String?
   affiliate_id    String?
   status          String         @default("SHIPPED") // "SHIPPED", "PENDING", "CANCELLED"
+  notes           String?
   created_at      DateTime       @default(now())
   updated_at      DateTime       @updatedAt
   

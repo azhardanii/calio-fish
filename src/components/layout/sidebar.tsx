@@ -40,7 +40,7 @@ const navSections = [
       { name: "Database Outlet", href: "/outlet", icon: MapPin },
       { name: "Database Produk", href: "/produk", icon: PackageCheck },
       { name: "Warehouse", href: "/warehouse", icon: WarehouseIcon },
-      { name: "Distribusi Sample", href: "/distribusi-sample", icon: Gift },
+      { name: "Log Pengiriman", href: "/pengiriman", icon: Package },
       { name: "Affiliator", href: "/affiliator", icon: Network },
     ]
   },

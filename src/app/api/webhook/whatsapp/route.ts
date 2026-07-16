@@ -308,6 +308,32 @@ export async function POST(req: Request) {
                   }
                 }
               }
+
+              // Create OutboundShipment for unified tracking
+              const shipment = await tx.outboundShipment.create({
+                data: {
+                  date: new Date(parsedData.date),
+                  shipment_type: 'ONLINE',
+                  source_type: 'WAREHOUSE',
+                  source_name: w.name,
+                  destination_type: 'E-Commerce',
+                  destination_name: data.platform || '-',
+                  status: 'SHIPPED',
+                  employee_id: employeeId
+                }
+              });
+
+              for (const item of items) {
+                if (item.product_key && item.qty > 0) {
+                  const product = await tx.product.findUnique({ where: { sku: item.product_key } });
+                  if (product) {
+                    await tx.outboundItem.create({
+                      data: { shipment_id: shipment.id, product_id: product.id, qty: item.qty }
+                    });
+                  }
+                }
+              }
+
             }
           }
         });
@@ -445,6 +471,9 @@ export async function POST(req: Request) {
           const shipment = await tx.outboundShipment.create({
             data: {
               date: new Date(parsedData.date),
+              shipment_type: 'PENGIRIMAN',
+              source_type: srcType,
+              source_name: srcName,
               destination_type: destType,
               destination_name: destName,
               outlet_id: outletId,
@@ -557,6 +586,21 @@ export async function POST(req: Request) {
                }
              }
           }
+            // Create OutboundShipment for Retur
+            await tx.outboundShipment.create({
+              data: {
+                date: new Date(parsedData.date),
+                shipment_type: 'RETUR',
+                source_type: 'OUTLET',
+                source_name: o ? o.nama : srcName,
+                destination_type: 'WAREHOUSE',
+                destination_name: w ? w.name : destName,
+                outlet_id: o ? o.id : null,
+                notes: 'Retur Kerusakan/Stok Sisa',
+                status: 'SHIPPED',
+                employee_id: employeeId
+              }
+            });
         });
         
         replyMsg = `✅ *Retur Produk* ${parsedData.date}\nDari: ${srcName}\nBerhasil dicatat sebagai Estimasi Kerugian!`;
@@ -587,14 +631,30 @@ export async function POST(req: Request) {
         });
 
       } else if (parsedData.report_type === 'DISTRIBUSI_SAMPLE') {
-        await prisma.distribusiSample.create({
-          data: {
-            date: new Date(parsedData.date),
-            jenis_sample: data.jenis_sample || '-',
-            total_produk: data.total_produk || 0,
-            biaya_ekspedisi: data.biaya_ekspedisi || 0,
-            employee_id: employeeId
-          },
+        await prisma.$transaction(async (tx) => {
+          await tx.distribusiSample.create({
+            data: {
+              date: new Date(parsedData.date),
+              jenis_sample: data.jenis_sample || '-',
+              total_produk: data.total_produk || 0,
+              biaya_ekspedisi: data.biaya_ekspedisi || 0,
+              employee_id: employeeId
+            },
+          });
+
+          await tx.outboundShipment.create({
+            data: {
+              date: new Date(parsedData.date),
+              shipment_type: 'SAMPLE',
+              source_type: 'WAREHOUSE',
+              source_name: 'Banyuwangi',
+              destination_type: 'Sample',
+              destination_name: data.jenis_sample || '-',
+              notes: `Total Produk: ${data.total_produk} | Biaya Ekspedisi: Rp ${data.biaya_ekspedisi || 0}`,
+              status: 'SHIPPED',
+              employee_id: employeeId
+            }
+          });
         });
 
       } else if (parsedData.report_type === 'PRESENSI') {
