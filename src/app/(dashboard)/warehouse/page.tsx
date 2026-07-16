@@ -27,6 +27,7 @@ export default function WarehousePage() {
   }
 
   const warehouses = data?.warehouses || [];
+  const shipments = data?.shipments || [];
   const totalShipments = data?.totalShipments || 0;
   const totalItemsSent = data?.totalItemsSent || 0;
 
@@ -68,7 +69,7 @@ export default function WarehousePage() {
       <div id="warehouse-report" className="grid grid-cols-1 gap-6">
         {warehouses.map((w: any) => {
           const totalKerugian = w.stocks.reduce((acc: number, s: any) => acc + (s.returned_qty * Number(s.product.base_price)), 0);
-          const mapQuery = w.name;
+          const mapQuery = w.address || w.name;
           return (
             <Card key={w.id} className="border-t-4 border-t-blue-600 shadow-md overflow-hidden">
               <div className="grid grid-cols-1 lg:grid-cols-3">
@@ -82,7 +83,7 @@ export default function WarehousePage() {
                       </CardTitle>
                       <div className="flex items-center gap-1 text-sm text-gray-500 mt-2">
                         <MapPin className="w-4 h-4 text-gray-400" />
-                        Berdasarkan nama lokasi
+                        {w.address || 'Alamat belum diatur'}
                       </div>
                     </div>
                     <button onClick={() => openEditModal(w)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition">
@@ -107,6 +108,26 @@ export default function WarehousePage() {
                         <div className="font-bold text-lg text-red-700">Rp {totalKerugian.toLocaleString('id-ID')}</div>
                       </div>
                     )}
+
+                    <div className="mt-6 pt-4 border-t border-gray-100">
+                      <h4 className="font-semibold text-gray-700 mb-3 text-sm">Riwayat Pengiriman Terbaru</h4>
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                        {shipments.filter((s: any) => s.source_name === w.name).slice(0, 5).map((s: any) => (
+                          <div key={s.id} className="flex justify-between items-center p-3 bg-gray-50 border border-gray-100 rounded-lg text-sm">
+                            <div>
+                              <div className="font-semibold text-gray-800">{s.destination_name || s.destination_type}</div>
+                              <div className="text-xs text-gray-500">{new Date(s.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} • {s.shipment_type || 'PENGIRIMAN'}</div>
+                            </div>
+                            <div className="font-bold text-blue-700">
+                              {s.items?.reduce((sum: number, i: any) => sum + i.qty, 0)} pcs
+                            </div>
+                          </div>
+                        ))}
+                        {shipments.filter((s: any) => s.source_name === w.name).length === 0 && (
+                          <div className="text-sm text-gray-400 italic py-2 text-center">Belum ada riwayat pengiriman dari fasilitas ini.</div>
+                        )}
+                      </div>
+                    </div>
                   </CardContent>
                 </div>
                 
@@ -147,7 +168,11 @@ export default function WarehousePage() {
                   <option value="FACTORY">FACTORY (Pabrik)</option>
                   <option value="STORAGE">STORAGE (Gudang Cabang)</option>
                 </select>
-                <p className="text-xs text-gray-500 mt-2">Google Maps akan menggunakan nama warehouse sebagai titik lokasi otomatis.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Alamat / Titik Maps</label>
+                <textarea className="w-full border rounded p-2" rows={3} placeholder="Contoh: Jl. Sudirman No. 123, Banyuwangi" value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})}></textarea>
+                <p className="text-xs text-gray-500 mt-1">Alamat ini akan digunakan untuk titik Google Maps.</p>
               </div>
               
               <div className="flex justify-end gap-3 pt-4 border-t mt-6">

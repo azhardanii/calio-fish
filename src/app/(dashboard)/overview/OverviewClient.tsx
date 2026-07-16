@@ -401,13 +401,35 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
             </div>
             
             {/* Pengiriman */}
-            <div className="kpi-block">
-              <div className="kpi-label">🚚 Total Pengiriman</div>
-              <div className="kpi-value" style={{ fontSize: 28 }}>
-                {(data as any).totalShipments || 0}
+            <div className="kpi-block" style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', border: '1px solid #bfdbfe' }}>
+              <div className="kpi-label" style={{ color: '#1e40af' }}>🚚 Logistik & Pengiriman</div>
+              
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 12 }}>
+                <div style={{ fontSize: 32, fontWeight: 800, color: '#1e3a8a', lineHeight: 1 }}>
+                  {(data as any).totalShipments || 0}
+                </div>
+                <div style={{ fontSize: 13, color: '#3b82f6', fontWeight: 600 }}>Total Resi/Jalan</div>
               </div>
-              <div className="kpi-note" style={{ color: 'var(--ocean-600)' }}>
-                📦 {(data as any).totalItemsSent?.toLocaleString('id-ID') || 0} pcs produk terkirim
+              
+              <div style={{ 
+                marginTop: 16, 
+                padding: '10px 12px', 
+                background: 'rgba(255,255,255,0.6)', 
+                borderRadius: 8,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                border: '1px solid rgba(191, 219, 254, 0.5)'
+              }}>
+                <div style={{ fontSize: 20 }}>📦</div>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#15803d', lineHeight: 1.2 }}>
+                    {(data as any).totalItemsSent?.toLocaleString('id-ID') || 0} pcs
+                  </div>
+                  <div style={{ fontSize: 11, color: '#4b5563', fontWeight: 500 }}>
+                    Akumulasi semua produk terkirim
+                  </div>
+                </div>
               </div>
             </div>
           </div>
