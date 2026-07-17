@@ -23,8 +23,8 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, ex
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
     const today = new Date();
     return {
-      from: today,
-      to: today
+      from: new Date(today.getFullYear(), today.getMonth(), 1),
+      to: new Date(today.getFullYear(), today.getMonth() + 1, 0)
     }
   });
   const [appliedDateRange, setAppliedDateRange] = useState<DateRange | undefined>(dateRange);

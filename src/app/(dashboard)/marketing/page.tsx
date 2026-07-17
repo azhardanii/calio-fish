@@ -1,7 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import useSWR from 'swr';
+import { DateRange } from "react-day-picker";
+import { format } from "date-fns";
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PdfExportButton } from '@/components/ui/PdfExportButton';
@@ -25,45 +28,94 @@ export default function MarketingPage() {
     );
   }
 
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+    const today = new Date();
+    return {
+      from: new Date(today.getFullYear(), today.getMonth(), 1),
+      to: new Date(today.getFullYear(), today.getMonth() + 1, 0)
+    };
+  });
+  const [appliedDateRange, setAppliedDateRange] = useState<DateRange | undefined>(dateRange);
+
+  const filterLabel = useMemo(() => {
+    if (!appliedDateRange?.from) return 'Lifetime (Semua Waktu)';
+    
+    const fromStr = appliedDateRange.from.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    const today = new Date();
+    const isToday = appliedDateRange.from.getDate() === today.getDate() && 
+                    appliedDateRange.from.getMonth() === today.getMonth() &&
+                    appliedDateRange.from.getFullYear() === today.getFullYear();
+    const isSameDay = !appliedDateRange.to || appliedDateRange.from.getTime() === appliedDateRange.to.getTime();
+
+    if (isSameDay) return isToday ? 'Hari Ini' : fromStr;
+    const toStr = appliedDateRange.to?.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) || '';
+    return `${fromStr} - ${toStr}`;
+  }, [appliedDateRange]);
+
+  const handleApplyFilter = () => {
+    setAppliedDateRange(dateRange);
+  };
+
   const offlineReports = data?.offlineReports || [];
   const onlineReports = data?.onlineReports || [];
   const globalOfflineTarget = data?.globalOfflineTarget || 0;
   const globalShopeeTarget = data?.globalShopeeTarget || 0;
   const globalTiktokTarget = data?.globalTiktokTarget || 0;
 
+  const filteredOfflineReports = useMemo(() => {
+    const fromDate = appliedDateRange?.from;
+    if (!fromDate) return offlineReports;
+    return offlineReports.filter((r: any) => {
+      const d = new Date(r.date);
+      d.setHours(0, 0, 0, 0);
+      const from = new Date(fromDate);
+      from.setHours(0, 0, 0, 0);
+      const to = appliedDateRange.to ? new Date(appliedDateRange.to) : from;
+      to.setHours(23, 59, 59, 999);
+      return d.getTime() >= from.getTime() && d.getTime() <= to.getTime();
+    });
+  }, [offlineReports, appliedDateRange]);
+
+  const filteredOnlineReports = useMemo(() => {
+    const fromDate = appliedDateRange?.from;
+    if (!fromDate) return onlineReports;
+    return onlineReports.filter((r: any) => {
+      const d = new Date(r.date);
+      d.setHours(0, 0, 0, 0);
+      const from = new Date(fromDate);
+      from.setHours(0, 0, 0, 0);
+      const to = appliedDateRange.to ? new Date(appliedDateRange.to) : from;
+      to.setHours(23, 59, 59, 999);
+      return d.getTime() >= from.getTime() && d.getTime() <= to.getTime();
+    });
+  }, [onlineReports, appliedDateRange]);
+
   const latestOffline = offlineReports[0];
-  const shopeeReports = onlineReports.filter((r: any) => r.platform.toLowerCase() === 'shopee');
-  const tiktokReports = onlineReports.filter((r: any) => r.platform.toLowerCase() === 'tiktok');
-  const latestShopee = shopeeReports[0];
-  const latestTiktok = tiktokReports[0];
+  const shopeeReports = filteredOnlineReports.filter((r: any) => r.platform.toLowerCase() === 'shopee');
+  const tiktokReports = filteredOnlineReports.filter((r: any) => r.platform.toLowerCase() === 'tiktok');
+  const latestShopee = onlineReports.filter((r: any) => r.platform.toLowerCase() === 'shopee')[0];
+  const latestTiktok = onlineReports.filter((r: any) => r.platform.toLowerCase() === 'tiktok')[0];
 
   const currentOfflineTarget = globalOfflineTarget > 0 ? globalOfflineTarget : (latestOffline ? Number(latestOffline.target_bulanan) : 0);
   const currentShopeeTarget = globalShopeeTarget > 0 ? globalShopeeTarget : (latestShopee ? Number(latestShopee.target_mtd) : 0);
   const currentTiktokTarget = globalTiktokTarget > 0 ? globalTiktokTarget : (latestTiktok ? Number(latestTiktok.target_mtd) : 0);
 
-  const targetMonth = latestOffline ? new Date(latestOffline.date).getMonth() : new Date().getMonth();
-  const targetYear = latestOffline ? new Date(latestOffline.date).getFullYear() : new Date().getFullYear();
-
-  const offlineOmsetMtd = offlineReports
-    .filter((r: any) => new Date(r.date).getMonth() === targetMonth && new Date(r.date).getFullYear() === targetYear)
-    .reduce((sum: number, r: any) => sum + Number(r.omset_harian), 0);
+  const offlineOmsetMtd = filteredOfflineReports.reduce((sum: number, r: any) => sum + Number(r.omset_harian), 0);
   const offlineGap = currentOfflineTarget > 0 ? (currentOfflineTarget - offlineOmsetMtd) * -1 : 0;
   const offlinePersentase = currentOfflineTarget > 0 ? (offlineOmsetMtd / currentOfflineTarget) * 100 : 0;
-  const currentOutletAktif = data?.totalOutlets || offlineReports.find((r: any) => Number(r.jumlah_outlet_aktif) > 0)?.jumlah_outlet_aktif || 0;
+  
+  // Get active outlet from the most recent offline report in the filtered data
+  const currentOutletAktif = data?.totalOutlets || filteredOfflineReports.find((r: any) => Number(r.jumlah_outlet_aktif) > 0)?.jumlah_outlet_aktif || 0;
 
-  const shopeeOmsetMtd = shopeeReports
-    .filter((r: any) => new Date(r.date).getMonth() === targetMonth && new Date(r.date).getFullYear() === targetYear)
-    .reduce((sum: number, r: any) => sum + Number(r.omset_harian), 0);
+  const shopeeOmsetMtd = shopeeReports.reduce((sum: number, r: any) => sum + Number(r.omset_harian), 0);
   const shopeePersentase = currentShopeeTarget > 0 ? (shopeeOmsetMtd / currentShopeeTarget) * 100 : 0;
 
-  const tiktokOmsetMtd = tiktokReports
-    .filter((r: any) => new Date(r.date).getMonth() === targetMonth && new Date(r.date).getFullYear() === targetYear)
-    .reduce((sum: number, r: any) => sum + Number(r.omset_harian), 0);
+  const tiktokOmsetMtd = tiktokReports.reduce((sum: number, r: any) => sum + Number(r.omset_harian), 0);
   const tiktokPersentase = currentTiktokTarget > 0 ? (tiktokOmsetMtd / currentTiktokTarget) * 100 : 0;
 
   // Running MTD
   let cumulativeMtd = 0, currentMonth = -1;
-  const enrichedOfflineReports = [...offlineReports].reverse().map((r: any) => {
+  const enrichedOfflineReports = [...filteredOfflineReports].reverse().map((r: any) => {
     const rMonth = new Date(r.date).getMonth();
     if (rMonth !== currentMonth) { currentMonth = rMonth; cumulativeMtd = 0; }
     cumulativeMtd += Number(r.omset_harian);
@@ -275,9 +327,30 @@ export default function MarketingPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end mb-6">
-        <PdfExportButton targetId="marketing-report" filename="marketing-report" />
+      {/* FILTER TOOLBAR */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: 'var(--text)' }}>Marketing & Penjualan</h2>
+          <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 4 }}>
+            Menampilkan data untuk: <b>{filterLabel}</b>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <DateRangePicker date={dateRange} setDate={setDateRange} />
+          <button
+            onClick={handleApplyFilter}
+            style={{
+              padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
+              background: 'var(--ocean-500)', color: 'white', height: 36
+            }}
+          >
+            Tampilkan
+          </button>
+          <PdfExportButton targetId="marketing-report" filename={`marketing-report-${filterLabel.replace(/\s+/g, '-').toLowerCase()}`} className="h-9" />
+        </div>
       </div>
+
       <div id="marketing-report">
         <Tabs tabs={tabs} />
       </div>
