@@ -87,6 +87,13 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
         to: new Date(filterState.to)
       }
     }
+    if (filterState.filterLabel !== 'Lifetime (Keseluruhan Waktu)') {
+      const today = new Date();
+      return {
+        from: new Date(today.getFullYear(), today.getMonth(), 1),
+        to: new Date(today.getFullYear(), today.getMonth() + 1, 0)
+      }
+    }
     return undefined;
   });
 
@@ -98,7 +105,7 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
 
   const handleApplyFilter = () => {
     if (!dateRange?.from) {
-      router.push('/overview');
+      router.push('/overview?lifetime=true');
       return;
     }
     const fromStr = format(dateRange.from, 'yyyy-MM-dd');
@@ -130,17 +137,6 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
             }}
           >
             Tampilkan
-          </button>
-          <button
-            onClick={() => { setDateRange(undefined); router.push('/overview'); }}
-            style={{
-              padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: '1px solid var(--border)', cursor: 'pointer',
-              background: 'white',
-              color: 'var(--text)',
-              height: 36
-            }}
-          >
-            Reset
           </button>
         </div>
       </div>

@@ -150,12 +150,23 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, ex
   const uniqueKegiatan = Array.from(new Set([...defaultKegiatan, ...initialData.map(p => p.kegiatan)]));
 
   const filterLabel = useMemo(() => {
-    if (!appliedDateRange?.from) return 'Semua Waktu';
+    if (!appliedDateRange?.from) return 'Lifetime (Semua Waktu)';
+    
     const fromStr = appliedDateRange.from.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-    if (!appliedDateRange.to || appliedDateRange.from.getTime() === appliedDateRange.to.getTime()) {
-      return fromStr;
+    
+    // Check if the selected date is exactly today
+    const today = new Date();
+    const isToday = appliedDateRange.from.getDate() === today.getDate() && 
+                    appliedDateRange.from.getMonth() === today.getMonth() &&
+                    appliedDateRange.from.getFullYear() === today.getFullYear();
+
+    const isSameDay = !appliedDateRange.to || appliedDateRange.from.getTime() === appliedDateRange.to.getTime();
+
+    if (isSameDay) {
+      return isToday ? 'Hari Ini' : fromStr;
     }
-    const toStr = appliedDateRange.to.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    
+    const toStr = appliedDateRange.to?.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) || '';
     return `${fromStr} - ${toStr}`;
   }, [appliedDateRange]);
 

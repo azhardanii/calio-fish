@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
 
   let startDate: Date | undefined = undefined;
   let endDate: Date | undefined = undefined;
-  let filterLabel = 'Keseluruhan Waktu';
+  let filterLabel = 'Lifetime (Keseluruhan Waktu)';
   let isDailyChart = true;
   let monthsCount = 1;
 
@@ -41,9 +41,17 @@ export async function GET(req: NextRequest) {
     } else {
        filterLabel = `${startDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} - ${endDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}`;
     }
-  } else {
+  } else if (searchParams.get('lifetime') === 'true') {
     isDailyChart = false;
     monthsCount = 12;
+  } else {
+    // Default to this month
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    startDate = new Date(currentYear, currentMonth, 1);
+    endDate = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59, 999);
+    monthsCount = 1;
+    filterLabel = startDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
   }
 
   const dateFilter = startDate && endDate ? { gte: startDate, lte: endDate } : undefined;
