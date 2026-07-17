@@ -66,22 +66,43 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
     return data;
   }, [initialData, filterKegiatan, filterDateRange]);
 
-  // Calculations for Top Cards (Today)
-  const todayStats = useMemo(() => {
+  const daysInPeriod = useMemo(() => {
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayData = initialData.filter((p) => {
-      const d = new Date(p.date);
-      d.setHours(0, 0, 0, 0);
-      return d.getTime() === today.getTime();
-    });
+    switch (filterDateRange) {
+      case 'today': return 1;
+      case 'this_week': return 7;
+      case 'this_month': return new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+      case 'last_month': {
+        let y = today.getFullYear();
+        let m = today.getMonth() - 1;
+        if (m < 0) { m = 11; y--; }
+        return new Date(y, m + 1, 0).getDate();
+      }
+      case 'this_year': return (new Date(today.getFullYear(), 1, 29).getMonth() === 1 ? 366 : 365);
+      case 'last_year': return (new Date(today.getFullYear() - 1, 1, 29).getMonth() === 1 ? 366 : 365);
+      case 'custom': return new Date(parseInt(customYear), parseInt(customMonth), 0).getDate();
+      default: {
+        if (filteredData.length === 0) return 1;
+        const dates = filteredData.map(d => new Date(d.date).getTime());
+        const min = Math.min(...dates);
+        const max = Math.max(...dates);
+        const days = Math.ceil((max - min) / (1000 * 60 * 60 * 24)) + 1;
+        return days || 1;
+      }
+    }
+  }, [filterDateRange, customMonth, customYear, filteredData]);
 
+  const totalTargetPcs = targetPcs * daysInPeriod;
+  const totalTargetKg = targetKg * daysInPeriod;
+
+  // Calculations for Top Cards (Dynamic based on filter)
+  const summaryStats = useMemo(() => {
     let totalPcs = 0;
     let totalKg = 0;
     let sumBaku = 0;
     let sumJadi = 0;
 
-    todayData.forEach(p => {
+    filteredData.forEach(p => {
       if (p.total_hasil_pcs) totalPcs += p.total_hasil_pcs;
       if (p.bahan_jadi && p.kegiatan.toLowerCase() !== 'mengemas') {
         totalKg += p.bahan_jadi;
@@ -99,38 +120,107 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
       totalKg,
       rendemen: rendemen.toFixed(1)
     };
-  }, [initialData]);
+  }, [filteredData]);
 
-  // Data for Charts (Last 7 Days)
+  // Data for Charts (Dynamic based on filter)
   const chartData = useMemo(() => {
-    const dataMap: Record<string, { dateStr: string; pcs: number; rendemen: number; sumBaku: number; sumJadi: number }> = {};
+    const dataMap: Record<string, { dateStr: string; pcs: number; rendemen: number; sumBaku: number; sumJadi: number; sortKey: number }> = {};
     
-    // Initialize last 7 days
-    for (let i = 6; i >= 0; i--) {
+    const isYearly = filterDateRange === 'this_year' || filterDateRange === 'last_year' || filterDateRange === 'all';
+
+    // Pre-fill dates for continuous chart
+    if (filterDateRange === 'this_month' || filterDateRange === 'last_month' || filterDateRange === 'custom') {
+      let y, m;
+      const today = new Date();
+      if (filterDateRange === 'this_month') {
+        y = today.getFullYear(); m = today.getMonth();
+      } else if (filterDateRange === 'last_month') {
+        y = today.getFullYear(); m = today.getMonth() - 1;
+        if (m < 0) { m = 11; y--; }
+      } else {
+        y = parseInt(customYear); m = parseInt(customMonth) - 1;
+      }
+      const days = new Date(y, m + 1, 0).getDate();
+      for (let i = 1; i <= days; i++) {
+        const d = new Date(y, m, i);
+        const key = d.toDateString();
+        dataMap[key] = { 
+          dateStr: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }), 
+          pcs: 0, rendemen: 0, sumBaku: 0, sumJadi: 0, sortKey: d.getTime() 
+        };
+      }
+    } else if (filterDateRange === 'this_week') {
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      const firstDay = new Date(today.setDate(today.getDate() - today.getDay()));
+      for(let i = 0; i < 7; i++) {
+        const d = new Date(firstDay);
+        d.setDate(d.getDate() + i);
+        const key = d.toDateString();
+        dataMap[key] = { 
+          dateStr: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }), 
+          pcs: 0, rendemen: 0, sumBaku: 0, sumJadi: 0, sortKey: d.getTime() 
+        };
+      }
+    } else if (filterDateRange === 'today') {
       const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dateStr = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-      dataMap[d.toDateString()] = { dateStr, pcs: 0, rendemen: 0, sumBaku: 0, sumJadi: 0 };
+      d.setHours(0,0,0,0);
+      const key = d.toDateString();
+      dataMap[key] = { 
+        dateStr: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }), 
+        pcs: 0, rendemen: 0, sumBaku: 0, sumJadi: 0, sortKey: d.getTime() 
+      };
+    } else if (isYearly) {
+      let y = new Date().getFullYear();
+      if (filterDateRange === 'last_year') y -= 1;
+      
+      if (filterDateRange !== 'all') {
+        for(let m = 0; m < 12; m++) {
+          const key = `${y}-${m}`;
+          const d = new Date(y, m, 1);
+          dataMap[key] = {
+            dateStr: d.toLocaleDateString('id-ID', { month: 'short' }),
+            pcs: 0, rendemen: 0, sumBaku: 0, sumJadi: 0, sortKey: d.getTime()
+          };
+        }
+      }
     }
 
-    initialData.forEach(p => {
+    filteredData.forEach(p => {
       const d = new Date(p.date);
-      const key = d.toDateString();
-      if (dataMap[key]) {
-        if (p.total_hasil_pcs) dataMap[key].pcs += p.total_hasil_pcs;
-        if (p.bahan_baku && p.bahan_jadi) {
-          dataMap[key].sumBaku += p.bahan_baku;
-          dataMap[key].sumJadi += p.bahan_jadi;
-        }
+      let key = '';
+      let dateStr = '';
+      let sortKey = 0;
+
+      if (isYearly) {
+        key = `${d.getFullYear()}-${d.getMonth()}`;
+        dateStr = d.toLocaleDateString('id-ID', { month: 'short', year: filterDateRange === 'all' ? 'numeric' : undefined });
+        sortKey = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+      } else {
+        key = d.toDateString();
+        dateStr = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+        sortKey = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      }
+
+      if (!dataMap[key]) {
+        dataMap[key] = { dateStr, pcs: 0, rendemen: 0, sumBaku: 0, sumJadi: 0, sortKey };
+      }
+
+      if (p.total_hasil_pcs) dataMap[key].pcs += p.total_hasil_pcs;
+      if (p.bahan_baku && p.bahan_jadi) {
+        dataMap[key].sumBaku += p.bahan_baku;
+        dataMap[key].sumJadi += p.bahan_jadi;
       }
     });
 
-    return Object.values(dataMap).map(item => ({
-      date: item.dateStr,
-      pcs: item.pcs,
-      rendemen: item.sumBaku > 0 ? Number(((item.sumJadi / item.sumBaku) * 100).toFixed(1)) : 0
-    }));
-  }, [initialData]);
+    return Object.values(dataMap)
+      .sort((a, b) => a.sortKey - b.sortKey)
+      .map(item => ({
+        date: item.dateStr,
+        pcs: item.pcs,
+        rendemen: item.sumBaku > 0 ? Number(((item.sumJadi / item.sumBaku) * 100).toFixed(1)) : 0
+      }));
+  }, [filteredData, filterDateRange, customMonth, customYear]);
 
   const defaultKegiatan = ['Pembersihan', 'Menggoreng', 'Menjemur', 'Menimbang', 'Mengemas'];
   const uniqueKegiatan = Array.from(new Set([...defaultKegiatan, ...initialData.map(p => p.kegiatan)]));
@@ -234,51 +324,51 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <Card className="bg-gradient-to-br from-blue-50 to-white shadow-sm border-blue-100">
           <CardContent className="p-6">
-            <h3 className="text-sm font-semibold text-blue-600 mb-2">Pencapaian (Pcs) Hari Ini</h3>
+            <h3 className="text-sm font-semibold text-blue-600 mb-2">Pencapaian (Pcs) {filterLabel}</h3>
             <div className="flex items-end gap-2">
-              <span className="text-3xl font-bold text-gray-900">{todayStats.totalPcs}</span>
-              <span className="text-sm text-gray-500 mb-1">/ {targetPcs} pcs</span>
+              <span className="text-3xl font-bold text-gray-900">{summaryStats.totalPcs}</span>
+              <span className="text-sm text-gray-500 mb-1">/ {totalTargetPcs} pcs</span>
             </div>
             <div className="mt-4 h-2 w-full bg-blue-100 rounded-full overflow-hidden">
               <div 
-                className={`h-full ${todayStats.totalPcs >= targetPcs ? 'bg-green-500' : 'bg-blue-500'}`} 
-                style={{ width: `${Math.min((todayStats.totalPcs / targetPcs) * 100, 100)}%` }}
+                className={`h-full ${summaryStats.totalPcs >= totalTargetPcs ? 'bg-green-500' : 'bg-blue-500'}`} 
+                style={{ width: `${Math.min((summaryStats.totalPcs / totalTargetPcs) * 100, 100)}%` }}
               />
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              {((todayStats.totalPcs / targetPcs) * 100).toFixed(1)}% tercapai
+              {((summaryStats.totalPcs / totalTargetPcs) * 100 || 0).toFixed(1)}% tercapai
             </p>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-indigo-50 to-white shadow-sm border-indigo-100">
           <CardContent className="p-6">
-            <h3 className="text-sm font-semibold text-indigo-600 mb-2">Barang Setengah Jadi (Kg) Hari Ini</h3>
+            <h3 className="text-sm font-semibold text-indigo-600 mb-2">Barang Setengah Jadi (Kg) {filterLabel}</h3>
             <div className="flex items-end gap-2">
-              <span className="text-3xl font-bold text-gray-900">{todayStats.totalKg.toFixed(1)}</span>
-              <span className="text-sm text-gray-500 mb-1">/ {targetKg} kg</span>
+              <span className="text-3xl font-bold text-gray-900">{summaryStats.totalKg.toFixed(1)}</span>
+              <span className="text-sm text-gray-500 mb-1">/ {totalTargetKg} kg</span>
             </div>
             <div className="mt-4 h-2 w-full bg-indigo-100 rounded-full overflow-hidden">
               <div 
-                className={`h-full ${todayStats.totalKg >= targetKg ? 'bg-green-500' : 'bg-indigo-500'}`} 
-                style={{ width: `${Math.min((todayStats.totalKg / targetKg) * 100, 100)}%` }}
+                className={`h-full ${summaryStats.totalKg >= totalTargetKg ? 'bg-green-500' : 'bg-indigo-500'}`} 
+                style={{ width: `${Math.min((summaryStats.totalKg / totalTargetKg) * 100, 100)}%` }}
               />
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              {((todayStats.totalKg / targetKg) * 100).toFixed(1)}% tercapai
+              {((summaryStats.totalKg / totalTargetKg) * 100 || 0).toFixed(1)}% tercapai
             </p>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-emerald-50 to-white shadow-sm border-emerald-100">
           <CardContent className="p-6">
-            <h3 className="text-sm font-semibold text-emerald-600 mb-2">Rata-Rata Rendemen Hari Ini</h3>
+            <h3 className="text-sm font-semibold text-emerald-600 mb-2">Rata-Rata Rendemen {filterLabel}</h3>
             <div className="flex items-end gap-2">
-              <span className="text-3xl font-bold text-gray-900">{todayStats.rendemen}%</span>
+              <span className="text-3xl font-bold text-gray-900">{summaryStats.rendemen}%</span>
             </div>
             <div className="mt-4 flex items-center gap-2">
-               <span className={`text-xs font-semibold px-2 py-1 rounded-full ${Number(todayStats.rendemen) >= 80 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                 {Number(todayStats.rendemen) >= 80 ? 'Efisien' : (Number(todayStats.rendemen) === 0 ? 'Belum Ada Data' : 'Perlu Perhatian')}
+               <span className={`text-xs font-semibold px-2 py-1 rounded-full ${Number(summaryStats.rendemen) >= 80 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                 {Number(summaryStats.rendemen) >= 80 ? 'Efisien' : (Number(summaryStats.rendemen) === 0 ? 'Belum Ada Data' : 'Perlu Perhatian')}
                </span>
                <span className="text-xs text-gray-500">(Ideal &gt; 80%)</span>
             </div>
@@ -290,7 +380,7 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm text-gray-600">Output Produksi (Pcs) - 7 Hari Terakhir</CardTitle>
+            <CardTitle className="text-sm text-gray-600">Output Produksi (Pcs) - {filterLabel}</CardTitle>
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -307,7 +397,7 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm text-gray-600">Tren Rendemen (%) - 7 Hari Terakhir</CardTitle>
+            <CardTitle className="text-sm text-gray-600">Tren Rendemen (%) - {filterLabel}</CardTitle>
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
