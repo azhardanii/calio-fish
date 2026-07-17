@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { DateRange } from "react-day-picker";
+import { format } from "date-fns";
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
@@ -11,7 +14,7 @@ type FeedItem = { type: string; title: string; sub: string; time: string; color:
 type ProductStock = { name: string; stok: number };
 
 interface OverviewData {
-  filterState: { filter: string; month: string; year: string; filterLabel: string };
+  filterState: { from: string; to: string; filterLabel: string };
   highlightOmset: { title: string; value: number; note: string; isUp: boolean };
   totalOmset: number;
   totalTarget: number;
@@ -77,20 +80,30 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
     lowStockProducts, allProducts, recentFeed,
   } = data as any;
 
-  const [customMonth, setCustomMonth] = useState(filterState.month || (new Date().getMonth() + 1).toString());
-  const [customYear, setCustomYear] = useState(filterState.year || new Date().getFullYear().toString());
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+    if (filterState.from && filterState.to) {
+      return {
+        from: new Date(filterState.from),
+        to: new Date(filterState.to)
+      }
+    }
+    return undefined;
+  });
+
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  const handleFilter = (f: string) => {
-    if (f === 'custom') {
-      router.push(`/overview?filter=custom&month=${customMonth}&year=${customYear}`);
-    } else {
-      router.push(`/overview?filter=${f}`);
+  const handleApplyFilter = () => {
+    if (!dateRange?.from) {
+      router.push('/overview');
+      return;
     }
+    const fromStr = format(dateRange.from, 'yyyy-MM-dd');
+    const toStr = dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : fromStr;
+    router.push(`/overview?from=${fromStr}&to=${toStr}`);
   };
 
   return (
@@ -105,107 +118,30 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
           </div>
         </div>
 
-        <div style={{
-          display: 'flex', gap: 8, alignItems: 'center',
-          overflowX: 'auto', whiteSpace: 'nowrap',
-          paddingBottom: 4,
-          WebkitOverflowScrolling: 'touch', msOverflowStyle: 'none', scrollbarWidth: 'none',
-          maxWidth: '100%'
-        }} className="filter-container">
-          <style>{`.filter-container::-webkit-scrollbar { display: none; }
-          @keyframes spin { to { transform: rotate(360deg); } }
-          `}</style>
-
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <DateRangePicker date={dateRange} setDate={setDateRange} />
           <button
-            onClick={() => handleFilter('this_month')}
+            onClick={handleApplyFilter}
             style={{
-              padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: '1px solid', cursor: 'pointer', flexShrink: 0,
-              background: filterState.filter === 'this_month' ? 'var(--ocean-500)' : 'white',
-              color: filterState.filter === 'this_month' ? 'white' : 'var(--text)',
-              borderColor: filterState.filter === 'this_month' ? 'var(--ocean-500)' : 'var(--border)'
+              padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
+              background: 'var(--ocean-500)',
+              color: 'white',
+              height: 36
             }}
           >
-            Bulan Ini
+            Tampilkan
           </button>
-
           <button
-            onClick={() => handleFilter('last_month')}
+            onClick={() => { setDateRange(undefined); router.push('/overview'); }}
             style={{
-              padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: '1px solid', cursor: 'pointer', flexShrink: 0,
-              background: filterState.filter === 'last_month' ? 'var(--ocean-500)' : 'white',
-              color: filterState.filter === 'last_month' ? 'white' : 'var(--text)',
-              borderColor: filterState.filter === 'last_month' ? 'var(--ocean-500)' : 'var(--border)'
+              padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: '1px solid var(--border)', cursor: 'pointer',
+              background: 'white',
+              color: 'var(--text)',
+              height: 36
             }}
           >
-            Bulan Lalu
+            Reset
           </button>
-
-          <button
-            onClick={() => handleFilter('this_year')}
-            style={{
-              padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: '1px solid', cursor: 'pointer', flexShrink: 0,
-              background: filterState.filter === 'this_year' ? 'var(--ocean-500)' : 'white',
-              color: filterState.filter === 'this_year' ? 'white' : 'var(--text)',
-              borderColor: filterState.filter === 'this_year' ? 'var(--ocean-500)' : 'var(--border)'
-            }}
-          >
-            Tahun Ini
-          </button>
-
-          <button
-            onClick={() => handleFilter('last_year')}
-            style={{
-              padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: '1px solid', cursor: 'pointer', flexShrink: 0,
-              background: filterState.filter === 'last_year' ? 'var(--ocean-500)' : 'white',
-              color: filterState.filter === 'last_year' ? 'white' : 'var(--text)',
-              borderColor: filterState.filter === 'last_year' ? 'var(--ocean-500)' : 'var(--border)'
-            }}
-          >
-            Tahun Lalu
-          </button>
-
-          <button
-            onClick={() => handleFilter('lifetime')}
-            style={{
-              padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: '1px solid', cursor: 'pointer', flexShrink: 0,
-              background: filterState.filter === 'lifetime' ? 'var(--ocean-500)' : 'white',
-              color: filterState.filter === 'lifetime' ? 'white' : 'var(--text)',
-              borderColor: filterState.filter === 'lifetime' ? 'var(--ocean-500)' : 'var(--border)'
-            }}
-          >
-            Lifetime
-          </button>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'white', padding: '4px 6px', borderRadius: 8, border: '1px solid var(--border)', flexShrink: 0 }}>
-            <select
-              value={customMonth}
-              onChange={e => setCustomMonth(e.target.value)}
-              style={{ padding: '4px 8px', border: 'none', background: 'transparent', fontSize: 13, outline: 'none', cursor: 'pointer' }}
-            >
-              {[...Array(12)].map((_, i) => (
-                <option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('id-ID', { month: 'short' })}</option>
-              ))}
-            </select>
-            <select
-              value={customYear}
-              onChange={e => setCustomYear(e.target.value)}
-              style={{ padding: '4px 8px', border: 'none', background: 'transparent', fontSize: 13, outline: 'none', cursor: 'pointer' }}
-            >
-              {[2024, 2025, 2026, 2027, 2028].map(y => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-            <button
-              onClick={() => handleFilter('custom')}
-              style={{
-                padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer',
-                background: filterState.filter === 'custom' ? 'var(--ocean-500)' : 'var(--surface)',
-                color: filterState.filter === 'custom' ? 'white' : 'var(--text)'
-              }}
-            >
-              Go
-            </button>
-          </div>
         </div>
       </div>
 

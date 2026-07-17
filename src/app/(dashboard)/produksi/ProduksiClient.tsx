@@ -1,6 +1,9 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { DateRange } from "react-day-picker";
+import { format } from "date-fns";
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
@@ -17,9 +20,13 @@ interface Produksi {
 
 export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: { initialData: Produksi[], targetPcs?: number, targetKg?: number }) {
   const [filterKegiatan, setFilterKegiatan] = useState<string>('all');
-  const [filterDateRange, setFilterDateRange] = useState<string>('today');
-  const [customMonth, setCustomMonth] = useState((new Date().getMonth() + 1).toString());
-  const [customYear, setCustomYear] = useState(new Date().getFullYear().toString());
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+    const today = new Date();
+    return {
+      from: today,
+      to: today
+    }
+  });
 
   const filteredData = useMemo(() => {
     let data = [...initialData];
@@ -28,69 +35,31 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
       data = data.filter((p) => p.kegiatan.toLowerCase() === filterKegiatan.toLowerCase());
     }
 
-    if (filterDateRange !== 'all') {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
+    if (dateRange?.from) {
       data = data.filter((p) => {
         const itemDate = new Date(p.date);
         itemDate.setHours(0, 0, 0, 0);
-        const y = itemDate.getFullYear();
-        const m = itemDate.getMonth();
+        
+        const from = new Date(dateRange.from!);
+        from.setHours(0,0,0,0);
+        
+        const to = dateRange.to ? new Date(dateRange.to) : from;
+        to.setHours(23,59,59,999);
 
-        if (filterDateRange === 'today') {
-          return itemDate.getTime() === today.getTime();
-        } else if (filterDateRange === 'this_week') {
-          const firstDay = new Date(today.setDate(today.getDate() - today.getDay()));
-          return itemDate >= firstDay;
-        } else if (filterDateRange === 'this_month') {
-          return m === new Date().getMonth() && y === new Date().getFullYear();
-        } else if (filterDateRange === 'last_month') {
-          let lastMonth = new Date().getMonth() - 1;
-          let expectedYear = new Date().getFullYear();
-          if (lastMonth < 0) {
-            lastMonth = 11;
-            expectedYear -= 1;
-          }
-          return m === lastMonth && y === expectedYear;
-        } else if (filterDateRange === 'this_year') {
-          return y === new Date().getFullYear();
-        } else if (filterDateRange === 'last_year') {
-          return y === (new Date().getFullYear() - 1);
-        } else if (filterDateRange === 'custom') {
-          return m === (parseInt(customMonth) - 1) && y === parseInt(customYear);
-        }
-        return true;
+        return itemDate >= from && itemDate <= to;
       });
     }
     return data;
-  }, [initialData, filterKegiatan, filterDateRange]);
+  }, [initialData, filterKegiatan, dateRange]);
 
   const daysInPeriod = useMemo(() => {
-    const today = new Date();
-    switch (filterDateRange) {
-      case 'today': return 1;
-      case 'this_week': return 7;
-      case 'this_month': return new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-      case 'last_month': {
-        let y = today.getFullYear();
-        let m = today.getMonth() - 1;
-        if (m < 0) { m = 11; y--; }
-        return new Date(y, m + 1, 0).getDate();
-      }
-      case 'this_year': return (new Date(today.getFullYear(), 1, 29).getMonth() === 1 ? 366 : 365);
-      case 'last_year': return (new Date(today.getFullYear() - 1, 1, 29).getMonth() === 1 ? 366 : 365);
-      case 'custom': return new Date(parseInt(customYear), parseInt(customMonth), 0).getDate();
-      default: {
-        if (filteredData.length === 0) return 1;
-        const dates = filteredData.map(d => new Date(d.date).getTime());
-        const min = Math.min(...dates);
-        const max = Math.max(...dates);
-        const days = Math.ceil((max - min) / (1000 * 60 * 60 * 24)) + 1;
-        return days || 1;
-      }
-    }
-  }, [filterDateRange, customMonth, customYear, filteredData]);
+    if (!dateRange?.from) return 1;
+    const from = dateRange.from;
+    const to = dateRange.to || from;
+    const diffTime = Math.abs(to.getTime() - from.getTime());
+    const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    return days || 1;
+  }, [dateRange]);
 
   const totalTargetPcs = targetPcs * daysInPeriod;
   const totalTargetKg = targetKg * daysInPeriod;
@@ -126,64 +95,18 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
   const chartData = useMemo(() => {
     const dataMap: Record<string, { dateStr: string; pcs: number; rendemen: number; sumBaku: number; sumJadi: number; sortKey: number }> = {};
     
-    const isYearly = filterDateRange === 'this_year' || filterDateRange === 'last_year' || filterDateRange === 'all';
-
-    // Pre-fill dates for continuous chart
-    if (filterDateRange === 'this_month' || filterDateRange === 'last_month' || filterDateRange === 'custom') {
-      let y, m;
-      const today = new Date();
-      if (filterDateRange === 'this_month') {
-        y = today.getFullYear(); m = today.getMonth();
-      } else if (filterDateRange === 'last_month') {
-        y = today.getFullYear(); m = today.getMonth() - 1;
-        if (m < 0) { m = 11; y--; }
-      } else {
-        y = parseInt(customYear); m = parseInt(customMonth) - 1;
-      }
-      const days = new Date(y, m + 1, 0).getDate();
-      for (let i = 1; i <= days; i++) {
-        const d = new Date(y, m, i);
-        const key = d.toDateString();
-        dataMap[key] = { 
-          dateStr: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }), 
-          pcs: 0, rendemen: 0, sumBaku: 0, sumJadi: 0, sortKey: d.getTime() 
-        };
-      }
-    } else if (filterDateRange === 'this_week') {
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      const firstDay = new Date(today.setDate(today.getDate() - today.getDay()));
-      for(let i = 0; i < 7; i++) {
-        const d = new Date(firstDay);
-        d.setDate(d.getDate() + i);
-        const key = d.toDateString();
-        dataMap[key] = { 
-          dateStr: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }), 
-          pcs: 0, rendemen: 0, sumBaku: 0, sumJadi: 0, sortKey: d.getTime() 
-        };
-      }
-    } else if (filterDateRange === 'today') {
-      const d = new Date();
-      d.setHours(0,0,0,0);
-      const key = d.toDateString();
-      dataMap[key] = { 
-        dateStr: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }), 
-        pcs: 0, rendemen: 0, sumBaku: 0, sumJadi: 0, sortKey: d.getTime() 
-      };
-    } else if (isYearly) {
-      let y = new Date().getFullYear();
-      if (filterDateRange === 'last_year') y -= 1;
+    let isYearly = false;
+    if (dateRange?.from) {
+      const from = dateRange.from;
+      const to = dateRange.to || from;
+      const diffTime = Math.abs(to.getTime() - from.getTime());
+      const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       
-      if (filterDateRange !== 'all') {
-        for(let m = 0; m < 12; m++) {
-          const key = `${y}-${m}`;
-          const d = new Date(y, m, 1);
-          dataMap[key] = {
-            dateStr: d.toLocaleDateString('id-ID', { month: 'short' }),
-            pcs: 0, rendemen: 0, sumBaku: 0, sumJadi: 0, sortKey: d.getTime()
-          };
-        }
+      if (days > 31) {
+        isYearly = true;
       }
+    } else {
+      isYearly = true;
     }
 
     filteredData.forEach(p => {
@@ -194,7 +117,7 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
 
       if (isYearly) {
         key = `${d.getFullYear()}-${d.getMonth()}`;
-        dateStr = d.toLocaleDateString('id-ID', { month: 'short', year: filterDateRange === 'all' ? 'numeric' : undefined });
+        dateStr = d.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
         sortKey = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
       } else {
         key = d.toDateString();
@@ -220,23 +143,20 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
         pcs: item.pcs,
         rendemen: item.sumBaku > 0 ? Number(((item.sumJadi / item.sumBaku) * 100).toFixed(1)) : 0
       }));
-  }, [filteredData, filterDateRange, customMonth, customYear]);
+  }, [filteredData, dateRange]);
 
   const defaultKegiatan = ['Pembersihan', 'Menggoreng', 'Menjemur', 'Menimbang', 'Mengemas'];
   const uniqueKegiatan = Array.from(new Set([...defaultKegiatan, ...initialData.map(p => p.kegiatan)]));
 
   const filterLabel = useMemo(() => {
-    switch (filterDateRange) {
-      case 'today': return 'Hari Ini';
-      case 'this_week': return 'Minggu Ini';
-      case 'this_month': return 'Bulan Ini';
-      case 'last_month': return 'Bulan Lalu';
-      case 'this_year': return 'Tahun Ini';
-      case 'last_year': return 'Tahun Lalu';
-      case 'custom': return `${new Date(0, parseInt(customMonth) - 1).toLocaleString('id-ID', { month: 'long' })} ${customYear}`;
-      default: return 'Semua Waktu';
+    if (!dateRange?.from) return 'Semua Waktu';
+    const fromStr = dateRange.from.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    if (!dateRange.to || dateRange.from.getTime() === dateRange.to.getTime()) {
+      return fromStr;
     }
-  }, [filterDateRange, customMonth, customYear]);
+    const toStr = dateRange.to.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    return `${fromStr} - ${toStr}`;
+  }, [dateRange]);
 
   return (
     <div className="space-y-6">
@@ -249,11 +169,11 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
           </div>
         </div>
 
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full filter-container" style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
+        <div className="flex items-center gap-4 overflow-x-auto pb-1 max-w-full filter-container" style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
           <style>{`.filter-container::-webkit-scrollbar { display: none; }`}</style>
           
           <select 
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shrink-0 outline-none focus:border-blue-500 cursor-pointer"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shrink-0 outline-none focus:border-blue-500 cursor-pointer h-9"
             value={filterKegiatan}
             onChange={(e) => setFilterKegiatan(e.target.value)}
           >
@@ -263,74 +183,14 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
             ))}
           </select>
 
-          <button
-            onClick={() => setFilterDateRange('today')}
-            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${filterDateRange === 'today' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-          >
-            Hari Ini
-          </button>
+          <DateRangePicker date={dateRange} setDate={setDateRange} className="shrink-0" />
 
           <button
-            onClick={() => setFilterDateRange('this_month')}
-            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${filterDateRange === 'this_month' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+            onClick={() => setDateRange(undefined)}
+            className="shrink-0 px-4 h-9 rounded-lg text-sm font-semibold border transition-colors bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
           >
-            Bulan Ini
+            Reset
           </button>
-          
-          <button
-            onClick={() => setFilterDateRange('last_month')}
-            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${filterDateRange === 'last_month' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-          >
-            Bulan Lalu
-          </button>
-          
-          <button
-            onClick={() => setFilterDateRange('this_year')}
-            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${filterDateRange === 'this_year' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-          >
-            Tahun Ini
-          </button>
-          
-          <button
-            onClick={() => setFilterDateRange('last_year')}
-            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${filterDateRange === 'last_year' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-          >
-            Tahun Lalu
-          </button>
-
-          <button
-            onClick={() => setFilterDateRange('all')}
-            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${filterDateRange === 'all' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-          >
-            Semua Waktu
-          </button>
-
-          <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-gray-300 shrink-0 shadow-sm">
-            <select
-              value={customMonth}
-              onChange={e => setCustomMonth(e.target.value)}
-              className="bg-transparent border-none text-sm outline-none cursor-pointer py-1 font-medium text-gray-700"
-            >
-              {[...Array(12)].map((_, i) => (
-                <option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('id-ID', { month: 'short' })}</option>
-              ))}
-            </select>
-            <select
-              value={customYear}
-              onChange={e => setCustomYear(e.target.value)}
-              className="bg-transparent border-none text-sm outline-none cursor-pointer py-1 font-medium text-gray-700"
-            >
-              {[2024, 2025, 2026, 2027, 2028].map(y => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-            <button
-              onClick={() => setFilterDateRange('custom')}
-              className={`px-3 py-1.5 rounded-md text-xs font-bold border-none cursor-pointer transition-colors ${filterDateRange === 'custom' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-            >
-              Go
-            </button>
-          </div>
         </div>
       </div>
 

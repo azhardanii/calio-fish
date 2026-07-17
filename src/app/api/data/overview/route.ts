@@ -10,9 +10,8 @@ function toNum(val: any): number {
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
-  const filter = searchParams.get('filter') || 'this_month';
-  const customMonth = searchParams.get('month') || '';
-  const customYear = searchParams.get('year') || '';
+  const fromParam = searchParams.get('from');
+  const toParam = searchParams.get('to');
   const now = new Date();
 
   let startDate: Date | undefined = undefined;
@@ -21,34 +20,27 @@ export async function GET(req: NextRequest) {
   let isDailyChart = true;
   let monthsCount = 1;
 
-  if (filter === 'this_month') {
-    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-    filterLabel = `Bulan Ini (${now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })})`;
-  } else if (filter === 'last_month') {
-    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    startDate = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 1);
-    endDate = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0, 23, 59, 59, 999);
-    filterLabel = `Bulan Lalu (${lastMonth.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })})`;
-  } else if (filter === 'this_year') {
-    startDate = new Date(now.getFullYear(), 0, 1);
-    endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
-    filterLabel = `Tahun Ini (${now.getFullYear()})`;
-    isDailyChart = false;
-    monthsCount = 12;
-  } else if (filter === 'last_year') {
-    startDate = new Date(now.getFullYear() - 1, 0, 1);
-    endDate = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59, 999);
-    filterLabel = `Tahun Lalu (${now.getFullYear() - 1})`;
-    isDailyChart = false;
-    monthsCount = 12;
-  } else if (filter === 'custom' && customMonth && customYear) {
-    const y = parseInt(customYear, 10);
-    const m = parseInt(customMonth, 10) - 1;
-    startDate = new Date(y, m, 1);
-    endDate = new Date(y, m + 1, 0, 23, 59, 59, 999);
-    const d = new Date(y, m, 1);
-    filterLabel = `${d.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}`;
+  if (fromParam && toParam) {
+    startDate = new Date(fromParam);
+    startDate.setHours(0, 0, 0, 0);
+    endDate = new Date(toParam);
+    endDate.setHours(23, 59, 59, 999);
+    
+    // Calculate difference in days
+    const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    monthsCount = Math.max(1, diffDays / 30);
+    
+    if (diffDays > 31) {
+      isDailyChart = false;
+    }
+
+    if (fromParam === toParam) {
+       filterLabel = startDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    } else {
+       filterLabel = `${startDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} - ${endDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    }
   } else {
     isDailyChart = false;
     monthsCount = 12;
@@ -167,26 +159,37 @@ export async function GET(req: NextRequest) {
   let highlightNote = omsetHariIni > 0 ? '📈 Ada pemasukan hari ini' : '— Belum ada data';
   let highlightUp = omsetHariIni > 0;
 
-  if (filter !== 'this_month') {
-    highlightTitle = 'Rata-rata Harian';
-    let days = 1;
-    if (startDate && endDate) {
-      days = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+  if (fromParam && toParam) {
+    if (fromParam === toParam && fromParam === todayStart.toISOString().slice(0, 10)) {
+      highlightTitle = 'Omset Hari Ini';
+    } else if (fromParam === toParam) {
+      highlightTitle = 'Omset';
+      highlightValue = totalOmset;
+      highlightNote = `Pada ${startDate?.toLocaleDateString('id-ID')}`;
     } else {
+      highlightTitle = 'Rata-rata Harian';
+      let days = 1;
+      if (startDate && endDate) {
+        days = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+      }
+      highlightValue = days > 0 ? totalOmset / days : 0;
+      highlightNote = 'Berdasarkan filter aktif';
+    }
+  } else {
+      highlightTitle = 'Rata-rata Harian';
+      let days = 1;
       const firstRecord = await prisma.marketingOffline.findFirst({ orderBy: { date: 'asc' } });
       if (firstRecord) {
         days = Math.max(1, Math.ceil((now.getTime() - new Date(firstRecord.date).getTime()) / (1000 * 60 * 60 * 24)));
       }
-    }
-    highlightValue = days > 0 ? totalOmset / days : 0;
-    highlightNote = 'Berdasarkan filter aktif';
-    highlightUp = highlightValue > 0;
+      highlightValue = days > 0 ? totalOmset / days : 0;
+      highlightNote = 'Berdasarkan semua data';
   }
 
   const lowStockProducts = products.filter(p => p.stok <= 50);
 
   const data = {
-    filterState: { filter, month: customMonth, year: customYear, filterLabel },
+    filterState: { from: fromParam, to: toParam, filterLabel },
     highlightOmset: { title: highlightTitle, value: highlightValue, note: highlightNote, isUp: highlightUp },
     totalOmset, totalTarget, totalGap,
     totalPersentase: Math.round(totalPersentase * 10) / 10,
