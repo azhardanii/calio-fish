@@ -26,7 +26,11 @@ export default function ProduksiPage() {
         <PdfExportButton targetId="produksi-report" filename="laporan-produksi" />
       </div>
       <div id="produksi-report">
-        <ProduksiClient initialData={data || []} />
+        <ProduksiClient 
+          initialData={data?.data || []} 
+          targetPcs={data?.targetPcs || 200} 
+          targetKg={data?.targetKg || 50} 
+        />
       </div>
     </div>
   );

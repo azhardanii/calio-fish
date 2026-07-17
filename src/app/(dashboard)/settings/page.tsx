@@ -13,6 +13,8 @@ const SETTING_DEFINITIONS: SettingItem[] = [
   { key: 'offline_target_bulanan', label: 'Target Bulanan Marketing Offline (Konsinyasi)', value: 0 },
   { key: 'shopee_target_mtd', label: 'Target MTD Shopee', value: 0 },
   { key: 'tiktok_target_mtd', label: 'Target MTD TikTok', value: 0 },
+  { key: 'target_produksi_pcs', label: 'Target Harian Produksi (Pcs)', value: 200 },
+  { key: 'target_produksi_kg', label: 'Target Harian Barang Setengah Jadi (Kg)', value: 50 },
 ];
 
 function formatRupiah(val: number) {
