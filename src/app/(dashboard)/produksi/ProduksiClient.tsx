@@ -17,7 +17,7 @@ interface Produksi {
 
 export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: { initialData: Produksi[], targetPcs?: number, targetKg?: number }) {
   const [filterKegiatan, setFilterKegiatan] = useState<string>('all');
-  const [filterDateRange, setFilterDateRange] = useState<string>('this_month');
+  const [filterDateRange, setFilterDateRange] = useState<string>('today');
   const [customMonth, setCustomMonth] = useState((new Date().getMonth() + 1).toString());
   const [customYear, setCustomYear] = useState(new Date().getFullYear().toString());
 
@@ -264,6 +264,13 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
           </select>
 
           <button
+            onClick={() => setFilterDateRange('today')}
+            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${filterDateRange === 'today' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+          >
+            Hari Ini
+          </button>
+
+          <button
             onClick={() => setFilterDateRange('this_month')}
             className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${filterDateRange === 'this_month' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
           >
@@ -289,6 +296,13 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
             className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${filterDateRange === 'last_year' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
           >
             Tahun Lalu
+          </button>
+
+          <button
+            onClick={() => setFilterDateRange('all')}
+            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${filterDateRange === 'all' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+          >
+            Semua Waktu
           </button>
 
           <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-gray-300 shrink-0 shadow-sm">
