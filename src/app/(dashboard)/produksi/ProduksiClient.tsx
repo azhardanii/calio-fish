@@ -152,38 +152,54 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, ex
   const filterLabel = useMemo(() => {
     if (!appliedDateRange?.from) return 'Lifetime (Semua Waktu)';
     
-    const fromStr = appliedDateRange.from.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    const fromDate = appliedDateRange.from;
+    const toDate = appliedDateRange.to || fromDate;
+    
+    const isFullMonth = 
+      fromDate.getDate() === 1 && 
+      toDate.getDate() === new Date(toDate.getFullYear(), toDate.getMonth() + 1, 0).getDate() &&
+      fromDate.getMonth() === toDate.getMonth() &&
+      fromDate.getFullYear() === toDate.getFullYear();
+
+    if (isFullMonth) {
+      return fromDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+    }
+    
+    const fromStr = fromDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
     
     // Check if the selected date is exactly today
     const today = new Date();
-    const isToday = appliedDateRange.from.getDate() === today.getDate() && 
-                    appliedDateRange.from.getMonth() === today.getMonth() &&
-                    appliedDateRange.from.getFullYear() === today.getFullYear();
+    const isToday = fromDate.getDate() === today.getDate() && 
+                    fromDate.getMonth() === today.getMonth() &&
+                    fromDate.getFullYear() === today.getFullYear();
 
-    const isSameDay = !appliedDateRange.to || appliedDateRange.from.getTime() === appliedDateRange.to.getTime();
+    const isSameDay = fromDate.getTime() === toDate.getTime();
 
     if (isSameDay) {
       return isToday ? 'Hari Ini' : fromStr;
     }
     
-    const toStr = appliedDateRange.to?.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) || '';
+    const toStr = toDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
     return `${fromStr} - ${toStr}`;
   }, [appliedDateRange]);
+
+  const [isMounted, setIsMounted] = React.useState(false);
+  React.useEffect(() => setIsMounted(true), []);
+
+  if (!isMounted) return null;
 
   return (
     <div className="space-y-6">
       {/* ── FILTER TOOLBAR ── */}
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 m-0">Produksi</h2>
-          <div className="text-sm text-gray-500 mt-1">
-            Menampilkan data untuk: <b className="text-blue-600">{filterLabel}</b>
+          <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: 'var(--text)' }}>Produksi</h2>
+          <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 4 }}>
+            Menampilkan data untuk: <b>{filterLabel}</b>
           </div>
         </div>
 
-        <div className="flex items-center gap-4 overflow-x-auto pb-1 max-w-full filter-container" style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
-          <style>{`.filter-container::-webkit-scrollbar { display: none; }`}</style>
-          
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <select 
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shrink-0 outline-none focus:border-blue-500 cursor-pointer h-9"
             value={filterKegiatan}
@@ -195,18 +211,22 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, ex
             ))}
           </select>
 
-          <DateRangePicker date={dateRange} setDate={setDateRange} className="shrink-0" />
+          <DateRangePicker date={dateRange} setDate={setDateRange} />
 
           <button
             onClick={() => setAppliedDateRange(dateRange)}
-            className="shrink-0 px-4 h-9 rounded-lg text-sm font-semibold border transition-colors bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
+            style={{
+              padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
+              background: 'var(--ocean-500)',
+              color: 'white',
+              height: 36
+            }}
           >
             Tampilkan
           </button>
-
           
           {exportButton && (
-            <div className="shrink-0 ml-auto">
+            <div>
               {exportButton}
             </div>
           )}

@@ -91,10 +91,10 @@ export default function MarketingPage() {
   }, [onlineReports, appliedDateRange]);
 
   const latestOffline = offlineReports[0];
-  const shopeeReports = filteredOnlineReports.filter((r: any) => r.platform.toLowerCase() === 'shopee');
-  const tiktokReports = filteredOnlineReports.filter((r: any) => r.platform.toLowerCase() === 'tiktok');
-  const latestShopee = onlineReports.filter((r: any) => r.platform.toLowerCase() === 'shopee')[0];
-  const latestTiktok = onlineReports.filter((r: any) => r.platform.toLowerCase() === 'tiktok')[0];
+  const shopeeReports = filteredOnlineReports.filter((r: any) => r.platform?.toLowerCase() === 'shopee');
+  const tiktokReports = filteredOnlineReports.filter((r: any) => r.platform?.toLowerCase() === 'tiktok');
+  const latestShopee = onlineReports.filter((r: any) => r.platform?.toLowerCase() === 'shopee')[0];
+  const latestTiktok = onlineReports.filter((r: any) => r.platform?.toLowerCase() === 'tiktok')[0];
 
   const currentOfflineTarget = globalOfflineTarget > 0 ? globalOfflineTarget : (latestOffline ? Number(latestOffline.target_bulanan) : 0);
   const currentShopeeTarget = globalShopeeTarget > 0 ? globalShopeeTarget : (latestShopee ? Number(latestShopee.target_mtd) : 0);
@@ -139,6 +139,11 @@ export default function MarketingPage() {
   }).reverse();
 
   const enrichedOnlineReports = [...enrichedShopeeReports, ...enrichedTiktokReports].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const [isMounted, setIsMounted] = React.useState(false);
+  React.useEffect(() => setIsMounted(true), []);
+
+  if (!isMounted) return null;
 
   const tabs = [
     {
