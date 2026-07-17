@@ -73,13 +73,13 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, ex
     let sumJadi = 0;
 
     filteredData.forEach(p => {
-      if (p.total_hasil_pcs) totalPcs += p.total_hasil_pcs;
+      if (p.total_hasil_pcs) totalPcs += Number(p.total_hasil_pcs);
       if (p.bahan_jadi && p.kegiatan.toLowerCase() !== 'mengemas') {
-        totalKg += p.bahan_jadi;
+        totalKg += Number(p.bahan_jadi);
       }
       if (p.bahan_baku && p.bahan_jadi) {
-        sumBaku += p.bahan_baku;
-        sumJadi += p.bahan_jadi;
+        sumBaku += Number(p.bahan_baku);
+        sumJadi += Number(p.bahan_jadi);
       }
     });
 
@@ -130,10 +130,10 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, ex
         dataMap[key] = { dateStr, pcs: 0, rendemen: 0, sumBaku: 0, sumJadi: 0, sortKey };
       }
 
-      if (p.total_hasil_pcs) dataMap[key].pcs += p.total_hasil_pcs;
+      if (p.total_hasil_pcs) dataMap[key].pcs += Number(p.total_hasil_pcs);
       if (p.bahan_baku && p.bahan_jadi) {
-        dataMap[key].sumBaku += p.bahan_baku;
-        dataMap[key].sumJadi += p.bahan_jadi;
+        dataMap[key].sumBaku += Number(p.bahan_baku);
+        dataMap[key].sumJadi += Number(p.bahan_jadi);
       }
     });
 
