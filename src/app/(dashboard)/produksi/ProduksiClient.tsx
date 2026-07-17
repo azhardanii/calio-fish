@@ -18,7 +18,7 @@ interface Produksi {
   employee_name?: string;
 }
 
-export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: { initialData: Produksi[], targetPcs?: number, targetKg?: number }) {
+export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, exportButton }: { initialData: Produksi[], targetPcs?: number, targetKg?: number, exportButton?: React.ReactNode }) {
   const [filterKegiatan, setFilterKegiatan] = useState<string>('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
     const today = new Date();
@@ -27,6 +27,7 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
       to: today
     }
   });
+  const [appliedDateRange, setAppliedDateRange] = useState<DateRange | undefined>(dateRange);
 
   const filteredData = useMemo(() => {
     let data = [...initialData];
@@ -35,31 +36,31 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
       data = data.filter((p) => p.kegiatan.toLowerCase() === filterKegiatan.toLowerCase());
     }
 
-    if (dateRange?.from) {
+    if (appliedDateRange?.from) {
       data = data.filter((p) => {
         const itemDate = new Date(p.date);
         itemDate.setHours(0, 0, 0, 0);
         
-        const from = new Date(dateRange.from!);
+        const from = new Date(appliedDateRange.from!);
         from.setHours(0,0,0,0);
         
-        const to = dateRange.to ? new Date(dateRange.to) : from;
+        const to = appliedDateRange.to ? new Date(appliedDateRange.to) : from;
         to.setHours(23,59,59,999);
 
         return itemDate >= from && itemDate <= to;
       });
     }
     return data;
-  }, [initialData, filterKegiatan, dateRange]);
+  }, [initialData, filterKegiatan, appliedDateRange]);
 
   const daysInPeriod = useMemo(() => {
-    if (!dateRange?.from) return 1;
-    const from = dateRange.from;
-    const to = dateRange.to || from;
+    if (!appliedDateRange?.from) return 1;
+    const from = appliedDateRange.from;
+    const to = appliedDateRange.to || from;
     const diffTime = Math.abs(to.getTime() - from.getTime());
     const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
     return days || 1;
-  }, [dateRange]);
+  }, [appliedDateRange]);
 
   const totalTargetPcs = targetPcs * daysInPeriod;
   const totalTargetKg = targetKg * daysInPeriod;
@@ -143,20 +144,20 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
         pcs: item.pcs,
         rendemen: item.sumBaku > 0 ? Number(((item.sumJadi / item.sumBaku) * 100).toFixed(1)) : 0
       }));
-  }, [filteredData, dateRange]);
+  }, [filteredData, appliedDateRange]);
 
   const defaultKegiatan = ['Pembersihan', 'Menggoreng', 'Menjemur', 'Menimbang', 'Mengemas'];
   const uniqueKegiatan = Array.from(new Set([...defaultKegiatan, ...initialData.map(p => p.kegiatan)]));
 
   const filterLabel = useMemo(() => {
-    if (!dateRange?.from) return 'Semua Waktu';
-    const fromStr = dateRange.from.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-    if (!dateRange.to || dateRange.from.getTime() === dateRange.to.getTime()) {
+    if (!appliedDateRange?.from) return 'Semua Waktu';
+    const fromStr = appliedDateRange.from.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    if (!appliedDateRange.to || appliedDateRange.from.getTime() === appliedDateRange.to.getTime()) {
       return fromStr;
     }
-    const toStr = dateRange.to.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    const toStr = appliedDateRange.to.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
     return `${fromStr} - ${toStr}`;
-  }, [dateRange]);
+  }, [appliedDateRange]);
 
   return (
     <div className="space-y-6">
@@ -186,11 +187,27 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
           <DateRangePicker date={dateRange} setDate={setDateRange} className="shrink-0" />
 
           <button
-            onClick={() => setDateRange(undefined)}
+            onClick={() => setAppliedDateRange(dateRange)}
+            className="shrink-0 px-4 h-9 rounded-lg text-sm font-semibold border transition-colors bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
+          >
+            Tampilkan
+          </button>
+
+          <button
+            onClick={() => {
+              setDateRange(undefined);
+              setAppliedDateRange(undefined);
+            }}
             className="shrink-0 px-4 h-9 rounded-lg text-sm font-semibold border transition-colors bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
           >
             Reset
           </button>
+          
+          {exportButton && (
+            <div className="shrink-0 ml-auto">
+              {exportButton}
+            </div>
+          )}
         </div>
       </div>
 

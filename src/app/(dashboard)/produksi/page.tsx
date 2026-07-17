@@ -22,14 +22,12 @@ export default function ProduksiPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end mb-6">
-        <PdfExportButton targetId="produksi-report" filename="laporan-produksi" />
-      </div>
       <div id="produksi-report">
         <ProduksiClient 
           initialData={data?.data || []} 
           targetPcs={data?.targetPcs || 200} 
           targetKg={data?.targetKg || 50} 
+          exportButton={<PdfExportButton targetId="produksi-report" filename="laporan-produksi" />}
         />
       </div>
     </div>

@@ -109,9 +109,6 @@ export default function PengirimanPage() {
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">Log Pengiriman</h1>
           <p className="text-gray-500 mt-1">Laporan terpusat pendistribusian produk (Online, Outlet, Sample, Retur).</p>
         </div>
-        <div className="flex space-x-3">
-          <PdfExportButton targetId="pengiriman-report" filename="laporan-pengiriman-terpadu" />
-        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
@@ -177,6 +174,9 @@ export default function PengirimanPage() {
                   <option value="DESC">Terbaru</option>
                   <option value="ASC">Terlama</option>
                 </select>
+                <div className="ml-auto flex shrink-0">
+                  <PdfExportButton targetId="pengiriman-report" filename="laporan-pengiriman-terpadu" />
+                </div>
               </div>
             </div>
           </CardHeader>

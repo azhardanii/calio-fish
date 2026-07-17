@@ -51,11 +51,11 @@ function Calendar({
           "aria-selected:bg-blue-50 aria-selected:text-blue-900 aria-selected:rounded-none",
         day_hidden: "invisible",
         ...classNames,
-      } as any}
+      }}
       components={{
         IconLeft: ({ ...props }) => <ChevronLeft className="h-4 w-4" />,
         IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
-      } as any}
+      }}
       {...props}
     />
   )
