@@ -42,10 +42,10 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, ex
         itemDate.setHours(0, 0, 0, 0);
         
         const from = new Date(appliedDateRange.from!);
-        from.setHours(0,0,0,0);
+        from.setHours(0, 0, 0, 0);
         
-        const to = appliedDateRange.to ? new Date(appliedDateRange.to) : from;
-        to.setHours(23,59,59,999);
+        const to = appliedDateRange.to ? new Date(appliedDateRange.to) : new Date(from);
+        to.setHours(23, 59, 59, 999);
 
         return itemDate >= from && itemDate <= to;
       });
@@ -193,15 +193,6 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, ex
             Tampilkan
           </button>
 
-          <button
-            onClick={() => {
-              setDateRange(undefined);
-              setAppliedDateRange(undefined);
-            }}
-            className="shrink-0 px-4 h-9 rounded-lg text-sm font-semibold border transition-colors bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-          >
-            Reset
-          </button>
           
           {exportButton && (
             <div className="shrink-0 ml-auto">

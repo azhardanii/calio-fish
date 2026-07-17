@@ -5,7 +5,7 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { Button } from '@/components/ui/button';
 
-export function PdfExportButton({ targetId, filename = "report" }: { targetId: string, filename?: string }) {
+export function PdfExportButton({ targetId, filename = "report", className = "" }: { targetId: string, filename?: string, className?: string }) {
   const exportPDF = async () => {
     const input = document.getElementById(targetId);
     if (!input) {
@@ -28,8 +28,8 @@ export function PdfExportButton({ targetId, filename = "report" }: { targetId: s
   };
 
   return (
-    <Button onClick={exportPDF} variant="outline" className="mb-4">
-      Export to PDF
+    <Button onClick={exportPDF} variant="outline" className={`h-9 px-4 rounded-lg text-sm font-semibold border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-sm ${className}`}>
+      Export PDF
     </Button>
   );
 }
