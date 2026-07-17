@@ -135,8 +135,101 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
   const defaultKegiatan = ['Pembersihan', 'Menggoreng', 'Menjemur', 'Menimbang', 'Mengemas'];
   const uniqueKegiatan = Array.from(new Set([...defaultKegiatan, ...initialData.map(p => p.kegiatan)]));
 
+  const filterLabel = useMemo(() => {
+    switch (filterDateRange) {
+      case 'today': return 'Hari Ini';
+      case 'this_week': return 'Minggu Ini';
+      case 'this_month': return 'Bulan Ini';
+      case 'last_month': return 'Bulan Lalu';
+      case 'this_year': return 'Tahun Ini';
+      case 'last_year': return 'Tahun Lalu';
+      case 'custom': return `${new Date(0, parseInt(customMonth) - 1).toLocaleString('id-ID', { month: 'long' })} ${customYear}`;
+      default: return 'Semua Waktu';
+    }
+  }, [filterDateRange, customMonth, customYear]);
+
   return (
     <div className="space-y-6">
+      {/* ── FILTER TOOLBAR ── */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 m-0">Produksi</h2>
+          <div className="text-sm text-gray-500 mt-1">
+            Menampilkan data untuk: <b className="text-blue-600">{filterLabel}</b>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full filter-container" style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
+          <style>{`.filter-container::-webkit-scrollbar { display: none; }`}</style>
+          
+          <select 
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shrink-0 outline-none focus:border-blue-500 cursor-pointer"
+            value={filterKegiatan}
+            onChange={(e) => setFilterKegiatan(e.target.value)}
+          >
+            <option value="all">Semua Kegiatan</option>
+            {uniqueKegiatan.map(k => (
+               <option key={k} value={k}>{k}</option>
+            ))}
+          </select>
+
+          <button
+            onClick={() => setFilterDateRange('this_month')}
+            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${filterDateRange === 'this_month' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+          >
+            Bulan Ini
+          </button>
+          
+          <button
+            onClick={() => setFilterDateRange('last_month')}
+            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${filterDateRange === 'last_month' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+          >
+            Bulan Lalu
+          </button>
+          
+          <button
+            onClick={() => setFilterDateRange('this_year')}
+            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${filterDateRange === 'this_year' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+          >
+            Tahun Ini
+          </button>
+          
+          <button
+            onClick={() => setFilterDateRange('last_year')}
+            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${filterDateRange === 'last_year' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+          >
+            Tahun Lalu
+          </button>
+
+          <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-gray-300 shrink-0 shadow-sm">
+            <select
+              value={customMonth}
+              onChange={e => setCustomMonth(e.target.value)}
+              className="bg-transparent border-none text-sm outline-none cursor-pointer py-1 font-medium text-gray-700"
+            >
+              {[...Array(12)].map((_, i) => (
+                <option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('id-ID', { month: 'short' })}</option>
+              ))}
+            </select>
+            <select
+              value={customYear}
+              onChange={e => setCustomYear(e.target.value)}
+              className="bg-transparent border-none text-sm outline-none cursor-pointer py-1 font-medium text-gray-700"
+            >
+              {[2024, 2025, 2026, 2027, 2028].map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => setFilterDateRange('custom')}
+              className={`px-3 py-1.5 rounded-md text-xs font-bold border-none cursor-pointer transition-colors ${filterDateRange === 'custom' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+            >
+              Go
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Top Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <Card className="bg-gradient-to-br from-blue-50 to-white shadow-sm border-blue-100">
@@ -230,58 +323,7 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50 }: 
         </Card>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-4 mb-6">
-        <select 
-          className="border border-gray-300 rounded-md p-2 text-sm"
-          value={filterKegiatan}
-          onChange={(e) => setFilterKegiatan(e.target.value)}
-        >
-          <option value="all">Semua Kegiatan</option>
-          {uniqueKegiatan.map(k => (
-             <option key={k} value={k}>{k}</option>
-          ))}
-        </select>
 
-        <div className="flex flex-wrap gap-2 items-center">
-          <select 
-            className="border border-gray-300 rounded-md p-2 text-sm"
-            value={filterDateRange}
-            onChange={(e) => setFilterDateRange(e.target.value)}
-          >
-            <option value="all">Semua Waktu</option>
-            <option value="today">Hari Ini</option>
-            <option value="this_week">Minggu Ini</option>
-            <option value="this_month">Bulan Ini</option>
-            <option value="last_month">Bulan Lalu</option>
-            <option value="this_year">Tahun Ini</option>
-            <option value="last_year">Tahun Lalu</option>
-            <option value="custom">Bulan & Tahun Bebas</option>
-          </select>
-
-          {filterDateRange === 'custom' && (
-            <div className="flex gap-2">
-              <select
-                value={customMonth}
-                onChange={e => setCustomMonth(e.target.value)}
-                className="border border-gray-300 rounded-md p-2 text-sm"
-              >
-                {[...Array(12)].map((_, i) => (
-                  <option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('id-ID', { month: 'short' })}</option>
-                ))}
-              </select>
-              <select
-                value={customYear}
-                onChange={e => setCustomYear(e.target.value)}
-                className="border border-gray-300 rounded-md p-2 text-sm"
-              >
-                {[2024, 2025, 2026, 2027, 2028].map(y => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-      </div>
 
       <Card className="hover:shadow-lg transition-shadow duration-300">
         <CardHeader>
