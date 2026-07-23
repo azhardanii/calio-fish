@@ -103,6 +103,17 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
     setIsMounted(true);
   }, []);
 
+  useEffect(() => {
+    if (filterState?.from && filterState?.to) {
+      setDateRange({
+        from: new Date(filterState.from),
+        to: new Date(filterState.to)
+      });
+    } else if (filterState?.filterLabel === 'Lifetime (Keseluruhan Waktu)') {
+      setDateRange(undefined);
+    }
+  }, [filterState?.from, filterState?.to, filterState?.filterLabel]);
+
   const handleApplyFilter = () => {
     if (!dateRange?.from) {
       router.push('/overview?lifetime=true');

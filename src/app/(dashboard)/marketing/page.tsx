@@ -14,19 +14,7 @@ import { formatCurrency } from '@/lib/utils';
 function formatRp(val: number) { return formatCurrency(val); }
 
 export default function MarketingPage() {
-  const { data, isLoading } = useSWR('/api/data/marketing');
-
-  if (isLoading && !data) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ width: 36, height: 36, border: '4px solid #e5e7eb', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
-          <div style={{ color: '#6b7280', fontSize: 14 }}>Memuat data marketing...</div>
-        </div>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    );
-  }
+  const { data, isLoading, error } = useSWR('/api/data/marketing');
 
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
     const today = new Date();
@@ -36,6 +24,9 @@ export default function MarketingPage() {
     };
   });
   const [appliedDateRange, setAppliedDateRange] = useState<DateRange | undefined>(dateRange);
+  const [isMounted, setIsMounted] = React.useState(false);
+
+  React.useEffect(() => setIsMounted(true), []);
 
   const filterLabel = useMemo(() => {
     if (!appliedDateRange?.from) return 'Lifetime (Semua Waktu)';
@@ -91,8 +82,8 @@ export default function MarketingPage() {
   }, [onlineReports, appliedDateRange]);
 
   const latestOffline = offlineReports[0];
-  const shopeeReports = filteredOnlineReports.filter((r: any) => r.platform?.toLowerCase() === 'shopee');
-  const tiktokReports = filteredOnlineReports.filter((r: any) => r.platform?.toLowerCase() === 'tiktok');
+  const shopeeReports = useMemo(() => filteredOnlineReports.filter((r: any) => r.platform?.toLowerCase() === 'shopee'), [filteredOnlineReports]);
+  const tiktokReports = useMemo(() => filteredOnlineReports.filter((r: any) => r.platform?.toLowerCase() === 'tiktok'), [filteredOnlineReports]);
   const latestShopee = onlineReports.filter((r: any) => r.platform?.toLowerCase() === 'shopee')[0];
   const latestTiktok = onlineReports.filter((r: any) => r.platform?.toLowerCase() === 'tiktok')[0];
 
@@ -114,36 +105,62 @@ export default function MarketingPage() {
   const tiktokPersentase = currentTiktokTarget > 0 ? (tiktokOmsetMtd / currentTiktokTarget) * 100 : 0;
 
   // Running MTD
-  let cumulativeMtd = 0, currentMonth = -1;
-  const enrichedOfflineReports = [...filteredOfflineReports].reverse().map((r: any) => {
-    const rMonth = new Date(r.date).getMonth();
-    if (rMonth !== currentMonth) { currentMonth = rMonth; cumulativeMtd = 0; }
-    cumulativeMtd += Number(r.omset_harian);
-    return { ...r, calculated_omset_mtd: cumulativeMtd, calculated_persentase: currentOfflineTarget > 0 ? (cumulativeMtd / currentOfflineTarget) * 100 : 0 };
-  }).reverse();
+  const enrichedOfflineReports = useMemo(() => {
+    let cumulativeMtd = 0, currentMonth = -1;
+    return [...filteredOfflineReports].reverse().map((r: any) => {
+      const rMonth = new Date(r.date).getMonth();
+      if (rMonth !== currentMonth) { currentMonth = rMonth; cumulativeMtd = 0; }
+      cumulativeMtd += Number(r.omset_harian);
+      return { ...r, calculated_omset_mtd: cumulativeMtd, calculated_persentase: currentOfflineTarget > 0 ? (cumulativeMtd / currentOfflineTarget) * 100 : 0 };
+    }).reverse();
+  }, [filteredOfflineReports, currentOfflineTarget]);
 
-  let cumulativeShopee = 0, currentShopeeMonth = -1;
-  const enrichedShopeeReports = [...shopeeReports].reverse().map((r: any) => {
-    const rMonth = new Date(r.date).getMonth();
-    if (rMonth !== currentShopeeMonth) { currentShopeeMonth = rMonth; cumulativeShopee = 0; }
-    cumulativeShopee += Number(r.omset_harian);
-    return { ...r, calculated_omset_mtd: cumulativeShopee, calculated_persentase: currentShopeeTarget > 0 ? (cumulativeShopee / currentShopeeTarget) * 100 : 0 };
-  }).reverse();
+  const enrichedShopeeReports = useMemo(() => {
+    let cumulativeShopee = 0, currentShopeeMonth = -1;
+    return [...shopeeReports].reverse().map((r: any) => {
+      const rMonth = new Date(r.date).getMonth();
+      if (rMonth !== currentShopeeMonth) { currentShopeeMonth = rMonth; cumulativeShopee = 0; }
+      cumulativeShopee += Number(r.omset_harian);
+      return { ...r, calculated_omset_mtd: cumulativeShopee, calculated_persentase: currentShopeeTarget > 0 ? (cumulativeShopee / currentShopeeTarget) * 100 : 0 };
+    }).reverse();
+  }, [shopeeReports, currentShopeeTarget]);
 
-  let cumulativeTiktok = 0, currentTiktokMonth = -1;
-  const enrichedTiktokReports = [...tiktokReports].reverse().map((r: any) => {
-    const rMonth = new Date(r.date).getMonth();
-    if (rMonth !== currentTiktokMonth) { currentTiktokMonth = rMonth; cumulativeTiktok = 0; }
-    cumulativeTiktok += Number(r.omset_harian);
-    return { ...r, calculated_omset_mtd: cumulativeTiktok, calculated_persentase: currentTiktokTarget > 0 ? (cumulativeTiktok / currentTiktokTarget) * 100 : 0 };
-  }).reverse();
+  const enrichedTiktokReports = useMemo(() => {
+    let cumulativeTiktok = 0, currentTiktokMonth = -1;
+    return [...tiktokReports].reverse().map((r: any) => {
+      const rMonth = new Date(r.date).getMonth();
+      if (rMonth !== currentTiktokMonth) { currentTiktokMonth = rMonth; cumulativeTiktok = 0; }
+      cumulativeTiktok += Number(r.omset_harian);
+      return { ...r, calculated_omset_mtd: cumulativeTiktok, calculated_persentase: currentTiktokTarget > 0 ? (cumulativeTiktok / currentTiktokTarget) * 100 : 0 };
+    }).reverse();
+  }, [tiktokReports, currentTiktokTarget]);
 
-  const enrichedOnlineReports = [...enrichedShopeeReports, ...enrichedTiktokReports].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-  const [isMounted, setIsMounted] = React.useState(false);
-  React.useEffect(() => setIsMounted(true), []);
+  const enrichedOnlineReports = useMemo(() => {
+    return [...enrichedShopeeReports, ...enrichedTiktokReports].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [enrichedShopeeReports, enrichedTiktokReports]);
 
   if (!isMounted) return null;
+
+  if (isLoading && !data) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 36, height: 36, border: '4px solid #e5e7eb', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+          <div style={{ color: '#6b7280', fontSize: 14 }}>Memuat data marketing...</div>
+        </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-8 text-center text-red-500 bg-red-50 rounded-xl mt-6">
+        <h3 className="text-xl font-bold mb-2">Gagal Memuat Data Marketing</h3>
+        <p>Terjadi kesalahan saat mengambil data dari server. Silakan coba muat ulang halaman (F5).</p>
+      </div>
+    );
+  }
 
   const tabs = [
     {
@@ -309,10 +326,10 @@ export default function MarketingPage() {
                       <TableCell>{new Date(r.date).toLocaleDateString('id-ID')}</TableCell>
                       <TableCell>
                         <span style={{
-                          background: r.platform.toLowerCase() === 'shopee' ? '#ffedd5' : '#e2e8f0',
-                          color: r.platform.toLowerCase() === 'shopee' ? '#c2410c' : '#334155',
+                          background: r.platform?.toLowerCase() === 'shopee' ? '#ffedd5' : '#e2e8f0',
+                          color: r.platform?.toLowerCase() === 'shopee' ? '#c2410c' : '#334155',
                           padding: '4px 10px', borderRadius: 8, fontWeight: 600, fontSize: 12, textTransform: 'capitalize'
-                        }}>{r.platform}</span>
+                        }}>{r.platform || '-'}</span>
                       </TableCell>
                       <TableCell>{formatRp(Number(r.omset_harian))}</TableCell>
                       <TableCell className="text-gray-600">{r.employee ? r.employee.nama : 'Sistem'}</TableCell>

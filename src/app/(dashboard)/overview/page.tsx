@@ -7,11 +7,17 @@ import OverviewClient from './OverviewClient';
 
 function OverviewContent() {
   const searchParams = useSearchParams();
-  const filter = searchParams.get('filter') || 'this_month';
-  const month = searchParams.get('month') || '';
-  const year = searchParams.get('year') || '';
+  const from = searchParams.get('from') || '';
+  const to = searchParams.get('to') || '';
+  const lifetime = searchParams.get('lifetime') || '';
 
-  const apiUrl = `/api/data/overview?filter=${filter}${month ? `&month=${month}` : ''}${year ? `&year=${year}` : ''}`;
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  if (lifetime) params.set('lifetime', lifetime);
+
+  const queryString = params.toString();
+  const apiUrl = `/api/data/overview${queryString ? `?${queryString}` : ''}`;
 
   const { data, error, isLoading, isValidating } = useSWR(apiUrl, { 
     revalidateOnFocus: false,
