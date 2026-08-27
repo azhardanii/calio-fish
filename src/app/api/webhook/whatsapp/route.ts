@@ -523,7 +523,7 @@ export async function POST(req: Request) {
               }
               if (ws.length === 1) sourceId = ws[0].id;
             } else if (srcType === 'OUTLET') {
-              const os = await tx.outlet.findMany({ where: { nama: { contains: srcName, mode: 'insensitive' }, OR: [{ status: 'Aktif' }, { status: null }] }});
+              const os = await tx.outlet.findMany({ where: { nama: { contains: srcName, mode: 'insensitive' }, OR: [{ status: 'Aktif' }, { status: 'Active' }, { status: null }] }});
               if (os.length > 1) {
                 const names = os.map(o => o.nama).slice(0, 3).join(', ');
                 throw new Error(`AMBIGUOUS:Ada lebih dari 1 outlet aktif dengan kata kunci '${srcName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
@@ -549,7 +549,7 @@ export async function POST(req: Request) {
               }
               if (ws.length === 1) destId = ws[0].id;
             } else if (destType === 'OUTLET') {
-              const os = await tx.outlet.findMany({ where: { nama: { contains: destName, mode: 'insensitive' }, OR: [{ status: 'Aktif' }, { status: null }] }});
+              const os = await tx.outlet.findMany({ where: { nama: { contains: destName, mode: 'insensitive' }, OR: [{ status: 'Aktif' }, { status: 'Active' }, { status: null }] }});
               if (os.length > 1) {
                 const names = os.map(o => o.nama).slice(0, 3).join(', ');
                 throw new Error(`AMBIGUOUS:Ada lebih dari 1 outlet aktif dengan kata kunci '${destName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);

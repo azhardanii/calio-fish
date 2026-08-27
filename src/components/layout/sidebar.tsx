@@ -44,10 +44,10 @@ export function Sidebar({ user }: { user: { id: string; role: string; nama: stri
     },
     {
       title: "Tim & Gudang",
-      visible: isOwnerOrAdmin || user.role === 'MITRA',
+      visible: isOwnerOrAdmin || user.role === 'MITRA' || user.role === 'MARKETING',
       items: [
         { name: "Karyawan", href: "/karyawan", icon: Users, visible: isOwnerOrAdmin },
-        { name: "Database Outlet", href: "/outlet", icon: MapPin, visible: isOwnerOrAdmin || user.role === 'MITRA' },
+        { name: "Database Outlet", href: "/outlet", icon: MapPin, visible: isOwnerOrAdmin || user.role === 'MITRA' || user.role === 'MARKETING' },
         { name: "Database Produk", href: "/produk", icon: PackageCheck, visible: isOwnerOrAdmin },
         { name: "Warehouse", href: "/warehouse", icon: WarehouseIcon, visible: isOwnerOrAdmin },
         { name: "Log Pengiriman", href: "/pengiriman", icon: Package, visible: isOwnerOrAdmin || user.role === 'MITRA' },
