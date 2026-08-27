@@ -71,6 +71,10 @@ data: { "nama_kol": string, "jadwal_kirim": "YYYY-MM-DD", "jadwal_pengerjaan": s
 
 8. DATABASE_AFFILIATE
 data: { "nama": string, "akun_medsos": string, "no_hp": string, "alamat": string, "jenis_postingan": string, "media_upload": string, "ratecard": number, "link_unggahan": string }
+
+9. KEUANGAN_OUTLET
+For reporting payments (pelunasan/pembayaran) or debts (piutang/bon) from/to an outlet.
+data: { "outlet_name": "string", "jenis_transaksi": "PELUNASAN" | "PIUTANG", "nominal": number, "keterangan": "string" }
 `;
 
 export async function parseWhatsAppReport(text: string) {

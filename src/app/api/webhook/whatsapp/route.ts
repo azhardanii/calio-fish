@@ -707,6 +707,68 @@ export async function POST(req: Request) {
         });
         
         replyMsg = `✅ *${totalShipments} Rute Logistik* tanggal ${parsedData.date} berhasil diproses dan dicatat!`;
+
+      } else if (parsedData.report_type === 'KEUANGAN_OUTLET') {
+        const outletName = data.outlet_name || '-';
+        const os = await prisma.outlet.findMany({ 
+          where: { 
+            nama: { contains: outletName, mode: 'insensitive' }, 
+            OR: [{ status: 'Aktif' }, { status: 'Active' }, { status: null }] 
+          }
+        });
+        
+        if (os.length > 1) {
+          const names = os.map(o => o.nama).slice(0, 3).join(', ');
+          throw new Error(`AMBIGUOUS:Ada lebih dari 1 outlet aktif dengan kata kunci '${outletName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
+        }
+        if (os.length === 0) {
+          throw new Error(`AMBIGUOUS:Tidak dapat menemukan Outlet dengan nama '${outletName}'. Pastikan nama outlet sudah benar dan aktif.`);
+        }
+
+        const outlet = os[0];
+        const nominal = data.nominal || 0;
+        const ket = data.keterangan || `Laporan WA`;
+        const tgl = parsedData.date ? new Date(parsedData.date) : new Date();
+
+        if (data.jenis_transaksi === 'PELUNASAN') {
+          const newPayment = Number(outlet.payment) + nominal;
+          const newSisa = Number(outlet.tagihan) - newPayment;
+          await prisma.$transaction([
+            prisma.outletTransaction.create({
+              data: {
+                outlet_id: outlet.id,
+                type: 'PELUNASAN',
+                amount: nominal,
+                description: ket,
+                date: tgl
+              }
+            }),
+            prisma.outlet.update({
+              where: { id: outlet.id },
+              data: { payment: newPayment, sisa_tagihan: newSisa }
+            })
+          ]);
+          replyMsg = `✅ *Pembayaran Outlet* ${outlet.nama} sebesar Rp ${nominal.toLocaleString('id-ID')} berhasil dicatat!\nSisa Tagihan saat ini: Rp ${newSisa.toLocaleString('id-ID')}`;
+        } else {
+          const newTagihan = Number(outlet.tagihan) + nominal;
+          const newSisa = newTagihan - Number(outlet.payment);
+          await prisma.$transaction([
+            prisma.outletTransaction.create({
+              data: {
+                outlet_id: outlet.id,
+                type: 'PIUTANG',
+                amount: nominal,
+                description: ket,
+                date: tgl
+              }
+            }),
+            prisma.outlet.update({
+              where: { id: outlet.id },
+              data: { tagihan: newTagihan, sisa_tagihan: newSisa }
+            })
+          ]);
+          replyMsg = `✅ *Penambahan Piutang/Bon Outlet* ${outlet.nama} sebesar Rp ${nominal.toLocaleString('id-ID')} berhasil dicatat!\nSisa Tagihan saat ini: Rp ${newSisa.toLocaleString('id-ID')}`;
+        }
       }
     } catch (dbError: any) {
       console.error('Database insertion error:', dbError);
