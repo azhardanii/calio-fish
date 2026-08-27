@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { mutate } from 'swr';
 import { createAffiliator, updateAffiliator, deleteAffiliator } from '@/app/actions';
 
 export function AffiliatorManager({ affiliators }: { affiliators: any[] }) {
@@ -31,12 +32,14 @@ export function AffiliatorManager({ affiliators }: { affiliators: any[] }) {
     } else {
       await createAffiliator(formData);
     }
+    mutate('/api/data/affiliates');
     closeModal();
   };
 
   const handleDelete = async (id: string) => {
     if (confirm('Yakin ingin menghapus affiliator ini?')) {
       await deleteAffiliator(id);
+      mutate('/api/data/affiliates');
     }
   };
 

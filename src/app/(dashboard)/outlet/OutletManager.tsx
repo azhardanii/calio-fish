@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { createOutlet, updateOutlet, deleteOutlet, addPiutang, addPelunasan } from '@/app/actions';
+import { mutate } from 'swr';
 import { updateOutletProductPrice } from './actions';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
@@ -64,6 +65,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
     } else {
       await createOutlet(formData);
     }
+    mutate('/api/data/outlets');
     closeModal();
     if (isDetailModalOpen) closeDetailModal(); // close detail to refresh properly
   };
@@ -71,6 +73,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const handleDelete = async (id: string) => {
     if (confirm('Yakin ingin menghapus outlet ini?')) {
       await deleteOutlet(id);
+      mutate('/api/data/outlets');
       return true;
     }
     return false;

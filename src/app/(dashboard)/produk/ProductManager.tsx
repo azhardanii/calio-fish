@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { mutate } from 'swr';
 import { createProduct, updateProduct, deleteProduct, getProductHistory, adjustStockOpname } from '@/app/actions';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
@@ -80,12 +81,14 @@ export function ProductManager({ products, transactions }: { products: any[], tr
     } else {
       await createProduct(formData);
     }
+    mutate('/api/data/products');
     closeModal();
   };
 
   const handleDelete = async (id: string) => {
     if (confirm('Yakin ingin menghapus produk ini? Riwayat stok produk ini juga akan terhapus.')) {
       await deleteProduct(id);
+      mutate('/api/data/products');
     }
   };
 

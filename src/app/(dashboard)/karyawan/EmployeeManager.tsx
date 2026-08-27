@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createKaryawan, updateKaryawan, deleteKaryawan } from '@/app/actions';
+import { mutate } from 'swr';
 
 export function EmployeeManager({ employees }: { employees: any[] }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -42,12 +43,14 @@ export function EmployeeManager({ employees }: { employees: any[] }) {
         status_aktif: formData.status_aktif ?? true
       });
     }
+    mutate('/api/data/employees');
     closeModal();
   };
 
   const handleDelete = async (id: string) => {
     if (confirm('Yakin ingin menghapus karyawan ini?')) {
       await deleteKaryawan(id);
+      mutate('/api/data/employees');
     }
   };
 

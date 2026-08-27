@@ -5,10 +5,20 @@ import { revalidatePath } from 'next/cache';
 
 // Karyawan
 export async function createKaryawan(data: any) {
+  if (data.posisi) {
+    let newRole = data.posisi.toUpperCase();
+    if (newRole === 'STAFF PRODUKSI') newRole = 'PRODUKSI';
+    data.role = newRole;
+  }
   await prisma.employee.create({ data });
   revalidatePath('/karyawan');
 }
 export async function updateKaryawan(id: string, data: any) {
+  if (data.posisi) {
+    let newRole = data.posisi.toUpperCase();
+    if (newRole === 'STAFF PRODUKSI') newRole = 'PRODUKSI';
+    data.role = newRole;
+  }
   await prisma.employee.update({ where: { id }, data });
   revalidatePath('/karyawan');
 }
