@@ -22,6 +22,8 @@ export async function createSession(payload: any) {
   });
 }
 
+import { prisma } from '@/lib/prisma';
+
 export async function verifySession() {
   const cookieStore = await cookies();
   const session = cookieStore.get('session')?.value;
@@ -32,7 +34,21 @@ export async function verifySession() {
     const { payload } = await jwtVerify(session, key, {
       algorithms: ['HS256'],
     });
-    return payload as { id: string; role: string; nama: string };
+
+    let role = payload.role as string;
+    
+    // Fetch fresh role from DB to ensure security and fix stale token issues
+    if (payload.id) {
+      const dbUser = await prisma.employee.findUnique({
+        where: { id: payload.id as string },
+        select: { role: true }
+      });
+      if (dbUser) {
+        role = dbUser.role;
+      }
+    }
+
+    return { ...payload, role } as { id: string; role: string; nama: string };
   } catch (error) {
     return null;
   }
