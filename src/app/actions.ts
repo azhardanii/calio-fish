@@ -32,12 +32,14 @@ export async function createOutlet(data: any) {
       nama: data.nama,
       tlp: data.tlp,
       alamat: data.alamat,
+      wilayah: data.wilayah,
       status: data.status,
       pic: data.pic,
       order_baru: data.order_baru,
       tagihan: data.tagihan,
       payment: data.payment,
       sisa_tagihan: data.sisa_tagihan,
+      pengelola_id: data.pengelola_id || null,
     } 
   });
 
@@ -61,7 +63,58 @@ export async function updateOutlet(id: string, data: any) {
   if (data.sisa_tagihan !== undefined) data.sisa_tagihan = Number(data.sisa_tagihan);
   if (data.order_baru !== undefined) data.order_baru = Number(data.order_baru);
 
+  if (data.pengelola_id === '') data.pengelola_id = null;
   await prisma.outlet.update({ where: { id }, data });
+  revalidatePath('/outlet');
+}
+
+export async function addPiutang(outletId: string, amount: number, description: string = '', dateString?: string) {
+  const outlet = await prisma.outlet.findUnique({ where: { id: outletId } });
+  if (!outlet) return;
+
+  const newTagihan = Number(outlet.tagihan) + amount;
+  const newSisa = newTagihan - Number(outlet.payment);
+
+  await prisma.$transaction([
+    prisma.outletTransaction.create({
+      data: {
+        outlet_id: outletId,
+        type: 'PIUTANG',
+        amount: amount,
+        description,
+        date: dateString ? new Date(dateString) : new Date()
+      }
+    }),
+    prisma.outlet.update({
+      where: { id: outletId },
+      data: { tagihan: newTagihan, sisa_tagihan: newSisa }
+    })
+  ]);
+  revalidatePath('/outlet');
+}
+
+export async function addPelunasan(outletId: string, amount: number, description: string = '', dateString?: string) {
+  const outlet = await prisma.outlet.findUnique({ where: { id: outletId } });
+  if (!outlet) return;
+
+  const newPayment = Number(outlet.payment) + amount;
+  const newSisa = Number(outlet.tagihan) - newPayment;
+
+  await prisma.$transaction([
+    prisma.outletTransaction.create({
+      data: {
+        outlet_id: outletId,
+        type: 'PELUNASAN',
+        amount: amount,
+        description,
+        date: dateString ? new Date(dateString) : new Date()
+      }
+    }),
+    prisma.outlet.update({
+      where: { id: outletId },
+      data: { payment: newPayment, sisa_tagihan: newSisa }
+    })
+  ]);
   revalidatePath('/outlet');
 }
 export async function deleteOutlet(id: string) {

@@ -6,9 +6,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { OutletManager } from './OutletManager';
 
 export default function OutletPage() {
-  const { data: outlets, isLoading } = useSWR('/api/data/outlets');
+  const { data: outlets, isLoading: isLoadingOutlets } = useSWR('/api/data/outlets');
+  const { data: currentUser, isLoading: isLoadingUser } = useSWR('/api/auth/me');
+  const { data: employees, isLoading: isLoadingEmployees } = useSWR('/api/data/employees');
 
-  if (isLoading && !outlets) {
+  if ((isLoadingOutlets && !outlets) || (isLoadingUser && !currentUser) || (isLoadingEmployees && !employees)) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
         <div style={{ textAlign: 'center' }}>
@@ -24,7 +26,7 @@ export default function OutletPage() {
     <div className="space-y-6">
       <Card>
         <CardContent className="pt-6">
-          <OutletManager outlets={outlets || []} />
+          <OutletManager outlets={outlets || []} currentUser={currentUser} employees={employees?.employees || []} />
         </CardContent>
       </Card>
     </div>

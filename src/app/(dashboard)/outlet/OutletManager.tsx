@@ -1,15 +1,30 @@
 'use client';
 
 import React, { useState } from 'react';
-import { createOutlet, updateOutlet, deleteOutlet } from '@/app/actions';
+import { createOutlet, updateOutlet, deleteOutlet, addPiutang, addPelunasan } from '@/app/actions';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
-export function OutletManager({ outlets }: { outlets: any[] }) {
+export function OutletManager({ outlets, currentUser, employees }: { outlets: any[], currentUser: any, employees: any[] }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedOutlet, setSelectedOutlet] = useState<any>(null);
   const [formData, setFormData] = useState<any>({});
   const [isEditing, setIsEditing] = useState(false);
+
+  const [wilayahFilter, setWilayahFilter] = useState<string>('');
+
+  const [isTxModalOpen, setIsTxModalOpen] = useState(false);
+  const [txType, setTxType] = useState<'PIUTANG' | 'PELUNASAN'>('PIUTANG');
+  const [txAmount, setTxAmount] = useState<number | ''>('');
+  const [txDesc, setTxDesc] = useState('');
+  const [txDate, setTxDate] = useState(() => new Date().toISOString().split('T')[0]);
+
+  const filteredOutlets = outlets.filter((o) => {
+    if (wilayahFilter && o.wilayah !== wilayahFilter) return false;
+    return true;
+  });
+
+  const uniqueWilayah = Array.from(new Set(outlets.map((o) => o.wilayah).filter(Boolean))) as string[];
 
   const openDetailModal = (outlet: any) => {
     setSelectedOutlet(outlet);
@@ -26,7 +41,7 @@ export function OutletManager({ outlets }: { outlets: any[] }) {
       setFormData(outlet);
       setIsEditing(true);
     } else {
-      setFormData({ status: 'Active', order_baru: 0, tagihan: 0, payment: 0, sisa_tagihan: 0 });
+      setFormData({ status: 'Active', order_baru: 0, tagihan: 0, payment: 0, sisa_tagihan: 0, wilayah: '', pengelola_id: '' });
       setIsEditing(false);
     }
     setIsModalOpen(true);
@@ -45,6 +60,7 @@ export function OutletManager({ outlets }: { outlets: any[] }) {
       await createOutlet(formData);
     }
     closeModal();
+    if (isDetailModalOpen) closeDetailModal(); // close detail to refresh properly
   };
 
   const handleDelete = async (id: string) => {
@@ -55,13 +71,87 @@ export function OutletManager({ outlets }: { outlets: any[] }) {
     return false;
   };
 
+  const openTxModal = (type: 'PIUTANG' | 'PELUNASAN') => {
+    setTxType(type);
+    setTxAmount('');
+    setTxDesc('');
+    setTxDate(new Date().toISOString().split('T')[0]);
+    setIsTxModalOpen(true);
+  };
+
+  const handleTxSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOutlet || !txAmount) return;
+    
+    if (txType === 'PIUTANG') {
+      await addPiutang(selectedOutlet.id, Number(txAmount), txDesc, txDate);
+      
+      const newTagihan = Number(selectedOutlet.tagihan) + Number(txAmount);
+      const newSisa = newTagihan - Number(selectedOutlet.payment);
+      
+      setSelectedOutlet({
+        ...selectedOutlet,
+        tagihan: newTagihan,
+        sisa_tagihan: newSisa,
+        transactions: [
+          {
+            id: 'temp-' + Date.now(),
+            date: new Date(txDate).toISOString(),
+            type: 'PIUTANG',
+            amount: Number(txAmount),
+            description: txDesc
+          },
+          ...(selectedOutlet.transactions || [])
+        ]
+      });
+      
+    } else {
+      await addPelunasan(selectedOutlet.id, Number(txAmount), txDesc, txDate);
+      
+      const newPayment = Number(selectedOutlet.payment) + Number(txAmount);
+      const newSisa = Number(selectedOutlet.tagihan) - newPayment;
+      
+      setSelectedOutlet({
+        ...selectedOutlet,
+        payment: newPayment,
+        sisa_tagihan: newSisa,
+        transactions: [
+          {
+            id: 'temp-' + Date.now(),
+            date: new Date(txDate).toISOString(),
+            type: 'PELUNASAN',
+            amount: Number(txAmount),
+            description: txDesc
+          },
+          ...(selectedOutlet.transactions || [])
+        ]
+      });
+    }
+    
+    setIsTxModalOpen(false);
+  };
+
   return (
     <>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold">Daftar Outlet ({outlets.length})</h2>
-        <button onClick={() => openModal()} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium shadow transition-colors">
-          + Tambah Outlet
-        </button>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-4">
+        <h2 className="text-xl font-bold">Daftar Outlet ({filteredOutlets.length})</h2>
+        <div className="flex items-center gap-3">
+          <select 
+            className="border border-gray-300 rounded-lg p-2 text-sm bg-white min-w-[150px]"
+            value={wilayahFilter} 
+            onChange={e => setWilayahFilter(e.target.value)}
+          >
+            <option value="">Semua Wilayah</option>
+            {uniqueWilayah.map(w => (
+              <option key={w} value={w}>{w}</option>
+            ))}
+          </select>
+          {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN' || currentUser?.role === 'MITRA') && (
+            <button onClick={() => openModal()} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium shadow transition-colors whitespace-nowrap">
+              + Tambah Outlet
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -70,30 +160,25 @@ export function OutletManager({ outlets }: { outlets: any[] }) {
             <TableRow>
               <TableHead>Nama Outlet</TableHead>
               <TableHead>Kontak & Alamat</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>Pengelola</TableHead>
               <TableHead>Sisa Stok</TableHead>
               <TableHead>Sisa Tagihan</TableHead>
               <TableHead className="text-right">Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {outlets.map((o) => (
+            {filteredOutlets.map((o) => (
               <TableRow key={o.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => openDetailModal(o)}>
-                <TableCell className="font-bold">{o.nama}</TableCell>
+                <TableCell>
+                  <div className="font-bold">{o.nama}</div>
+                  {o.wilayah && <div className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full inline-block mt-1 font-medium">{o.wilayah}</div>}
+                </TableCell>
                 <TableCell>
                   <div className="text-sm font-medium">{o.tlp || '-'}</div>
                   <div className="text-xs text-gray-500">{o.alamat || '-'}</div>
                 </TableCell>
                 <TableCell>
-                  {o.status && (
-                    <span style={{
-                      background: o.status.toLowerCase() === 'non-active' ? '#fee2e2' : '#dcfce7',
-                      color: o.status.toLowerCase() === 'non-active' ? '#991b1b' : '#15803d',
-                      padding: '2px 8px', borderRadius: 12, fontWeight: 600, fontSize: 12, textTransform: 'uppercase'
-                    }}>
-                      {o.status}
-                    </span>
-                  )}
+                  <div className="text-sm font-medium">{o.pengelola?.nama || 'Pusat'}</div>
                 </TableCell>
                 <TableCell>{o.stocks?.reduce((acc: number, s: any) => acc + s.quantity, 0) || 0} pcs</TableCell>
                 <TableCell style={{ color: Number(o.sisa_tagihan) > 0 ? '#dc2626' : '#16a34a', fontWeight: 600 }}>
@@ -101,14 +186,13 @@ export function OutletManager({ outlets }: { outlets: any[] }) {
                 </TableCell>
                 <TableCell className="text-right space-x-3">
                   <button onClick={(e) => { e.stopPropagation(); openModal(o); }} className="text-blue-600 hover:text-blue-800 font-medium">Edit</button>
-                  <button onClick={(e) => { e.stopPropagation(); handleDelete(o.id); }} className="text-red-600 hover:text-red-800 font-medium">Hapus</button>
                 </TableCell>
               </TableRow>
             ))}
-            {outlets.length === 0 && (
+            {filteredOutlets.length === 0 && (
               <TableRow>
                 <TableCell colSpan={6} className="text-center text-gray-500 py-8">
-                  Belum ada data outlet. Silakan tambah data baru.
+                  Belum ada data outlet.
                 </TableCell>
               </TableRow>
             )}
@@ -116,28 +200,24 @@ export function OutletManager({ outlets }: { outlets: any[] }) {
         </Table>
       </div>
 
+      {/* Detail Modal */}
       {isDetailModalOpen && selectedOutlet && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6 max-h-[90vh] flex flex-col">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-2xl font-bold">{selectedOutlet.nama}</h3>
+              <div>
+                <h3 className="text-2xl font-bold">{selectedOutlet.nama}</h3>
+                {selectedOutlet.wilayah && <div className="text-sm text-indigo-600 font-medium">{selectedOutlet.wilayah}</div>}
+              </div>
               <button onClick={closeDetailModal} className="text-gray-500 hover:text-gray-800 text-xl font-bold">&times;</button>
             </div>
             
             <div className="overflow-y-auto flex-1 pr-2 space-y-6">
-              <div className="rounded-lg overflow-hidden border border-gray-200 h-[400px]">
-                <iframe 
-                  width="100%" 
-                  height="100%" 
-                  frameBorder="0" 
-                  scrolling="no" 
-                  marginHeight={0} 
-                  marginWidth={0} 
-                  src={`https://maps.google.com/maps?q=${encodeURIComponent(selectedOutlet.alamat || selectedOutlet.nama)}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
-                ></iframe>
-              </div>
-
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="bg-gray-50 p-3 rounded-lg border">
+                  <div className="text-xs text-gray-500 font-medium mb-1">Pengelola</div>
+                  <div className="font-bold">{selectedOutlet.pengelola?.nama || 'Pusat'}</div>
+                </div>
                 <div className="bg-gray-50 p-3 rounded-lg border">
                   <div className="text-xs text-gray-500 font-medium mb-1">Status</div>
                   <div className="font-bold">
@@ -150,33 +230,68 @@ export function OutletManager({ outlets }: { outlets: any[] }) {
                   </div>
                 </div>
                 <div className="bg-gray-50 p-3 rounded-lg border">
-                  <div className="text-xs text-gray-500 font-medium mb-1">PIC Outlet</div>
-                  <div className="font-bold">{selectedOutlet.pic || '-'}</div>
-                </div>
-                <div className="bg-gray-50 p-3 rounded-lg border">
                   <div className="text-xs text-gray-500 font-medium mb-1">No Telepon</div>
                   <div className="font-bold">{selectedOutlet.tlp || '-'}</div>
                 </div>
                 <div className="bg-gray-50 p-3 rounded-lg border">
-                  <div className="text-xs text-gray-500 font-medium mb-1">Sisa Stok (Total)</div>
-                  <div className="font-bold text-blue-700">{selectedOutlet.stocks?.reduce((acc: number, s: any) => acc + s.quantity, 0) || 0} pcs</div>
+                  <div className="text-xs text-gray-500 font-medium mb-1">Total Tagihan</div>
+                  <div className="font-bold text-slate-700">Rp {Number(selectedOutlet.tagihan).toLocaleString('id-ID')}</div>
                 </div>
                 <div className="bg-gray-50 p-3 rounded-lg border">
-                  <div className="text-xs text-gray-500 font-medium mb-1">Order Baru</div>
-                  <div className="font-bold text-orange-600">{selectedOutlet.order_baru}</div>
+                  <div className="text-xs text-gray-500 font-medium mb-1">Total Pelunasan</div>
+                  <div className="font-bold text-green-600">Rp {Number(selectedOutlet.payment).toLocaleString('id-ID')}</div>
                 </div>
-                <div className="bg-gray-50 p-3 rounded-lg border">
-                  <div className="text-xs text-gray-500 font-medium mb-1">Sisa Tagihan</div>
+                <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                  <div className="text-xs text-blue-700 font-medium mb-1">Sisa Tagihan</div>
                   <div className={`font-bold ${Number(selectedOutlet.sisa_tagihan) > 0 ? 'text-red-600' : 'text-green-600'}`}>
                     Rp {Number(selectedOutlet.sisa_tagihan).toLocaleString('id-ID')}
                   </div>
                 </div>
               </div>
 
+              <div className="flex gap-2">
+                <button onClick={() => openTxModal('PIUTANG')} className="flex-1 bg-red-100 text-red-700 hover:bg-red-200 py-2 rounded-lg font-medium text-sm transition-colors border border-red-200">
+                  + Input Piutang
+                </button>
+                <button onClick={() => openTxModal('PELUNASAN')} className="flex-1 bg-green-100 text-green-700 hover:bg-green-200 py-2 rounded-lg font-medium text-sm transition-colors border border-green-200">
+                  + Input Pelunasan
+                </button>
+              </div>
+
               <div>
-                <div className="text-sm font-medium text-gray-500 mb-1">Alamat Lengkap</div>
-                <div className="bg-gray-50 p-3 rounded-lg border text-sm">
-                  {selectedOutlet.alamat || 'Tidak ada alamat tercatat.'}
+                <div className="text-sm font-medium text-gray-500 mb-2">Riwayat Piutang & Pelunasan</div>
+                <div className="bg-white border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-slate-50">
+                      <TableRow>
+                        <TableHead className="text-xs">Tanggal</TableHead>
+                        <TableHead className="text-xs">Jenis</TableHead>
+                        <TableHead className="text-xs">Keterangan</TableHead>
+                        <TableHead className="text-right text-xs">Jumlah</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedOutlet.transactions?.map((tx: any) => (
+                        <TableRow key={tx.id}>
+                          <TableCell className="text-xs">{new Date(tx.date).toLocaleDateString('id-ID')}</TableCell>
+                          <TableCell className="text-xs">
+                            <span className={`px-2 py-0.5 rounded-md font-medium ${tx.type === 'PIUTANG' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                              {tx.type}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-xs text-gray-600">{tx.description || '-'}</TableCell>
+                          <TableCell className={`text-right text-sm font-bold ${tx.type === 'PIUTANG' ? 'text-red-600' : 'text-green-600'}`}>
+                            Rp {Number(tx.amount).toLocaleString('id-ID')}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {(!selectedOutlet.transactions || selectedOutlet.transactions.length === 0) && (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center text-xs text-gray-400 py-4">Belum ada riwayat transaksi</TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
                 </div>
               </div>
 
@@ -195,29 +310,66 @@ export function OutletManager({ outlets }: { outlets: any[] }) {
                   </div>
                 ) : (
                   <div className="bg-gray-50 p-4 rounded-lg border text-center text-sm text-gray-500 italic">
-                    Stok varian kosong (Belum ada data stok).
+                    Stok varian kosong.
                   </div>
                 )}
               </div>
             </div>
 
             <div className="flex flex-wrap gap-3 pt-6 mt-4 border-t border-gray-100">
-              <button onClick={() => { closeDetailModal(); openModal(selectedOutlet); }} className="flex-1 bg-blue-50 text-blue-700 hover:bg-blue-100 px-4 py-2 rounded-lg font-medium transition-colors">
+              <button onClick={() => { openModal(selectedOutlet); }} className="flex-1 bg-blue-50 text-blue-700 hover:bg-blue-100 px-4 py-2 rounded-lg font-medium transition-colors">
                 Edit Data
               </button>
-              <button onClick={async () => {
-                const deleted = await handleDelete(selectedOutlet.id);
-                if (deleted) closeDetailModal();
-              }} className="flex-1 bg-red-50 text-red-700 hover:bg-red-100 px-4 py-2 rounded-lg font-medium transition-colors">
-                Hapus Outlet
-              </button>
+              {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN') && (
+                <button onClick={async () => {
+                  const deleted = await handleDelete(selectedOutlet.id);
+                  if (deleted) closeDetailModal();
+                }} className="flex-1 bg-red-50 text-red-700 hover:bg-red-100 px-4 py-2 rounded-lg font-medium transition-colors">
+                  Hapus Outlet
+                </button>
+              )}
             </div>
           </div>
         </div>
       )}
 
+      {/* Transaction Modal */}
+      {isTxModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+              <span className={`w-3 h-3 rounded-full ${txType === 'PIUTANG' ? 'bg-red-500' : 'bg-green-500'}`}></span>
+              {txType === 'PIUTANG' ? 'Input Piutang Baru' : 'Input Pelunasan'}
+            </h3>
+            <form onSubmit={handleTxSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-slate-700">Tanggal</label>
+                  <input required type="date" className="w-full border rounded-lg p-2.5 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-400 outline-none transition-all text-sm" value={txDate} onChange={e => setTxDate(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-slate-700">Nominal (Rp)</label>
+                  <input required type="number" min="0" className="w-full border rounded-lg p-2.5 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-400 outline-none transition-all text-sm" value={txAmount} onChange={e => setTxAmount(e.target.value ? Number(e.target.value) : '')} placeholder="Contoh: 150000" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-slate-700">Keterangan (Opsional)</label>
+                <textarea className="w-full border rounded-lg p-2.5 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-400 outline-none transition-all" value={txDesc} onChange={e => setTxDesc(e.target.value)} placeholder="Catatan transaksi..." rows={3} />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setIsTxModalOpen(false)} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg font-medium transition-colors">Batal</button>
+                <button type="submit" className={`px-4 py-2 text-white rounded-lg font-medium transition-colors ${txType === 'PIUTANG' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}>
+                  Simpan Data
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Create/Edit Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold mb-4">{isEditing ? 'Edit Outlet' : 'Tambah Outlet'}</h3>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -227,26 +379,43 @@ export function OutletManager({ outlets }: { outlets: any[] }) {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
+                  <label className="block text-sm font-medium mb-1">Wilayah</label>
+                  <input type="text" className="w-full border rounded p-2" value={formData.wilayah || ''} onChange={e => setFormData({...formData, wilayah: e.target.value})} placeholder="Cth: Bandung" />
+                </div>
+                <div>
                   <label className="block text-sm font-medium mb-1">Status</label>
                   <select className="w-full border rounded p-2" value={formData.status || 'Active'} onChange={e => setFormData({...formData, status: e.target.value})}>
                     <option value="Active">Active</option>
                     <option value="Non-Active">Non-Active</option>
                   </select>
                 </div>
+              </div>
+              
+              {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN') && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Pengelola (Mitra)</label>
+                  <select className="w-full border rounded p-2" value={formData.pengelola_id || ''} onChange={e => setFormData({...formData, pengelola_id: e.target.value})}>
+                    <option value="">-- Dikelola Pusat --</option>
+                    {employees.filter(e => e.role === 'MITRA').map((emp) => (
+                      <option key={emp.id} value={emp.id}>{emp.nama}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">No Telp</label>
                   <input type="text" className="w-full border rounded p-2" value={formData.tlp || ''} onChange={e => setFormData({...formData, tlp: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">PIC</label>
+                  <input type="text" className="w-full border rounded p-2" value={formData.pic || ''} onChange={e => setFormData({...formData, pic: e.target.value})} />
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Alamat</label>
                 <textarea className="w-full border rounded p-2" value={formData.alamat || ''} onChange={e => setFormData({...formData, alamat: e.target.value})} />
-              </div>
-              <div className="grid grid-cols-1 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Sisa Tagihan (Rp)</label>
-                  <input type="number" className="w-full border rounded p-2" value={formData.sisa_tagihan || 0} onChange={e => setFormData({...formData, sisa_tagihan: Number(e.target.value)})} />
-                </div>
               </div>
               
               <div className="flex justify-end gap-3 pt-4">
