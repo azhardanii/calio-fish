@@ -68,13 +68,25 @@ export async function createOutlet(data: any) {
   return res;
 }
 export async function updateOutlet(id: string, data: any) {
-  if (data.tagihan !== undefined) data.tagihan = Number(data.tagihan);
-  if (data.payment !== undefined) data.payment = Number(data.payment);
-  if (data.sisa_tagihan !== undefined) data.sisa_tagihan = Number(data.sisa_tagihan);
-  if (data.order_baru !== undefined) data.order_baru = Number(data.order_baru);
+  const updateData: any = {
+    nama: data.nama,
+    tlp: data.tlp,
+    alamat: data.alamat,
+    wilayah: data.wilayah,
+    status: data.status,
+    pic: data.pic,
+    pengelola_id: data.pengelola_id === '' ? null : data.pengelola_id
+  };
+  
+  if (data.tagihan !== undefined) updateData.tagihan = Number(data.tagihan);
+  if (data.payment !== undefined) updateData.payment = Number(data.payment);
+  if (data.sisa_tagihan !== undefined) updateData.sisa_tagihan = Number(data.sisa_tagihan);
+  if (data.order_baru !== undefined) updateData.order_baru = Number(data.order_baru);
+  
+  // Clean undefined values
+  Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
 
-  if (data.pengelola_id === '') data.pengelola_id = null;
-  await prisma.outlet.update({ where: { id }, data });
+  await prisma.outlet.update({ where: { id }, data: updateData });
   revalidatePath('/outlet');
 }
 
