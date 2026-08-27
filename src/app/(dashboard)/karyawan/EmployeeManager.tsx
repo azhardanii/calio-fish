@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { createKaryawan, updateKaryawan, deleteKaryawan } from '@/app/actions';
 import { mutate } from 'swr';
 
-export function EmployeeManager({ employees }: { employees: any[] }) {
+export function EmployeeManager({ employees, currentUser }: { employees: any[], currentUser?: any }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState<any>({});
   const [isEditing, setIsEditing] = useState(false);
@@ -58,9 +58,11 @@ export function EmployeeManager({ employees }: { employees: any[] }) {
     <>
       <div className="flex items-center justify-between pb-2 mb-4">
         <h2 className="text-2xl font-semibold text-gray-800">Database Karyawan</h2>
-        <button onClick={() => openModal()} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 text-sm rounded-lg font-medium shadow transition-colors">
-          + Tambah Karyawan
-        </button>
+        {currentUser?.role === 'OWNER' && (
+          <button onClick={() => openModal()} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 text-sm rounded-lg font-medium shadow transition-colors">
+            + Tambah Karyawan
+          </button>
+        )}
       </div>
 
       <div className="overflow-x-auto mt-4">
@@ -90,8 +92,14 @@ export function EmployeeManager({ employees }: { employees: any[] }) {
                   </span>
                 </TableCell>
                 <TableCell className="text-right space-x-2">
-                  <button onClick={() => openModal(e)} className="text-blue-600 hover:text-blue-800">Edit</button>
-                  <button onClick={() => handleDelete(e.id)} className="text-red-600 hover:text-red-800">Hapus</button>
+                  {currentUser?.role === 'OWNER' ? (
+                    <>
+                      <button onClick={() => openModal(e)} className="text-blue-600 hover:text-blue-800">Edit</button>
+                      <button onClick={() => handleDelete(e.id)} className="text-red-600 hover:text-red-800">Hapus</button>
+                    </>
+                  ) : (
+                    <span className="text-gray-400 text-sm italic">Akses Terbatas</span>
+                  )}
                 </TableCell>
               </TableRow>
             ))}

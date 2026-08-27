@@ -9,8 +9,9 @@ import { EmployeeManager } from './EmployeeManager';
 
 export default function KaryawanPage() {
   const { data, isLoading } = useSWR('/api/data/employees');
+  const { data: currentUser, isLoading: isUserLoading } = useSWR('/api/auth/me');
 
-  if (isLoading && !data) {
+  if ((isLoading && !data) || (isUserLoading && !currentUser)) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
         <div style={{ textAlign: 'center' }}>
@@ -86,7 +87,7 @@ export default function KaryawanPage() {
         <section className="space-y-6">
           <Card>
             <CardContent className="pt-6">
-              <EmployeeManager employees={employees} />
+              <EmployeeManager employees={employees} currentUser={currentUser} />
             </CardContent>
           </Card>
         </section>

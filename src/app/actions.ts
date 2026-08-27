@@ -144,6 +144,34 @@ export async function deleteOutlet(id: string) {
   revalidatePath('/outlet');
 }
 
+export async function adjustOutletStock(outletStockId: string, newQty: number, note: string) {
+  const os = await prisma.outletStock.findUnique({ where: { id: outletStockId }, include: { product: true, outlet: true } });
+  if (!os) return;
+
+  const diff = newQty - os.quantity;
+  if (diff === 0) return;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.outletStock.update({ where: { id: outletStockId }, data: { quantity: newQty } });
+    
+    await tx.stockTransaction.create({
+      data: {
+        product_id: os.product_id,
+        type: 'OPNAME_OUTLET',
+        flow: diff > 0 ? 'IN' : 'OUT',
+        qty: Math.abs(diff),
+        balance: newQty, // This is outlet balance, which might be confusing globally but it's ok since type is OPNAME_OUTLET
+        description: `Penyesuaian Manual Stok Outlet ${os.outlet.nama}: ${note}`,
+        date: new Date(),
+        destination_id: os.outlet_id,
+        destination_type: 'OUTLET'
+      }
+    });
+  });
+
+  revalidatePath('/outlet');
+}
+
 // Affiliator (Affiliate table)
 export async function createAffiliator(data: any) {
   if (data.ratecard !== undefined) data.ratecard = Number(data.ratecard);

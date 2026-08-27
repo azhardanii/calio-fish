@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { createOutlet, updateOutlet, deleteOutlet, addPiutang, addPelunasan } from '@/app/actions';
+import { createOutlet, updateOutlet, deleteOutlet, addPiutang, addPelunasan, adjustOutletStock } from '@/app/actions';
 import { mutate } from 'swr';
 import { updateOutletProductPrice } from './actions';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -15,6 +15,9 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const [activeTab, setActiveTab] = useState('STOK');
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [newPrice, setNewPrice] = useState<number>(0);
+  const [editingStockId, setEditingStockId] = useState<string | null>(null);
+  const [newStockQty, setNewStockQty] = useState<number>(0);
+  const [stockNote, setStockNote] = useState<string>('');
 
   const [wilayahFilter, setWilayahFilter] = useState<string>('');
 
@@ -211,21 +214,33 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
       {/* Detail Modal */}
       {isDetailModalOpen && selectedOutlet && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6 max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center mb-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl p-6 max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-start md:items-center mb-4 border-b pb-4">
               <div>
                 <h3 className="text-2xl font-bold">{selectedOutlet.nama}</h3>
-                {selectedOutlet.wilayah && <div className="text-sm text-indigo-600 font-medium">{selectedOutlet.wilayah}</div>}
+                <div className="flex items-center gap-2 mt-1">
+                  {selectedOutlet.wilayah && <span className="text-sm text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md font-medium">{selectedOutlet.wilayah}</span>}
+                  <span className="text-xs text-gray-500 font-medium">Pengelola: {selectedOutlet.pengelola?.nama || 'Pusat'}</span>
+                </div>
               </div>
-              <button onClick={closeDetailModal} className="text-gray-500 hover:text-gray-800 text-xl font-bold">&times;</button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { openModal(selectedOutlet); }} className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-sm font-medium transition-colors">
+                  Edit Data
+                </button>
+                {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN') && (
+                  <button onClick={async () => {
+                    const deleted = await handleDelete(selectedOutlet.id);
+                    if (deleted) closeDetailModal();
+                  }} className="px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-sm font-medium transition-colors">
+                    Hapus
+                  </button>
+                )}
+                <button onClick={closeDetailModal} className="text-gray-400 hover:text-gray-800 ml-1 text-2xl font-light">&times;</button>
+              </div>
             </div>
             
-            <div className="overflow-y-auto flex-1 pr-2 space-y-6">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="bg-gray-50 p-3 rounded-lg border">
-                  <div className="text-xs text-gray-500 font-medium mb-1">Pengelola</div>
-                  <div className="font-bold">{selectedOutlet.pengelola?.nama || 'Pusat'}</div>
-                </div>
+            <div className="overflow-y-auto flex-1 pr-2 space-y-5">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="bg-gray-50 p-3 rounded-lg border">
                   <div className="text-xs text-gray-500 font-medium mb-1">Status</div>
                   <div className="font-bold">
@@ -239,54 +254,72 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                 </div>
                 <div className="bg-gray-50 p-3 rounded-lg border">
                   <div className="text-xs text-gray-500 font-medium mb-1">No Telepon</div>
-                  <div className="font-bold">{selectedOutlet.tlp || '-'}</div>
+                  <div className="font-bold text-sm">{selectedOutlet.tlp || '-'}</div>
                 </div>
                 <div className="bg-gray-50 p-3 rounded-lg border">
                   <div className="text-xs text-gray-500 font-medium mb-1">Total Tagihan</div>
-                  <div className="font-bold text-slate-700">Rp {Number(selectedOutlet.tagihan).toLocaleString('id-ID')}</div>
-                </div>
-                <div className="bg-gray-50 p-3 rounded-lg border">
-                  <div className="text-xs text-gray-500 font-medium mb-1">Total Pelunasan</div>
-                  <div className="font-bold text-green-600">Rp {Number(selectedOutlet.payment).toLocaleString('id-ID')}</div>
+                  <div className="font-bold text-sm text-slate-700">Rp {Number(selectedOutlet.tagihan).toLocaleString('id-ID')}</div>
                 </div>
                 <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
                   <div className="text-xs text-blue-700 font-medium mb-1">Sisa Tagihan</div>
-                  <div className={`font-bold ${Number(selectedOutlet.sisa_tagihan) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  <div className={`font-bold text-sm ${Number(selectedOutlet.sisa_tagihan) > 0 ? 'text-red-600' : 'text-green-600'}`}>
                     Rp {Number(selectedOutlet.sisa_tagihan).toLocaleString('id-ID')}
                   </div>
                 </div>
               </div>
 
-              <div className="flex gap-2">
-                <button onClick={() => openTxModal('PIUTANG')} className="flex-1 bg-red-100 text-red-700 hover:bg-red-200 py-2 rounded-lg font-medium text-sm transition-colors border border-red-200">
-                  + Input Piutang
-                </button>
-                <button onClick={() => openTxModal('PELUNASAN')} className="flex-1 bg-green-100 text-green-700 hover:bg-green-200 py-2 rounded-lg font-medium text-sm transition-colors border border-green-200">
-                  + Input Pelunasan
-                </button>
-              </div>
-
-              <div className="flex border-b border-gray-200 mt-4">
-                <button onClick={() => setActiveTab('STOK')} className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${activeTab === 'STOK' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Stok & Harga</button>
-                <button onClick={() => setActiveTab('PENGIRIMAN')} className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${activeTab === 'PENGIRIMAN' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Riwayat Pengiriman</button>
-                <button onClick={() => setActiveTab('KEUANGAN')} className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${activeTab === 'KEUANGAN' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Keuangan & Tagihan</button>
+              <div className="flex gap-2 p-1 bg-gray-100 rounded-lg overflow-x-auto">
+                <button onClick={() => setActiveTab('STOK')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${activeTab === 'STOK' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}>Stok & Harga</button>
+                <button onClick={() => setActiveTab('PENGIRIMAN')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${activeTab === 'PENGIRIMAN' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}>Riwayat Pengiriman</button>
+                <button onClick={() => setActiveTab('KEUANGAN')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${activeTab === 'KEUANGAN' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}>Keuangan & Tagihan</button>
               </div>
 
               {activeTab === 'STOK' && (
                 <div>
-                  <div className="text-sm font-medium text-gray-500 mb-2">Rincian Stok & Harga Khusus</div>
                   {selectedOutlet.stocks && selectedOutlet.stocks.length > 0 ? (
-                    <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {selectedOutlet.stocks.map((stock: any) => (
-                        <div key={stock.id} className="bg-gray-50 p-3 rounded-lg border flex items-center justify-between">
-                          <div>
-                            <div className="text-sm font-medium text-slate-800">{stock.product.name}</div>
-                            <div className="text-xs text-slate-500">Stok: <span className="font-bold text-slate-700">{stock.quantity} pcs</span></div>
+                        <div key={stock.id} className="bg-white p-3 rounded-lg border shadow-sm">
+                          <div className="flex justify-between items-start mb-2">
+                            <div className="font-bold text-slate-800 text-sm">{stock.product.name}</div>
                           </div>
-                          <div className="flex items-center gap-2">
+                          
+                          {/* Stock Section */}
+                          <div className="mb-3 pb-3 border-b border-gray-100">
+                            {editingStockId === stock.id ? (
+                              <div className="space-y-2 bg-slate-50 p-2 rounded border">
+                                <div className="text-xs font-semibold text-slate-600">Sesuaikan Stok</div>
+                                <div className="flex gap-2">
+                                  <input type="number" className="border rounded px-2 py-1 text-sm w-20" value={newStockQty} onChange={e => setNewStockQty(Number(e.target.value))} />
+                                  <input type="text" className="border rounded px-2 py-1 text-sm flex-1" placeholder="Catatan..." value={stockNote} onChange={e => setStockNote(e.target.value)} />
+                                </div>
+                                <div className="flex gap-2 pt-1">
+                                  <button onClick={async () => {
+                                    await adjustOutletStock(stock.id, newStockQty, stockNote);
+                                    const updated = { ...selectedOutlet };
+                                    const sIdx = updated.stocks.findIndex((s: any) => s.id === stock.id);
+                                    if(sIdx > -1) updated.stocks[sIdx].quantity = newStockQty;
+                                    setSelectedOutlet(updated);
+                                    setEditingStockId(null);
+                                  }} className="text-xs bg-blue-600 text-white px-2 py-1 rounded font-medium">Simpan Stok</button>
+                                  <button onClick={() => setEditingStockId(null)} className="text-xs text-gray-500">Batal</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between">
+                                <div className="text-xs text-slate-500">Stok Tersedia: <span className="font-bold text-slate-700 text-sm">{stock.quantity} pcs</span></div>
+                                {currentUser?.role === 'OWNER' && (
+                                  <button onClick={() => { setEditingStockId(stock.id); setNewStockQty(stock.quantity); setStockNote(''); }} className="text-xs text-blue-600 font-medium hover:underline">✎ Edit Stok</button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Price Section */}
+                          <div>
                             {editingPriceId === stock.id ? (
-                              <div className="flex items-center gap-2">
-                                <input type="number" className="border rounded px-2 py-1 text-sm w-32" value={newPrice} onChange={e => setNewPrice(Number(e.target.value))} />
+                              <div className="flex items-center gap-2 bg-slate-50 p-2 rounded border">
+                                <input type="number" className="border rounded px-2 py-1 text-sm w-full" value={newPrice} onChange={e => setNewPrice(Number(e.target.value))} />
                                 <button onClick={async () => {
                                   await updateOutletProductPrice(stock.id, newPrice);
                                   const updated = { ...selectedOutlet };
@@ -294,13 +327,13 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                                   if(sIdx > -1) updated.stocks[sIdx].harga_beli = newPrice;
                                   setSelectedOutlet(updated);
                                   setEditingPriceId(null);
-                                }} className="text-xs bg-blue-600 text-white px-2 py-1 rounded">Simpan</button>
+                                }} className="text-xs bg-blue-600 text-white px-2 py-1 rounded font-medium">Simpan</button>
                                 <button onClick={() => setEditingPriceId(null)} className="text-xs text-gray-500">Batal</button>
                               </div>
                             ) : (
-                              <div className="text-right">
-                                <div className="text-xs text-gray-500">Harga Jual / pcs</div>
-                                <div className="font-bold text-blue-700 text-sm flex items-center gap-2 justify-end">
+                              <div className="flex items-center justify-between">
+                                <div className="text-xs text-gray-500">Harga Khusus Jual</div>
+                                <div className="font-bold text-blue-700 text-sm flex items-center gap-2">
                                   Rp {Number(stock.harga_beli || stock.product.base_price).toLocaleString('id-ID')}
                                   <button onClick={() => { setEditingPriceId(stock.id); setNewPrice(Number(stock.harga_beli || stock.product.base_price)); }} className="text-blue-500 hover:text-blue-700">✎</button>
                                 </div>
@@ -311,8 +344,8 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                       ))}
                     </div>
                   ) : (
-                    <div className="bg-gray-50 p-4 rounded-lg border text-center text-sm text-gray-500 italic">
-                      Stok varian kosong.
+                    <div className="bg-gray-50 p-6 rounded-lg border text-center text-sm text-gray-500 italic">
+                      Belum ada stok produk di outlet ini.
                     </div>
                   )}
                 </div>
@@ -320,14 +353,13 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
 
               {activeTab === 'PENGIRIMAN' && (
                 <div>
-                  <div className="text-sm font-medium text-gray-500 mb-2">Riwayat Pengiriman Produk</div>
                   <div className="bg-white border rounded-lg overflow-hidden">
                     <Table>
                       <TableHeader className="bg-slate-50">
                         <TableRow>
                           <TableHead className="text-xs">Tanggal</TableHead>
                           <TableHead className="text-xs">Status</TableHead>
-                          <TableHead className="text-xs">Produk</TableHead>
+                          <TableHead className="text-xs">Produk Dikirim</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -336,7 +368,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                             <TableCell className="text-xs">{new Date(ship.date).toLocaleDateString('id-ID')}</TableCell>
                             <TableCell className="text-xs font-bold text-blue-600">{ship.status}</TableCell>
                             <TableCell className="text-xs">
-                              <ul className="list-disc pl-4">
+                              <ul className="list-disc pl-4 space-y-1">
                                 {ship.items?.map((item: any) => (
                                   <li key={item.id}>{item.product.name} ({item.qty} pcs)</li>
                                 ))}
@@ -346,7 +378,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                         ))}
                         {(!selectedOutlet.shipments || selectedOutlet.shipments.length === 0) && (
                           <TableRow>
-                            <TableCell colSpan={3} className="text-center text-xs text-gray-400 py-4">Belum ada riwayat pengiriman</TableCell>
+                            <TableCell colSpan={3} className="text-center text-xs text-gray-400 py-6">Belum ada riwayat pengiriman.</TableCell>
                           </TableRow>
                         )}
                       </TableBody>
@@ -356,8 +388,15 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
               )}
 
               {activeTab === 'KEUANGAN' && (
-                <div>
-                  <div className="text-sm font-medium text-gray-500 mb-2">Riwayat Tagihan & Pembayaran</div>
+                <div className="space-y-3">
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => openTxModal('PIUTANG')} className="bg-red-50 text-red-700 hover:bg-red-100 px-3 py-1.5 rounded-lg font-medium text-sm transition-colors border border-red-100 flex items-center gap-1">
+                      <span className="text-lg leading-none">+</span> Input Piutang
+                    </button>
+                    <button onClick={() => openTxModal('PELUNASAN')} className="bg-green-50 text-green-700 hover:bg-green-100 px-3 py-1.5 rounded-lg font-medium text-sm transition-colors border border-green-100 flex items-center gap-1">
+                      <span className="text-lg leading-none">+</span> Input Pelunasan
+                    </button>
+                  </div>
                   <div className="bg-white border rounded-lg overflow-hidden">
                     <Table>
                       <TableHeader className="bg-slate-50">
@@ -373,7 +412,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                           <TableRow key={tx.id}>
                             <TableCell className="text-xs">{new Date(tx.date).toLocaleDateString('id-ID')}</TableCell>
                             <TableCell className="text-xs">
-                              <span className={`px-2 py-0.5 rounded-md font-medium ${tx.type === 'PIUTANG' || tx.type === 'BILLING' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                              <span className={`px-2 py-0.5 rounded-md font-medium text-[11px] uppercase tracking-wider ${tx.type === 'PIUTANG' || tx.type === 'BILLING' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
                                 {tx.type}
                               </span>
                             </TableCell>
@@ -385,27 +424,13 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                         ))}
                         {(!selectedOutlet.transactions || selectedOutlet.transactions.length === 0) && (
                           <TableRow>
-                            <TableCell colSpan={4} className="text-center text-xs text-gray-400 py-4">Belum ada riwayat transaksi keuangan</TableCell>
+                            <TableCell colSpan={4} className="text-center text-xs text-gray-400 py-6">Belum ada riwayat transaksi keuangan.</TableCell>
                           </TableRow>
                         )}
                       </TableBody>
                     </Table>
                   </div>
                 </div>
-              )}
-            </div>
-
-            <div className="flex flex-wrap gap-3 pt-6 mt-4 border-t border-gray-100">
-              <button onClick={() => { openModal(selectedOutlet); }} className="flex-1 bg-blue-50 text-blue-700 hover:bg-blue-100 px-4 py-2 rounded-lg font-medium transition-colors">
-                Edit Data
-              </button>
-              {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN') && (
-                <button onClick={async () => {
-                  const deleted = await handleDelete(selectedOutlet.id);
-                  if (deleted) closeDetailModal();
-                }} className="flex-1 bg-red-50 text-red-700 hover:bg-red-100 px-4 py-2 rounded-lg font-medium transition-colors">
-                  Hapus Outlet
-                </button>
               )}
             </div>
           </div>
