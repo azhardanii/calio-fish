@@ -253,6 +253,7 @@ model OutletStock {
   outlet_id  String
   product_id String
   quantity   Int      @default(0)
+  harga_beli Decimal? @db.Decimal(12, 2)
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
   outlet     Outlet   @relation(fields: [outlet_id], references: [id], onDelete: Cascade)

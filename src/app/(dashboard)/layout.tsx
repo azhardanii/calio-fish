@@ -4,15 +4,27 @@ import { ChatFloatingButton } from "@/components/layout/ChatFloatingButton";
 import { SWRProvider } from "@/components/SWRProvider";
 import { headers } from "next/headers";
 
+import { prisma } from "@/lib/prisma";
+
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const headersList = await headers();
+  const userId = headersList.get('x-user-id') || '';
+  let role = headersList.get('x-user-role') || 'OWNER';
+  
+  if (userId) {
+    const dbUser = await prisma.employee.findUnique({ where: { id: userId } });
+    if (dbUser) {
+      role = dbUser.role;
+    }
+  }
+
   const user = {
-    id: headersList.get('x-user-id') || '',
-    role: headersList.get('x-user-role') || 'OWNER',
+    id: userId,
+    role: role,
     nama: headersList.get('x-user-nama') || 'User',
   };
 

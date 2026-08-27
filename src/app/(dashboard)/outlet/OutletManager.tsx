@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { createOutlet, updateOutlet, deleteOutlet, addPiutang, addPelunasan } from '@/app/actions';
+import { updateOutletProductPrice } from './actions';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 export function OutletManager({ outlets, currentUser, employees }: { outlets: any[], currentUser: any, employees: any[] }) {
@@ -10,6 +11,9 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const [selectedOutlet, setSelectedOutlet] = useState<any>(null);
   const [formData, setFormData] = useState<any>({});
   const [isEditing, setIsEditing] = useState(false);
+  const [activeTab, setActiveTab] = useState('STOK');
+  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
+  const [newPrice, setNewPrice] = useState<number>(0);
 
   const [wilayahFilter, setWilayahFilter] = useState<string>('');
 
@@ -28,6 +32,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
 
   const openDetailModal = (outlet: any) => {
     setSelectedOutlet(outlet);
+    setActiveTab('STOK');
     setIsDetailModalOpen(true);
   };
 
@@ -258,62 +263,133 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                 </button>
               </div>
 
-              <div>
-                <div className="text-sm font-medium text-gray-500 mb-2">Riwayat Piutang & Pelunasan</div>
-                <div className="bg-white border rounded-lg overflow-hidden">
-                  <Table>
-                    <TableHeader className="bg-slate-50">
-                      <TableRow>
-                        <TableHead className="text-xs">Tanggal</TableHead>
-                        <TableHead className="text-xs">Jenis</TableHead>
-                        <TableHead className="text-xs">Keterangan</TableHead>
-                        <TableHead className="text-right text-xs">Jumlah</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {selectedOutlet.transactions?.map((tx: any) => (
-                        <TableRow key={tx.id}>
-                          <TableCell className="text-xs">{new Date(tx.date).toLocaleDateString('id-ID')}</TableCell>
-                          <TableCell className="text-xs">
-                            <span className={`px-2 py-0.5 rounded-md font-medium ${tx.type === 'PIUTANG' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
-                              {tx.type}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-xs text-gray-600">{tx.description || '-'}</TableCell>
-                          <TableCell className={`text-right text-sm font-bold ${tx.type === 'PIUTANG' ? 'text-red-600' : 'text-green-600'}`}>
-                            Rp {Number(tx.amount).toLocaleString('id-ID')}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {(!selectedOutlet.transactions || selectedOutlet.transactions.length === 0) && (
-                        <TableRow>
-                          <TableCell colSpan={4} className="text-center text-xs text-gray-400 py-4">Belum ada riwayat transaksi</TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
+              <div className="flex border-b border-gray-200 mt-4">
+                <button onClick={() => setActiveTab('STOK')} className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${activeTab === 'STOK' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Stok & Harga</button>
+                <button onClick={() => setActiveTab('PENGIRIMAN')} className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${activeTab === 'PENGIRIMAN' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Riwayat Pengiriman</button>
+                <button onClick={() => setActiveTab('KEUANGAN')} className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${activeTab === 'KEUANGAN' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Keuangan & Tagihan</button>
               </div>
 
-              <div>
-                <div className="text-sm font-medium text-gray-500 mb-2">Rincian Stok Varian</div>
-                {selectedOutlet.stocks && selectedOutlet.stocks.length > 0 ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {selectedOutlet.stocks.map((stock: any) => (
-                      <div key={stock.id} className={`${stock.quantity > 0 ? 'bg-blue-50 border-blue-100' : 'bg-gray-50 border-gray-100 opacity-70'} p-3 rounded-lg border text-center`}>
-                        <div className={`text-xs font-medium mb-1 ${stock.quantity > 0 ? 'text-blue-600' : 'text-gray-500'}`}>{stock.product.short_name || stock.product.name}</div>
-                        <div className={`font-bold text-lg ${stock.quantity > 0 ? 'text-blue-900' : 'text-gray-400'}`}>
-                          {stock.quantity} <span className="text-xs font-normal">pcs</span>
+              {activeTab === 'STOK' && (
+                <div>
+                  <div className="text-sm font-medium text-gray-500 mb-2">Rincian Stok & Harga Khusus</div>
+                  {selectedOutlet.stocks && selectedOutlet.stocks.length > 0 ? (
+                    <div className="space-y-3">
+                      {selectedOutlet.stocks.map((stock: any) => (
+                        <div key={stock.id} className="bg-gray-50 p-3 rounded-lg border flex items-center justify-between">
+                          <div>
+                            <div className="text-sm font-medium text-slate-800">{stock.product.name}</div>
+                            <div className="text-xs text-slate-500">Stok: <span className="font-bold text-slate-700">{stock.quantity} pcs</span></div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {editingPriceId === stock.id ? (
+                              <div className="flex items-center gap-2">
+                                <input type="number" className="border rounded px-2 py-1 text-sm w-32" value={newPrice} onChange={e => setNewPrice(Number(e.target.value))} />
+                                <button onClick={async () => {
+                                  await updateOutletProductPrice(stock.id, newPrice);
+                                  const updated = { ...selectedOutlet };
+                                  const sIdx = updated.stocks.findIndex((s: any) => s.id === stock.id);
+                                  if(sIdx > -1) updated.stocks[sIdx].harga_beli = newPrice;
+                                  setSelectedOutlet(updated);
+                                  setEditingPriceId(null);
+                                }} className="text-xs bg-blue-600 text-white px-2 py-1 rounded">Simpan</button>
+                                <button onClick={() => setEditingPriceId(null)} className="text-xs text-gray-500">Batal</button>
+                              </div>
+                            ) : (
+                              <div className="text-right">
+                                <div className="text-xs text-gray-500">Harga Jual / pcs</div>
+                                <div className="font-bold text-blue-700 text-sm flex items-center gap-2 justify-end">
+                                  Rp {Number(stock.harga_beli || stock.product.base_price).toLocaleString('id-ID')}
+                                  <button onClick={() => { setEditingPriceId(stock.id); setNewPrice(Number(stock.harga_beli || stock.product.base_price)); }} className="text-blue-500 hover:text-blue-700">✎</button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="bg-gray-50 p-4 rounded-lg border text-center text-sm text-gray-500 italic">
+                      Stok varian kosong.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'PENGIRIMAN' && (
+                <div>
+                  <div className="text-sm font-medium text-gray-500 mb-2">Riwayat Pengiriman Produk</div>
+                  <div className="bg-white border rounded-lg overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-slate-50">
+                        <TableRow>
+                          <TableHead className="text-xs">Tanggal</TableHead>
+                          <TableHead className="text-xs">Status</TableHead>
+                          <TableHead className="text-xs">Produk</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedOutlet.shipments?.map((ship: any) => (
+                          <TableRow key={ship.id}>
+                            <TableCell className="text-xs">{new Date(ship.date).toLocaleDateString('id-ID')}</TableCell>
+                            <TableCell className="text-xs font-bold text-blue-600">{ship.status}</TableCell>
+                            <TableCell className="text-xs">
+                              <ul className="list-disc pl-4">
+                                {ship.items?.map((item: any) => (
+                                  <li key={item.id}>{item.product.name} ({item.qty} pcs)</li>
+                                ))}
+                              </ul>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {(!selectedOutlet.shipments || selectedOutlet.shipments.length === 0) && (
+                          <TableRow>
+                            <TableCell colSpan={3} className="text-center text-xs text-gray-400 py-4">Belum ada riwayat pengiriman</TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
                   </div>
-                ) : (
-                  <div className="bg-gray-50 p-4 rounded-lg border text-center text-sm text-gray-500 italic">
-                    Stok varian kosong.
+                </div>
+              )}
+
+              {activeTab === 'KEUANGAN' && (
+                <div>
+                  <div className="text-sm font-medium text-gray-500 mb-2">Riwayat Tagihan & Pembayaran</div>
+                  <div className="bg-white border rounded-lg overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-slate-50">
+                        <TableRow>
+                          <TableHead className="text-xs">Tanggal</TableHead>
+                          <TableHead className="text-xs">Jenis</TableHead>
+                          <TableHead className="text-xs">Keterangan</TableHead>
+                          <TableHead className="text-right text-xs">Jumlah</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedOutlet.transactions?.map((tx: any) => (
+                          <TableRow key={tx.id}>
+                            <TableCell className="text-xs">{new Date(tx.date).toLocaleDateString('id-ID')}</TableCell>
+                            <TableCell className="text-xs">
+                              <span className={`px-2 py-0.5 rounded-md font-medium ${tx.type === 'PIUTANG' || tx.type === 'BILLING' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                                {tx.type}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-xs text-gray-600">{tx.description || '-'}</TableCell>
+                            <TableCell className={`text-right text-sm font-bold ${tx.type === 'PIUTANG' || tx.type === 'BILLING' ? 'text-red-600' : 'text-green-600'}`}>
+                              Rp {Number(tx.amount).toLocaleString('id-ID')}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {(!selectedOutlet.transactions || selectedOutlet.transactions.length === 0) && (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center text-xs text-gray-400 py-4">Belum ada riwayat transaksi keuangan</TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-3 pt-6 mt-4 border-t border-gray-100">

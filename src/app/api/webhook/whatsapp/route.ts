@@ -587,6 +587,7 @@ export async function POST(req: Request) {
             }
 
             // 4. Process Items and Stocks
+            let totalBilling = 0;
             for (const item of items) {
                if (item.product_key && item.qty > 0) {
                  const product = await tx.product.findUnique({ where: { sku: item.product_key } });
@@ -617,7 +618,21 @@ export async function POST(req: Request) {
                      }
                    } else if (destType === 'OUTLET' && destId) {
                      const os = await tx.outletStock.findUnique({ where: { outlet_id_product_id: { outlet_id: destId, product_id: product.id } }});
-                     if (os) await tx.outletStock.update({ where: { id: os.id }, data: { quantity: os.quantity + item.qty }});
+                     let hargaBeli = product.base_price;
+                     if (os) {
+                       await tx.outletStock.update({ where: { id: os.id }, data: { quantity: os.quantity + item.qty }});
+                       if (os.harga_beli) hargaBeli = os.harga_beli;
+                     } else {
+                       await tx.outletStock.create({
+                         data: {
+                           outlet_id: destId,
+                           product_id: product.id,
+                           quantity: item.qty,
+                           harga_beli: product.base_price
+                         }
+                       });
+                     }
+                     totalBilling += (Number(hargaBeli) * item.qty);
                    }
                    
                    // Decrease global product.stok only if it leaves the internal ecosystem (not to warehouse/outlet)
@@ -646,7 +661,30 @@ export async function POST(req: Request) {
                    });
                  }
                }
-            }
+             }
+
+             if (destType === 'OUTLET' && destId && totalBilling > 0) {
+               const outlet = await tx.outlet.findUnique({ where: { id: destId } });
+               if (outlet) {
+                 await tx.outlet.update({
+                   where: { id: destId },
+                   data: {
+                     tagihan: Number(outlet.tagihan) + totalBilling,
+                     sisa_tagihan: Number(outlet.sisa_tagihan) + totalBilling,
+                     order_baru: outlet.order_baru + 1
+                   }
+                 });
+                 await tx.outletTransaction.create({
+                   data: {
+                     outlet_id: destId,
+                     type: 'BILLING',
+                     amount: totalBilling,
+                     description: `Otomatis dari Laporan WA (ID: ${shipment.id})`,
+                     date: parsedData.date ? new Date(parsedData.date) : new Date()
+                   }
+                 });
+               }
+             }
           }
         }, {
           maxWait: 5000,

@@ -74,6 +74,75 @@ export async function submitWarehouseInput(input: WarehouseInput) {
           }
         });
       }
+
+      // Automatically update Outlet Stock and Billing if destination is Outlet
+      if (input.destinationType === 'Outlet' && input.outletId) {
+        let totalBilling = 0;
+        
+        for (const item of input.items) {
+          const product = await tx.product.findUnique({ where: { id: item.productId } });
+          if (!product) continue;
+          
+          // Find or create OutletStock
+          const existingOutletStock = await tx.outletStock.findUnique({
+            where: {
+              outlet_id_product_id: {
+                outlet_id: input.outletId,
+                product_id: item.productId
+              }
+            }
+          });
+
+          let hargaBeli = product.base_price;
+          if (existingOutletStock) {
+            await tx.outletStock.update({
+              where: { id: existingOutletStock.id },
+              data: { quantity: existingOutletStock.quantity + item.qty }
+            });
+            if (existingOutletStock.harga_beli) {
+              hargaBeli = existingOutletStock.harga_beli;
+            }
+          } else {
+            await tx.outletStock.create({
+              data: {
+                outlet_id: input.outletId,
+                product_id: item.productId,
+                quantity: item.qty,
+                harga_beli: product.base_price
+              }
+            });
+          }
+
+          totalBilling += (Number(hargaBeli) * item.qty);
+        }
+
+        if (totalBilling > 0) {
+          const outlet = await tx.outlet.findUnique({ where: { id: input.outletId } });
+          if (outlet) {
+            const newTagihan = Number(outlet.tagihan) + totalBilling;
+            const newSisaTagihan = Number(outlet.sisa_tagihan) + totalBilling;
+            
+            await tx.outlet.update({
+              where: { id: input.outletId },
+              data: {
+                tagihan: newTagihan,
+                sisa_tagihan: newSisaTagihan,
+                order_baru: outlet.order_baru + 1
+              }
+            });
+
+            await tx.outletTransaction.create({
+              data: {
+                outlet_id: input.outletId,
+                type: 'BILLING',
+                amount: totalBilling,
+                description: `Otomatis dari Pengiriman (ID: ${shipment.id})`,
+                date: new Date()
+              }
+            });
+          }
+        }
+      }
     });
 
     revalidatePath('/warehouse');

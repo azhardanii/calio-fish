@@ -16,7 +16,8 @@ export async function GET() {
     include: { 
       stocks: { include: { product: true } },
       pengelola: { select: { id: true, nama: true } },
-      transactions: { orderBy: { date: 'desc' } }
+      transactions: { orderBy: { date: 'desc' } },
+      shipments: { orderBy: { date: 'desc' }, include: { items: { include: { product: true } } } }
     },
     orderBy: { created_at: 'desc' },
   });
