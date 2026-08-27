@@ -308,7 +308,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                             ) : (
                               <div className="flex items-center justify-between">
                                 <div className="text-xs text-slate-500">Stok Tersedia: <span className="font-bold text-slate-700 text-sm">{stock.quantity} pcs</span></div>
-                                {currentUser?.role === 'OWNER' && (
+                                {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN') && (
                                   <button onClick={() => { setEditingStockId(stock.id); setNewStockQty(stock.quantity); setStockNote(''); }} className="text-xs text-blue-600 font-medium hover:underline">✎ Edit Stok</button>
                                 )}
                               </div>
