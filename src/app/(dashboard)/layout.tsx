@@ -2,11 +2,13 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { ChatFloatingButton } from "@/components/layout/ChatFloatingButton";
 import { SWRProvider } from "@/components/SWRProvider";
-import { headers } from "next/headers";
 
 import { prisma } from "@/lib/prisma";
-
 import { verifySession } from "@/lib/auth";
+
+// Force this layout to never be cached so role changes in Supabase are
+// immediately reflected without requiring users to log out/in.
+export const dynamic = 'force-dynamic';
 
 export default async function DashboardLayout({
   children,
@@ -14,11 +16,19 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const session = await verifySession();
-  
+  if (!session?.id) return null; // Middleware handles redirect
+
+  // Always fetch the freshest data directly from the database.
+  // This ensures role changes in Supabase are instantly reflected in the app.
+  const dbUser = await prisma.employee.findUnique({
+    where: { id: session.id },
+    select: { id: true, nama: true, role: true }
+  });
+
   const user = {
-    id: session?.id || '',
-    role: session?.role?.toUpperCase() || 'OWNER',
-    nama: session?.nama || 'User',
+    id: dbUser?.id || session.id,
+    role: (dbUser?.role || session.role || 'STAFF').toUpperCase(),
+    nama: dbUser?.nama || session.nama || 'User',
   };
 
   return (
