@@ -348,6 +348,46 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                       Belum ada stok produk di outlet ini.
                     </div>
                   )}
+
+                  <div className="mt-6">
+                    <div className="text-sm font-medium text-gray-500 mb-2">Riwayat Penyesuaian Stok</div>
+                    <div className="bg-white border rounded-lg overflow-hidden">
+                      <Table>
+                        <TableHeader className="bg-slate-50">
+                          <TableRow>
+                            <TableHead className="text-xs">Tanggal</TableHead>
+                            <TableHead className="text-xs">Produk</TableHead>
+                            <TableHead className="text-xs">Penyesuaian</TableHead>
+                            <TableHead className="text-xs">Stok Akhir</TableHead>
+                            <TableHead className="text-xs">Keterangan & PIC</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {selectedOutlet.stock_history?.map((tx: any) => (
+                            <TableRow key={tx.id}>
+                              <TableCell className="text-xs">{new Date(tx.date).toLocaleDateString('id-ID')}</TableCell>
+                              <TableCell className="text-xs font-medium">{tx.product.name}</TableCell>
+                              <TableCell className="text-xs">
+                                <span className={`font-bold ${tx.flow === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
+                                  {tx.flow === 'IN' ? '+' : '-'}{tx.qty}
+                               </span>
+                              </TableCell>
+                              <TableCell className="text-xs font-bold">{tx.balance}</TableCell>
+                              <TableCell className="text-xs">
+                                <div className="text-gray-600">{tx.description}</div>
+                                {tx.employee && <div className="text-[10px] text-indigo-500 font-medium mt-0.5">PIC: {tx.employee.nama}</div>}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                          {(!selectedOutlet.stock_history || selectedOutlet.stock_history.length === 0) && (
+                            <TableRow>
+                              <TableCell colSpan={5} className="text-center text-xs text-gray-400 py-6">Belum ada riwayat penyesuaian stok.</TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
                 </div>
               )}
 

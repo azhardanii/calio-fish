@@ -70,7 +70,7 @@ export function EmployeeManager({ employees, currentUser }: { employees: any[], 
           <TableHeader>
             <TableRow>
               <TableHead>Nama</TableHead>
-              <TableHead>Posisi</TableHead>
+              <TableHead>Role / Posisi</TableHead>
               <TableHead>No. HP (WA)</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Aksi</TableHead>
@@ -80,7 +80,7 @@ export function EmployeeManager({ employees, currentUser }: { employees: any[], 
             {employees.map((e) => (
               <TableRow key={e.id} className="hover:bg-gray-50 transition-colors">
                 <TableCell className="font-bold">{e.nama}</TableCell>
-                <TableCell>{e.posisi || '-'}</TableCell>
+                <TableCell>{e.role || e.posisi || '-'}</TableCell>
                 <TableCell>{e.no_hp || '-'}</TableCell>
                 <TableCell>
                   <span style={{

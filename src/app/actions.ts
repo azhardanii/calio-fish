@@ -144,7 +144,10 @@ export async function deleteOutlet(id: string) {
   revalidatePath('/outlet');
 }
 
+import { verifySession } from '@/lib/auth';
+
 export async function adjustOutletStock(outletStockId: string, newQty: number, note: string) {
+  const user = await verifySession();
   const os = await prisma.outletStock.findUnique({ where: { id: outletStockId }, include: { product: true, outlet: true } });
   if (!os) return;
 
@@ -164,7 +167,8 @@ export async function adjustOutletStock(outletStockId: string, newQty: number, n
         description: `Penyesuaian Manual Stok Outlet ${os.outlet.nama}: ${note}`,
         date: new Date(),
         destination_id: os.outlet_id,
-        destination_type: 'OUTLET'
+        destination_type: 'OUTLET',
+        employee_id: user?.id
       }
     });
   });

@@ -21,5 +21,21 @@ export async function GET() {
     },
     orderBy: { created_at: 'desc' },
   });
-  return NextResponse.json(serializeDeep(outlets));
+
+  const outletIds = outlets.map(o => o.id);
+  const stockTransactions = await prisma.stockTransaction.findMany({
+    where: { 
+      destination_type: 'OUTLET',
+      destination_id: { in: outletIds }
+    },
+    include: { product: true, employee: { select: { nama: true } } },
+    orderBy: { created_at: 'desc' }
+  });
+
+  const outletsWithHistory = outlets.map(o => ({
+    ...o,
+    stock_history: stockTransactions.filter(st => st.destination_id === o.id)
+  }));
+
+  return NextResponse.json(serializeDeep(outletsWithHistory));
 }
