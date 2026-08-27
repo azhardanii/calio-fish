@@ -518,12 +518,18 @@ export async function POST(req: Request) {
                 const names = ws.map(w => w.name).slice(0, 3).join(', ');
                 throw new Error(`AMBIGUOUS:Ada lebih dari 1 warehouse dengan kata kunci '${srcName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
               }
+              if (ws.length === 0) {
+                throw new Error(`AMBIGUOUS:Tidak dapat menemukan Gudang/Warehouse Asal dengan nama '${srcName}'. Pastikan nama sesuai dengan database.`);
+              }
               if (ws.length === 1) sourceId = ws[0].id;
             } else if (srcType === 'OUTLET') {
               const os = await tx.outlet.findMany({ where: { nama: { contains: srcName, mode: 'insensitive' }, OR: [{ status: 'Aktif' }, { status: null }] }});
               if (os.length > 1) {
                 const names = os.map(o => o.nama).slice(0, 3).join(', ');
                 throw new Error(`AMBIGUOUS:Ada lebih dari 1 outlet aktif dengan kata kunci '${srcName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
+              }
+              if (os.length === 0) {
+                throw new Error(`AMBIGUOUS:Tidak dapat menemukan Outlet Asal dengan nama '${srcName}'. Pastikan nama outlet sudah benar dan aktif.`);
               }
               if (os.length === 1) sourceId = os[0].id;
             }
@@ -538,6 +544,9 @@ export async function POST(req: Request) {
                 const names = ws.map(w => w.name).slice(0, 3).join(', ');
                 throw new Error(`AMBIGUOUS:Ada lebih dari 1 warehouse dengan kata kunci '${destName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
               }
+              if (ws.length === 0) {
+                throw new Error(`AMBIGUOUS:Tidak dapat menemukan Gudang/Warehouse Tujuan dengan nama '${destName}'. Pastikan nama sesuai dengan database.`);
+              }
               if (ws.length === 1) destId = ws[0].id;
             } else if (destType === 'OUTLET') {
               const os = await tx.outlet.findMany({ where: { nama: { contains: destName, mode: 'insensitive' }, OR: [{ status: 'Aktif' }, { status: null }] }});
@@ -545,12 +554,18 @@ export async function POST(req: Request) {
                 const names = os.map(o => o.nama).slice(0, 3).join(', ');
                 throw new Error(`AMBIGUOUS:Ada lebih dari 1 outlet aktif dengan kata kunci '${destName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
               }
+              if (os.length === 0) {
+                throw new Error(`AMBIGUOUS:Tidak dapat menemukan Outlet Tujuan dengan nama '${destName}'. Pastikan nama outlet sudah benar dan aktif.`);
+              }
               if (os.length === 1) { destId = os[0].id; outletId = os[0].id; }
             } else if (destType === 'AFFILIATE') {
               const as = await tx.affiliate.findMany({ where: { nama: { contains: destName, mode: 'insensitive' } }});
               if (as.length > 1) {
                 const names = as.map(a => a.nama).slice(0, 3).join(', ');
                 throw new Error(`AMBIGUOUS:Ada lebih dari 1 affiliator dengan kata kunci '${destName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
+              }
+              if (as.length === 0) {
+                throw new Error(`AMBIGUOUS:Tidak dapat menemukan Affiliator dengan nama '${destName}'. Pastikan nama affiliator sesuai dengan database.`);
               }
               if (as.length === 1) affiliateId = as[0].id;
             }

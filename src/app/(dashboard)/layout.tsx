@@ -6,26 +6,19 @@ import { headers } from "next/headers";
 
 import { prisma } from "@/lib/prisma";
 
+import { verifySession } from "@/lib/auth";
+
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const headersList = await headers();
-  const userId = headersList.get('x-user-id') || '';
-  let role = headersList.get('x-user-role') || 'OWNER';
+  const session = await verifySession();
   
-  if (userId) {
-    const dbUser = await prisma.employee.findUnique({ where: { id: userId } });
-    if (dbUser) {
-      role = dbUser.role;
-    }
-  }
-
   const user = {
-    id: userId,
-    role: role,
-    nama: headersList.get('x-user-nama') || 'User',
+    id: session?.id || '',
+    role: session?.role?.toUpperCase() || 'OWNER',
+    nama: session?.nama || 'User',
   };
 
   return (
