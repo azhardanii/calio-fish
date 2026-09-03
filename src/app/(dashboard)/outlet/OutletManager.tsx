@@ -327,15 +327,15 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
         const gmapsUrl = selectedOutlet.alamat ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedOutlet.nama + ' ' + selectedOutlet.alamat)}` : null;
 
         return (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4 md:p-6 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[96vh] md:max-h-[90vh] flex flex-col border border-slate-100 overflow-hidden">
+          <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-end sm:items-center justify-center z-[80] p-0 sm:p-4 md:p-6 animate-in fade-in duration-150">
+            <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-4xl h-[92vh] sm:h-auto sm:max-h-[90vh] flex flex-col border border-slate-100 overflow-hidden">
               
-              {/* Modern Header */}
-              <div className="p-4 sm:p-5 border-b border-slate-100 bg-gradient-to-r from-slate-50/80 via-white to-slate-50/80">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+              {/* Header (shrink-0: always crisp and never squished) */}
+              <div className="p-3.5 sm:p-5 border-b border-slate-100 bg-white shrink-0">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold ${
                         selectedOutlet.status?.toLowerCase() === 'active' 
                           ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60' 
                           : 'bg-rose-50 text-rose-700 border border-rose-200/60'
@@ -344,27 +344,27 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                         {selectedOutlet.status || 'Active'}
                       </span>
                       {selectedOutlet.wilayah && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
-                          <MapPin size={11} />
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                          <MapPin size={10} />
                           {selectedOutlet.wilayah}
                         </span>
                       )}
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-100">
-                        <User size={11} />
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-medium bg-purple-50 text-purple-700 border border-purple-100">
+                        <User size={10} />
                         {selectedOutlet.pengelola?.nama || 'Dikelola Pusat'}
                       </span>
                     </div>
-                    <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">{selectedOutlet.nama}</h3>
+                    <h3 className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight">{selectedOutlet.nama}</h3>
                   </div>
 
                   {/* Header Actions */}
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     {waUrl && (
                       <a 
                         href={waUrl} 
                         target="_blank" 
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-all active:scale-95 cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-all active:scale-95 cursor-pointer"
                         title="Chat WhatsApp PIC"
                       >
                         <MessageCircle size={13} />
@@ -373,9 +373,9 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                     )}
                     <button 
                       onClick={() => openModal(selectedOutlet)} 
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-all cursor-pointer"
                     >
-                      <Pencil size={13} />
+                      <Pencil size={12} />
                       <span>Edit Data</span>
                     </button>
                     {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN') && (
@@ -385,7 +385,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                           const deleted = await handleDelete(selectedOutlet.id);
                           if (deleted) closeDetailModal();
                         }} 
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-semibold transition-all ${
+                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-semibold transition-all ${
                           isDeleting ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
                         }`}
                       >
@@ -396,7 +396,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                           </>
                         ) : (
                           <>
-                            <Trash2 size={13} />
+                            <Trash2 size={12} />
                             <span>Hapus</span>
                           </>
                         )}
@@ -404,121 +404,40 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                     )}
                     <button 
                       onClick={closeDetailModal} 
-                      className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer ml-1"
+                      className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer ml-auto sm:ml-1"
                     >
-                      <X size={20} />
+                      <X size={18} />
                     </button>
                   </div>
                 </div>
               </div>
 
-              {/* KPI Metrics Grid (Solusi 2: Pemisahan Valuasi Stok vs Finansial) */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 p-3 sm:p-5 bg-slate-50/60 border-b border-slate-100">
-                {/* Valuasi Stok Fisik */}
-                <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1">
-                    <span>Valuasi Stok Fisik</span>
-                    <span className="p-1 rounded-md bg-blue-50 text-blue-600"><Package size={14} /></span>
-                  </div>
-                  <div>
-                    <div className="text-base sm:text-lg font-black text-slate-900">
-                      Rp {totalPhysicalValue.toLocaleString('id-ID')}
-                    </div>
-                    <div className="text-[11px] text-blue-600 font-medium mt-0.5">
-                      {totalPhysicalPcs} pcs ikan di freezer
-                    </div>
-                  </div>
-                </div>
-
-                {/* Total Tagihan */}
-                <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1">
-                    <span>Total Tagihan Resmi</span>
-                    <span className="p-1 rounded-md bg-slate-100 text-slate-600"><Receipt size={14} /></span>
-                  </div>
-                  <div>
-                    <div className="text-base sm:text-lg font-black text-slate-800">
-                      Rp {Number(selectedOutlet.tagihan || 0).toLocaleString('id-ID')}
-                    </div>
-                    <div className="text-[11px] text-slate-400 font-normal mt-0.5">
-                      Akumulasi kiriman & nota
-                    </div>
-                  </div>
-                </div>
-
-                {/* Total Pembayaran */}
-                <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1">
-                    <span>Pembayaran Masuk</span>
-                    <span className="p-1 rounded-md bg-emerald-50 text-emerald-600"><CheckCircle2 size={14} /></span>
-                  </div>
-                  <div>
-                    <div className="text-base sm:text-lg font-black text-emerald-700">
-                      Rp {Number(selectedOutlet.payment || 0).toLocaleString('id-ID')}
-                    </div>
-                    <div className="text-[11px] text-emerald-600 font-medium mt-0.5">
-                      Setoran lunas tercatat
-                    </div>
-                  </div>
-                </div>
-
-                {/* Sisa Tagihan */}
-                <div className={`p-3 rounded-xl border shadow-xs flex flex-col justify-between ${
-                  Number(selectedOutlet.sisa_tagihan || 0) > 0 
-                    ? 'bg-rose-50/70 border-rose-200' 
-                    : 'bg-emerald-50/70 border-emerald-200'
-                }`}>
-                  <div className="flex items-center justify-between text-xs font-semibold mb-1">
-                    <span className={Number(selectedOutlet.sisa_tagihan || 0) > 0 ? 'text-rose-700' : 'text-emerald-700'}>
-                      Sisa Tagihan
-                    </span>
-                    <span className={`p-1 rounded-md ${
-                      Number(selectedOutlet.sisa_tagihan || 0) > 0 ? 'bg-rose-200/60 text-rose-700' : 'bg-emerald-200/60 text-emerald-700'
-                    }`}>
-                      <CreditCard size={14} />
-                    </span>
-                  </div>
-                  <div>
-                    <div className={`text-base sm:text-lg font-black ${
-                      Number(selectedOutlet.sisa_tagihan || 0) > 0 ? 'text-rose-600' : 'text-emerald-700'
-                    }`}>
-                      Rp {Number(selectedOutlet.sisa_tagihan || 0).toLocaleString('id-ID')}
-                    </div>
-                    <div className={`text-[11px] font-semibold mt-0.5 ${
-                      Number(selectedOutlet.sisa_tagihan || 0) > 0 ? 'text-rose-600' : 'text-emerald-700'
-                    }`}>
-                      {Number(selectedOutlet.sisa_tagihan || 0) > 0 ? '⚠️ Menunggu Pelunasan' : '✅ Lunas / Nihil'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Segmented Tabs Navigation */}
-              <div className="px-3 sm:px-5 pt-2 border-b border-slate-100 flex gap-2 overflow-x-auto no-scrollbar bg-white">
+              {/* Segmented Tabs Bar (shrink-0: always accessible at top, never crushed) */}
+              <div className="px-3 sm:px-5 border-b border-slate-200 bg-white shrink-0 flex gap-1 sm:gap-2 overflow-x-auto no-scrollbar h-11 items-center z-10">
                 <button 
                   onClick={() => setActiveTab('STOK')}
-                  className={`pb-2.5 px-3 text-xs sm:text-sm font-semibold transition-all border-b-2 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                  className={`h-full px-2.5 sm:px-3 text-xs sm:text-sm font-semibold transition-all border-b-2 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
                     activeTab === 'STOK' 
                       ? 'border-blue-600 text-blue-600' 
                       : 'border-transparent text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  <Package size={15} />
+                  <Package size={14} />
                   <span>Stok & Harga</span>
-                  <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-600 font-bold">
+                  <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-600 font-bold">
                     {selectedOutlet.stocks?.length || 0}
                   </span>
                 </button>
 
                 <button 
                   onClick={() => setActiveTab('KEUANGAN')}
-                  className={`pb-2.5 px-3 text-xs sm:text-sm font-semibold transition-all border-b-2 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                  className={`h-full px-2.5 sm:px-3 text-xs sm:text-sm font-semibold transition-all border-b-2 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
                     activeTab === 'KEUANGAN' 
                       ? 'border-blue-600 text-blue-600' 
                       : 'border-transparent text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  <CreditCard size={15} />
+                  <CreditCard size={14} />
                   <span>Keuangan & Tagihan</span>
                   {Number(selectedOutlet.sisa_tagihan || 0) > 0 && (
                     <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
@@ -527,34 +446,123 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
 
                 <button 
                   onClick={() => setActiveTab('PENGIRIMAN')}
-                  className={`pb-2.5 px-3 text-xs sm:text-sm font-semibold transition-all border-b-2 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                  className={`h-full px-2.5 sm:px-3 text-xs sm:text-sm font-semibold transition-all border-b-2 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
                     activeTab === 'PENGIRIMAN' 
                       ? 'border-blue-600 text-blue-600' 
                       : 'border-transparent text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  <Truck size={15} />
-                  <span>Riwayat Pengiriman</span>
-                  <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-600 font-bold">
+                  <Truck size={14} />
+                  <span>Pengiriman</span>
+                  <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-600 font-bold">
                     {selectedOutlet.shipments?.length || 0}
                   </span>
                 </button>
 
                 <button 
                   onClick={() => setActiveTab('INFO')}
-                  className={`pb-2.5 px-3 text-xs sm:text-sm font-semibold transition-all border-b-2 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                  className={`h-full px-2.5 sm:px-3 text-xs sm:text-sm font-semibold transition-all border-b-2 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
                     activeTab === 'INFO' 
                       ? 'border-blue-600 text-blue-600' 
                       : 'border-transparent text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  <Info size={15} />
-                  <span>Detail Kontak & Alamat</span>
+                  <Info size={14} />
+                  <span>Kontak & Alamat</span>
                 </button>
               </div>
 
-              {/* Scrollable Tab Content Body */}
-              <div className="overflow-y-auto flex-1 p-3 sm:p-5 space-y-4">
+              {/* Scrollable Content Body (Holds KPI Cards + Tab Content with generous bottom padding) */}
+              <div className="overflow-y-auto flex-1 p-3 sm:p-5 space-y-4 pb-24 sm:pb-6">
+                
+                {/* KPI Metrics Grid (Solusi 2: Inside scroll container, perfectly proportioned) */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 p-2 sm:p-3 bg-slate-50/80 rounded-xl border border-slate-200/70">
+                  {/* Valuasi Stok Fisik */}
+                  <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs flex flex-col justify-between">
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <span className="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Valuasi Stok</span>
+                      <div className="w-5 h-5 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                        <Package size={12} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm sm:text-base font-black text-slate-900 tracking-tight">
+                        Rp {totalPhysicalValue.toLocaleString('id-ID')}
+                      </div>
+                      <div className="text-[10px] text-blue-600 font-medium truncate mt-0.5">
+                        {totalPhysicalPcs} pcs di freezer
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Total Tagihan */}
+                  <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs flex flex-col justify-between">
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <span className="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Total Tagihan</span>
+                      <div className="w-5 h-5 rounded-md bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                        <Receipt size={12} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm sm:text-base font-black text-slate-800 tracking-tight">
+                        Rp {Number(selectedOutlet.tagihan || 0).toLocaleString('id-ID')}
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-normal truncate mt-0.5">
+                        Faktur & kiriman
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Total Pembayaran */}
+                  <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs flex flex-col justify-between">
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <span className="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Total Pembayaran</span>
+                      <div className="w-5 h-5 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                        <CheckCircle2 size={12} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm sm:text-base font-black text-emerald-700 tracking-tight">
+                        Rp {Number(selectedOutlet.payment || 0).toLocaleString('id-ID')}
+                      </div>
+                      <div className="text-[10px] text-emerald-600 font-medium truncate mt-0.5">
+                        Setoran lunas
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sisa Tagihan */}
+                  <div className={`p-2.5 sm:p-3 rounded-lg border shadow-xs flex flex-col justify-between ${
+                    Number(selectedOutlet.sisa_tagihan || 0) > 0 
+                      ? 'bg-rose-50/80 border-rose-200' 
+                      : 'bg-emerald-50/80 border-emerald-200'
+                  }`}>
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <span className={`text-[11px] sm:text-xs font-semibold truncate ${
+                        Number(selectedOutlet.sisa_tagihan || 0) > 0 ? 'text-rose-700' : 'text-emerald-700'
+                      }`}>
+                        Sisa Tagihan
+                      </span>
+                      <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
+                        Number(selectedOutlet.sisa_tagihan || 0) > 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                      }`}>
+                        <CreditCard size={12} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className={`text-sm sm:text-base font-black tracking-tight ${
+                        Number(selectedOutlet.sisa_tagihan || 0) > 0 ? 'text-rose-600' : 'text-emerald-700'
+                      }`}>
+                        Rp {Number(selectedOutlet.sisa_tagihan || 0).toLocaleString('id-ID')}
+                      </div>
+                      <div className={`text-[10px] font-semibold truncate mt-0.5 ${
+                        Number(selectedOutlet.sisa_tagihan || 0) > 0 ? 'text-rose-600' : 'text-emerald-700'
+                      }`}>
+                        {Number(selectedOutlet.sisa_tagihan || 0) > 0 ? '⚠️ Belum Lunas' : '✅ Lunas'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 
                 {/* TAB 1: STOK & HARGA */}
                 {activeTab === 'STOK' && (
