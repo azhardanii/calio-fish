@@ -74,10 +74,21 @@ export async function deleteKaryawan(id: string) {
 
 // Outlet
 export async function createOutlet(data: any) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+
   // Convert decimal fields if they come as strings
   if (data.tagihan !== undefined) data.tagihan = Number(data.tagihan);
   if (data.payment !== undefined) data.payment = Number(data.payment);
   if (data.sisa_tagihan !== undefined) data.sisa_tagihan = Number(data.sisa_tagihan);
+
+  // Jika dibuat oleh Marketing, OTOMATIS kaitkan outlet ke user marketing yang login
+  // Jika dibuat oleh Owner/Admin, gunakan pengelola_id yang dipilih di form
+  let assignedPengelolaId = data.pengelola_id || null;
+  if (!isOwnerOrAdmin && user && (role === 'MARKETING' || role.includes('MARKETING'))) {
+    assignedPengelolaId = user.id;
+  }
 
   const res = await prisma.outlet.create({ 
     data: {
@@ -85,13 +96,13 @@ export async function createOutlet(data: any) {
       tlp: data.tlp,
       alamat: data.alamat,
       wilayah: data.wilayah,
-      status: data.status,
+      status: data.status || 'Active',
       pic: data.pic,
-      order_baru: data.order_baru,
-      tagihan: data.tagihan,
-      payment: data.payment,
-      sisa_tagihan: data.sisa_tagihan,
-      pengelola_id: data.pengelola_id || null,
+      order_baru: data.order_baru || 0,
+      tagihan: data.tagihan || 0,
+      payment: data.payment || 0,
+      sisa_tagihan: data.sisa_tagihan || 0,
+      pengelola_id: assignedPengelolaId,
     } 
   });
 
@@ -107,6 +118,7 @@ export async function createOutlet(data: any) {
   }
 
   revalidatePath('/outlet');
+  revalidatePath('/karyawan');
   return res;
 }
 

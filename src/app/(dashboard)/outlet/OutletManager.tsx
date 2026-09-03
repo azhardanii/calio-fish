@@ -77,7 +77,10 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
     } else {
       await createOutlet(formData);
     }
-    mutate('/api/data/outlets');
+    await Promise.all([
+      mutate('/api/data/outlets'),
+      mutate('/api/data/employees')
+    ]);
     closeModal();
     if (isDetailModalOpen) closeDetailModal(); // close detail to refresh properly
   };
