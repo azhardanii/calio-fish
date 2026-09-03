@@ -167,15 +167,18 @@ function PerformanceDashboard({ data, mutate }: { data: any; mutate: () => void 
   const totalTargetAll = performance.reduce((s: number, p: any) => s + p.target_omset, 0);
   const totalOutletAll = performance.reduce((s: number, p: any) => s + p.outlet_count, 0);
   const totalOutstandingAll = performance.reduce((s: number, p: any) => s + p.total_outstanding_all, 0);
+  const totalBoothSalesAll = data?.totalBoothSalesAll || 0;
+  const activeBoothCount = data?.activeBoothCount || 0;
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Overall Summary Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
-        <KpiMini icon="💰" label="TOTAL OMSET BULAN INI" value={formatRp(totalOmsetAll)} color="#7c3aed" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
+        <KpiMini icon="💰" label="TOTAL OMSET BULAN INI" value={formatRp(totalOmsetAll)} color="#7c3aed" sub="Outlet + Personal + Booth" />
         <KpiMini icon="🎯" label="TOTAL TARGET" value={formatRp(totalTargetAll)} color="#2563eb" />
-        <KpiMini icon="🏪" label="TOTAL OUTLET" value={String(totalOutletAll)} color="#0891b2" />
-        <KpiMini icon="📋" label="OUTSTANDING" value={formatRp(totalOutstandingAll)} color={totalOutstandingAll > 0 ? '#dc2626' : '#16a34a'} />
+        <KpiMini icon="🏪" label="OUTLET DIKELOLA" value={String(totalOutletAll)} color="#0891b2" />
+        <KpiMini icon="🎪" label="TOTAL OMSET BOOTH" value={formatRp(totalBoothSalesAll)} color="#059669" sub={`${activeBoothCount} booth aktif`} />
+        <KpiMini icon="📋" label="OUTSTANDING OUTLET" value={formatRp(totalOutstandingAll)} color={totalOutstandingAll > 0 ? '#dc2626' : '#16a34a'} />
       </div>
 
       {/* Per-User Performance Cards */}
@@ -208,7 +211,9 @@ function PerformanceDashboard({ data, mutate }: { data: any; mutate: () => void 
                   </div>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>{p.nama}</div>
-                    <div style={{ fontSize: 11, color: '#64748b' }}>{p.outlet_count} outlet dikelola</div>
+                    <div style={{ fontSize: 11, color: '#64748b' }}>
+                      {p.outlet_count} outlet dikelola {p.booth_count > 0 ? `• ${p.booth_count} booth` : ''}
+                    </div>
                   </div>
                 </div>
                 <StatusBadge status={p.status} />
@@ -269,6 +274,23 @@ function PerformanceDashboard({ data, mutate }: { data: any; mutate: () => void 
                 {p.total_outstanding_all > 0 && (
                   <div style={{ fontSize: 12, color: '#dc2626', background: '#fef2f2', borderRadius: 8, padding: '8px 12px', border: '1px solid #fecaca' }}>
                     💳 Outstanding seluruh outlet: <b>{formatRp(p.total_outstanding_all)}</b>
+                  </div>
+                )}
+
+                {/* Managed Booths Summary */}
+                {p.managed_booths && p.managed_booths.length > 0 && (
+                  <div style={{ background: '#f0fdf4', borderRadius: 10, padding: '10px 12px', border: '1px solid #bbf7d0' }}>
+                    <div style={{ fontSize: 10, color: '#166534', fontWeight: 700, letterSpacing: 0.5, marginBottom: 4 }}>
+                      🎪 EVENT BOOTH DI-HANDLE ({p.managed_booths.length})
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {p.managed_booths.map((b: any) => (
+                        <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
+                          <span style={{ fontWeight: 600, color: '#0f172a' }}>{b.nama}</span>
+                          <span style={{ fontWeight: 700, color: '#15803d' }}>{formatRp(b.total_penjualan)}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -522,6 +544,117 @@ function ECommerceTab({ data }: { data: any }) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// ADMIN: EVENT & BOOTH TAB
+// ═══════════════════════════════════════════════════════════
+function EventBoothTab({ data }: { data: any }) {
+  const booths: any[] = data?.eventBooths || [];
+  const totalBoothSalesAll = data?.totalBoothSalesAll || 0;
+  const totalBoothKasAll = data?.totalBoothKasAll || 0;
+  const activeBoothCount = data?.activeBoothCount || 0;
+
+  return (
+    <section style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Financial Flow Explanation Alert */}
+      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 14, padding: '14px 18px' }}>
+        <div style={{ fontWeight: 800, fontSize: 13, color: '#166534', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+          <span>💡</span> Relasi Finansial &amp; Omset Event Booth ke Marketing
+        </div>
+        <div style={{ fontSize: 12, color: '#15803d', lineHeight: 1.5 }}>
+          <b>1. Akumulasi Omset:</b> Seluruh transaksi penjualan booth otomatis terhubung dan masuk ke perhitungan omset bulanan <b>PIC Marketing</b> yang ditugaskan mengelola booth tersebut.<br />
+          <b>2. Transaksi Langsung (Kas vs Piutang):</b> Berbeda dari outlet yang menerapkan sistem tempo/piutang konsinyasi, booth bertransaksi langsung secara tunai/QRIS/transfer, sehingga hasil penjualan langsung diakui sebagai <b>Kas Masuk</b> tanpa menimbulkan tagihan tertunda.<br />
+          <b>3. Rekonsiliasi Sisa Stok:</b> Sisa fisik produk saat booth ditutup otomatis dikembalikan ke kuantitas aktif gudang tujuan dan siap dijual kembali (Bukan Retur Rusak).
+        </div>
+      </div>
+
+      {/* Summary KPI Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
+        <KpiMini icon="💰" label="TOTAL OMSET BOOTH" value={formatRp(totalBoothSalesAll)} color="#15803d" />
+        <KpiMini icon="💵" label="TOTAL KAS TERKUMPUL" value={formatRp(totalBoothKasAll)} color="#0f172a" />
+        <KpiMini icon="🟢" label="BOOTH AKTIF" value={`${activeBoothCount} Event`} color="#2563eb" />
+        <KpiMini icon="🎪" label="TOTAL EVENT" value={`${booths.length} Event`} color="#7c3aed" />
+      </div>
+
+      {/* Booth List Table */}
+      <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a' }}>Monitoring Agenda Event &amp; Open Booth</div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>Daftar seluruh booth yang dikelola oleh tim marketing</div>
+          </div>
+          <a
+            href="/booth"
+            style={{
+              padding: '8px 16px', borderRadius: 10, background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+              color: '#fff', fontSize: 12, fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 5
+            }}
+          >
+            🎪 Buka Modul Booth Lengkap ↗
+          </a>
+        </div>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: '#f8fafc' }}>
+                <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>NAMA BOOTH / EVENT</th>
+                <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>PIC MARKETING</th>
+                <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>PERIODE</th>
+                <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>STATUS</th>
+                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>TRANSAKSI</th>
+                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>TOTAL PENJUALAN</th>
+                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>KAS MASUK</th>
+              </tr>
+            </thead>
+            <tbody>
+              {booths.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>
+                    Belum ada data event atau open booth. Klik tombol &quot;Buka Modul Booth Lengkap&quot; untuk menambah agenda baru.
+                  </td>
+                </tr>
+              ) : (
+                booths.map(b => (
+                  <tr key={b.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '12px 14px' }}>
+                      <div style={{ fontWeight: 700, color: '#0f172a' }}>{b.nama}</div>
+                      {b.lokasi && <div style={{ fontSize: 11, color: '#64748b' }}>📍 {b.lokasi}</div>}
+                    </td>
+                    <td style={{ padding: '12px 14px', color: '#334155' }}>
+                      <b>{b.pic?.nama || 'Belum diset'}</b>
+                    </td>
+                    <td style={{ padding: '12px 14px', color: '#64748b', fontSize: 12 }}>
+                      {new Date(b.tanggal_mulai).toLocaleDateString('id-ID')} s/d {new Date(b.tanggal_selesai).toLocaleDateString('id-ID')}
+                    </td>
+                    <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                      <span style={{
+                        padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+                        background: b.status === 'AKTIF' ? '#dcfce7' : '#e2e8f0',
+                        color: b.status === 'AKTIF' ? '#15803d' : '#64748b'
+                      }}>
+                        {b.status === 'AKTIF' ? '🟢 AKTIF' : '⚪ SELESAI'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 600 }}>
+                      {b.sales_count || 0}x
+                    </td>
+                    <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: '#15803d' }}>
+                      {formatRp(b.total_penjualan)}
+                    </td>
+                    <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
+                      {formatRp(b.kas_masuk)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
 // MARKETING USER: MY DASHBOARD (Isolated)
 // ═══════════════════════════════════════════════════════════
 function MarketingMyDashboard({ data, mutate }: { data: any; mutate: () => void }) {
@@ -636,6 +769,58 @@ function MarketingMyDashboard({ data, mutate }: { data: any; mutate: () => void 
         )}
       </div>
 
+      {/* Booth Section */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>🎪</span> Event &amp; Booth Saya ({p.managed_booths?.length || 0})
+          </div>
+          <a
+            href="/booth"
+            style={{
+              padding: '6px 14px', borderRadius: 8, background: '#eff6ff', color: '#2563eb',
+              fontSize: 12, fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4
+            }}
+          >
+            Buka Kasir / Booth ↗
+          </a>
+        </div>
+        {(!p.managed_booths || p.managed_booths.length === 0) ? (
+          <div style={{ textAlign: 'center', padding: '30px', background: '#f8fafc', borderRadius: 14, color: '#94a3b8', fontSize: 13 }}>
+            Belum ada agenda event atau booth pameran yang ditugaskan kepada Anda.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+            {p.managed_booths.map((b: any) => (
+              <div key={b.id} style={{
+                background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '14px 18px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', gap: 8
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>{b.nama}</div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+                    background: b.status === 'AKTIF' ? '#dcfce7' : '#e2e8f0',
+                    color: b.status === 'AKTIF' ? '#15803d' : '#64748b',
+                  }}>{b.status}</span>
+                </div>
+                {b.lokasi && <div style={{ fontSize: 11, color: '#94a3b8' }}>📍 {b.lokasi}</div>}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, background: '#f8fafc', padding: '8px 10px', borderRadius: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>Total Penjualan</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#15803d' }}>{formatRp(b.total_penjualan)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>Kas Masuk</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{formatRp(b.kas_masuk)}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Personal Buyer Section */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
@@ -735,6 +920,11 @@ export default function MarketingPage() {
         id: 'performance',
         label: '📊 Performance Marketing',
         content: <PerformanceDashboard data={data} mutate={mutate} />,
+      },
+      {
+        id: 'booth',
+        label: `🎪 Event & Booth (${data?.activeBoothCount || 0})`,
+        content: <EventBoothTab data={data} />,
       },
       {
         id: 'personal-buyer',

@@ -166,15 +166,26 @@ export async function GET() {
   };
 
   if (isOwnerOrAdmin) {
-    // Admin/Owner sees all marketing performance + legacy reports
-    const [offlineReports, onlineReports, globalOfflineTarget, globalShopeeTarget, globalTiktokTarget, totalOutlets] = await Promise.all([
+    // Admin/Owner sees all marketing performance + legacy reports + event booths
+    const [offlineReports, onlineReports, globalOfflineTarget, globalShopeeTarget, globalTiktokTarget, totalOutlets, eventBooths] = await Promise.all([
       prisma.marketingOffline.findMany({ orderBy: { date: 'desc' }, include: { employee: true } }),
       prisma.marketingOnline.findMany({ orderBy: { date: 'desc' }, include: { employee: true } }),
       getOfflineTarget(),
       getOnlineTarget('shopee'),
       getOnlineTarget('tiktok'),
       prisma.outlet.count(),
+      prisma.eventBooth.findMany({
+        orderBy: [{ status: 'asc' }, { tanggal_mulai: 'desc' }],
+        include: {
+          pic: { select: { id: true, nama: true, role: true } },
+          sales: { orderBy: { date: 'desc' } },
+        }
+      })
     ]);
+
+    const totalBoothSalesAll = eventBooths.reduce((sum, b) => sum + Number(b.total_penjualan), 0);
+    const totalBoothKasAll = eventBooths.reduce((sum, b) => sum + Number(b.kas_masuk), 0);
+    const activeBoothCount = eventBooths.filter(b => b.status === 'AKTIF').length;
 
     response.marketingPerformance = marketingPerformance;
     response.offlineReports = offlineReports;
@@ -183,6 +194,21 @@ export async function GET() {
     response.globalShopeeTarget = globalShopeeTarget;
     response.globalTiktokTarget = globalTiktokTarget;
     response.totalOutlets = totalOutlets;
+    response.eventBooths = eventBooths.map(b => ({
+      id: b.id,
+      nama: b.nama,
+      lokasi: b.lokasi,
+      tanggal_mulai: b.tanggal_mulai,
+      tanggal_selesai: b.tanggal_selesai,
+      status: b.status,
+      pic: b.pic,
+      total_penjualan: Number(b.total_penjualan),
+      kas_masuk: Number(b.kas_masuk),
+      sales_count: b.sales.length,
+    }));
+    response.totalBoothSalesAll = totalBoothSalesAll;
+    response.totalBoothKasAll = totalBoothKasAll;
+    response.activeBoothCount = activeBoothCount;
   } else if (isMarketing && user) {
     // Marketing user sees only their own data
     const myPerformance = marketingPerformance.find(p => p.id === user.id);
