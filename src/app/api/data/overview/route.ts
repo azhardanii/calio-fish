@@ -190,7 +190,9 @@ export async function GET(req: NextRequest) {
       return sum + bSales;
     }, 0);
 
-    const totalOmsetThisMonth = totalBillingThisMonth + personalBuyerThisMonth + boothSalesThisMonth;
+    // Performa omset marketing: HANYA dari Outlet yang dikelola + Personal Buyer
+    // Transaksi Event/Booth tidak masuk ke omset performa staf, melainkan langsung ke cashflow perusahaan
+    const totalOmsetThisMonth = totalBillingThisMonth + personalBuyerThisMonth;
     const pencapaian = targetOmset > 0 ? (totalOmsetThisMonth / targetOmset) * 100 : 0;
     const gap = totalOmsetThisMonth - targetOmset;
 

@@ -326,15 +326,18 @@ model MarketingTarget {
 }
 
 model PersonalBuyerTransaction {
-  id            String   @id @default(uuid())
-  employee_id   String
-  buyer_name    String
-  amount        Decimal  @db.Decimal(14, 2)
-  description   String?
-  date          DateTime @default(now())
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
-  employee      Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  id             String   @id @default(uuid())
+  employee_id    String
+  buyer_name     String
+  product_name   String?
+  quantity       Int?     @default(1)
+  price_per_unit Decimal? @db.Decimal(14, 2)
+  amount         Decimal  @db.Decimal(14, 2)
+  description    String?
+  date           DateTime @default(now())
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+  employee       Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
 }
 
 model EventBooth {

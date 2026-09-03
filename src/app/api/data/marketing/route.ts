@@ -86,7 +86,7 @@ export async function GET() {
       })
       .reduce((sum, t) => sum + Number(t.amount), 0);
 
-    // Booth sales this month (where this marketing employee is PIC)
+    // Booth sales this month (where this marketing employee is PIC) -> Langsung masuk ke cashflow perusahaan
     const boothSalesThisMonth = emp.managed_booths.reduce((sum, b) => {
       const bMonthSales = b.sales
         .filter(s => {
@@ -97,7 +97,9 @@ export async function GET() {
       return sum + bMonthSales;
     }, 0);
 
-    const totalOmsetThisMonth = totalBillingThisMonth + personalBuyerThisMonth + boothSalesThisMonth;
+    // Performa omset marketing: HANYA dari Outlet yang dikelola + Personal Buyer
+    // Transaksi Event/Booth tidak masuk ke omset performa staf, melainkan langsung ke cashflow perusahaan
+    const totalOmsetThisMonth = totalBillingThisMonth + personalBuyerThisMonth;
     const pencapaian = targetOmset > 0 ? (totalOmsetThisMonth / targetOmset) * 100 : 0;
     const gap = totalOmsetThisMonth - targetOmset;
 
@@ -142,6 +144,9 @@ export async function GET() {
       personal_buyer_transactions: emp.personal_buyer_transactions.map(t => ({
         id: t.id,
         buyer_name: t.buyer_name,
+        product_name: (t as any).product_name || null,
+        quantity: (t as any).quantity || 1,
+        price_per_unit: (t as any).price_per_unit ? Number((t as any).price_per_unit) : null,
         amount: Number(t.amount),
         description: t.description,
         date: t.date,
@@ -157,12 +162,19 @@ export async function GET() {
     };
   });
 
+  const products = await prisma.product.findMany({
+    where: { is_active: true },
+    select: { id: true, name: true, short_name: true },
+    orderBy: { name: 'asc' },
+  });
+
   // Base response
   const response: any = {
     currentMonth,
     currentYear,
     userRole: role,
     userId: user?.id,
+    products,
   };
 
   if (isOwnerOrAdmin) {

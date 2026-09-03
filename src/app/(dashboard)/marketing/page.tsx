@@ -82,19 +82,47 @@ function SetTargetModal({ employee, currentMonth, currentYear, onClose, onSaved 
 }
 
 // ─── ADD PERSONAL BUYER MODAL ────────────────────────────
-function AddPersonalBuyerModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function AddPersonalBuyerModal({ onClose, onSaved, products = [] }: { onClose: () => void; onSaved: () => void; products?: any[] }) {
   const [buyerName, setBuyerName] = useState('');
-  const [amount, setAmount] = useState(0);
+  const [productName, setProductName] = useState('');
+  const [quantity, setQuantity] = useState<number>(1);
+  const [pricePerUnit, setPricePerUnit] = useState<number>(0);
+  const [amount, setAmount] = useState<number>(0);
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [saving, setSaving] = useState(false);
 
+  const handleQtyChange = (val: number) => {
+    const qty = Math.max(1, val);
+    setQuantity(qty);
+    if (pricePerUnit > 0) {
+      setAmount(qty * pricePerUnit);
+    }
+  };
+
+  const handlePricePerUnitChange = (val: number) => {
+    setPricePerUnit(val);
+    if (quantity > 0) {
+      setAmount(quantity * val);
+    }
+  };
+
   const handleSave = async () => {
     if (!buyerName.trim()) { alert('Nama buyer wajib diisi'); return; }
-    if (amount <= 0) { alert('Nominal harus lebih dari 0'); return; }
+    if (!productName.trim()) { alert('Nama produk wajib diisi'); return; }
+    if (quantity <= 0) { alert('Jumlah stok yang dibeli harus lebih dari 0'); return; }
+    if (amount <= 0) { alert('Harga nominal total harus lebih dari 0'); return; }
     setSaving(true);
     try {
-      await createPersonalBuyerTransaction({ buyer_name: buyerName.trim(), amount, description: description.trim() || undefined, date });
+      await createPersonalBuyerTransaction({ 
+        buyer_name: buyerName.trim(), 
+        product_name: productName.trim(),
+        quantity,
+        price_per_unit: pricePerUnit > 0 ? pricePerUnit : undefined,
+        amount, 
+        description: description.trim() || undefined, 
+        date 
+      });
       onSaved();
       onClose();
     } catch (e: any) {
@@ -106,26 +134,108 @@ function AddPersonalBuyerModal({ onClose, onSaved }: { onClose: () => void; onSa
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}>
-      <div style={{ background: '#fff', borderRadius: 20, padding: 28, maxWidth: 460, width: '100%', boxShadow: '0 25px 50px rgba(0,0,0,0.15)' }}>
+      <div style={{ background: '#fff', borderRadius: 20, padding: 28, maxWidth: 480, width: '100%', boxShadow: '0 25px 50px rgba(0,0,0,0.15)' }}>
         <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700, color: '#0f172a' }}>👤 Input Transaksi Personal Buyer</h3>
-        <p style={{ margin: '0 0 20px', fontSize: 13, color: '#64748b' }}>Catat penjualan langsung ke pembeli personal</p>
+        <p style={{ margin: '0 0 16px', fontSize: 12, color: '#64748b' }}>
+          Penjualan langsung ke pembeli personal memiliki harga mandiri (tidak mengikuti harga database).
+        </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Buyer Name */}
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' }}>Nama Buyer *</label>
-            <input value={buyerName} onChange={e => setBuyerName(e.target.value)} style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} placeholder="Nama pembeli" />
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' }}>Nama Pembeli / Buyer *</label>
+            <input 
+              value={buyerName} 
+              onChange={e => setBuyerName(e.target.value)} 
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} 
+              placeholder="Contoh: Pak Bambang / Bu Siti" 
+            />
           </div>
+
+          {/* Product Name */}
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' }}>Nominal (Rp) *</label>
-            <input type="number" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} placeholder="500000" />
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' }}>Nama Produk *</label>
+            <input 
+              list="marketing-products-datalist"
+              value={productName} 
+              onChange={e => setProductName(e.target.value)} 
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} 
+              placeholder="Pilih atau ketik nama produk..." 
+            />
+            <datalist id="marketing-products-datalist">
+              {products.map((p: any) => (
+                <option key={p.id} value={p.name} />
+              ))}
+            </datalist>
+            <span style={{ fontSize: 10, color: '#94a3b8', marginTop: 2, display: 'block' }}>
+              💡 Bisa pilih produk dari saran katalog atau ketik nama produk custom / paket khusus.
+            </span>
           </div>
+
+          {/* Qty & Unit Price */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 10 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' }}>Jumlah Stok (Qty) *</label>
+              <input 
+                type="number" 
+                min="1" 
+                value={quantity} 
+                onChange={e => handleQtyChange(Number(e.target.value))} 
+                style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} 
+                placeholder="1" 
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' }}>Harga Satuan (Rp)</label>
+              <input 
+                type="number" 
+                value={pricePerUnit || ''} 
+                onChange={e => handlePricePerUnitChange(Number(e.target.value))} 
+                style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} 
+                placeholder="Misal: 25000" 
+              />
+            </div>
+          </div>
+
+          {/* Total Amount */}
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' }}>Tanggal</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Total Harga Nominal (Rp) *</label>
+              {pricePerUnit > 0 && (
+                <span style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>
+                  ({quantity} pcs &times; {formatRp(pricePerUnit)})
+                </span>
+              )}
+            </div>
+            <input 
+              type="number" 
+              value={amount || ''} 
+              onChange={e => setAmount(Number(e.target.value))} 
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #10b981', background: '#f0fdf4', fontSize: 15, fontWeight: 700, color: '#065f46', outline: 'none', boxSizing: 'border-box' }} 
+              placeholder="Total nominal pembayaran" 
+            />
           </div>
+
+          {/* Date */}
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' }}>Tanggal Transaksi</label>
+            <input 
+              type="date" 
+              value={date} 
+              onChange={e => setDate(e.target.value)} 
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} 
+            />
+          </div>
+
+          {/* Description */}
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' }}>Keterangan (opsional)</label>
-            <input value={description} onChange={e => setDescription(e.target.value)} style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} placeholder="Deskripsi transaksi" />
+            <input 
+              value={description} 
+              onChange={e => setDescription(e.target.value)} 
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} 
+              placeholder="Catatan / keterangan tambahan" 
+            />
           </div>
         </div>
 
@@ -174,10 +284,10 @@ function PerformanceDashboard({ data, mutate }: { data: any; mutate: () => void 
     <section style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Overall Summary Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
-        <KpiMini icon="💰" label="TOTAL OMSET BULAN INI" value={formatRp(totalOmsetAll)} color="#7c3aed" sub="Outlet + Personal + Booth" />
+        <KpiMini icon="💰" label="TOTAL OMSET MARKETING" value={formatRp(totalOmsetAll)} color="#7c3aed" sub="Outlet + Personal Buyer" />
         <KpiMini icon="🎯" label="TOTAL TARGET" value={formatRp(totalTargetAll)} color="#2563eb" />
         <KpiMini icon="🏪" label="OUTLET DIKELOLA" value={String(totalOutletAll)} color="#0891b2" />
-        <KpiMini icon="🎪" label="TOTAL OMSET BOOTH" value={formatRp(totalBoothSalesAll)} color="#059669" sub={`${activeBoothCount} booth aktif`} />
+        <KpiMini icon="🎪" label="OMSET BOOTH (CASHFLOW)" value={formatRp(totalBoothSalesAll)} color="#059669" sub={`Cashflow PT (${activeBoothCount} booth aktif)`} />
         <KpiMini icon="📋" label="OUTSTANDING OUTLET" value={formatRp(totalOutstandingAll)} color={totalOutstandingAll > 0 ? '#dc2626' : '#16a34a'} />
       </div>
 
@@ -239,7 +349,7 @@ function PerformanceDashboard({ data, mutate }: { data: any; mutate: () => void 
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>{p.target_omset > 0 ? formatRp(p.target_omset) : 'Belum diset'}</div>
                   </div>
                   <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}>
-                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, letterSpacing: 0.5 }}>OMSET BULAN INI</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, letterSpacing: 0.5 }}>OMSET MARKETING</div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>{formatRp(p.total_omset_this_month)}</div>
                   </div>
                   <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}>
@@ -251,7 +361,7 @@ function PerformanceDashboard({ data, mutate }: { data: any; mutate: () => void 
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#0891b2' }}>{formatRp(p.personal_buyer_this_month)}</div>
                   </div>
                   <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}>
-                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, letterSpacing: 0.5 }}>EVENT / BOOTH</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, letterSpacing: 0.5 }}>BOOTH (CASHFLOW PT)</div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#059669' }}>{formatRp(p.booth_sales_this_month || 0)}</div>
                   </div>
                 </div>
@@ -779,11 +889,11 @@ function MarketingMyDashboard({ data, mutate }: { data: any; mutate: () => void 
 
         {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-          <KpiMini icon="🎯" label="TARGET" value={p.target_omset > 0 ? formatRp(p.target_omset) : 'Belum diset'} color="#2563eb" />
-          <KpiMini icon="💰" label="OMSET BULAN INI" value={formatRp(p.total_omset_this_month)} color="#7c3aed" />
+          <KpiMini icon="🎯" label="TARGET OMSET" value={p.target_omset > 0 ? formatRp(p.target_omset) : 'Belum diset'} color="#2563eb" />
+          <KpiMini icon="💰" label="OMSET MARKETING" value={formatRp(p.total_omset_this_month)} color="#7c3aed" sub="Outlet + Personal" />
           <KpiMini icon="🏪" label="BILLING OUTLET" value={formatRp(p.total_billing_this_month)} color="#0891b2" />
           <KpiMini icon="👤" label="PERSONAL BUYER" value={formatRp(p.personal_buyer_this_month)} color="#d97706" />
-          <KpiMini icon="🎪" label="EVENT / BOOTH" value={formatRp(p.booth_sales_this_month || 0)} color="#059669" />
+          <KpiMini icon="🎪" label="BOOTH (CASHFLOW)" value={formatRp(p.booth_sales_this_month || 0)} color="#059669" sub="Cashflow Perusahaan" />
         </div>
       </div>
 
@@ -904,25 +1014,32 @@ function MarketingMyDashboard({ data, mutate }: { data: any; mutate: () => void 
                 <tr style={{ background: '#f8fafc' }}>
                   <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>TANGGAL</th>
                   <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>BUYER</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>NOMINAL</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>PRODUK</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>STOK (QTY)</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>HARGA SATUAN</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>TOTAL NOMINAL</th>
                   <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>KETERANGAN</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>AKSI</th>
                 </tr>
               </thead>
               <tbody>
                 {(!p.personal_buyer_transactions || p.personal_buyer_transactions.length === 0) ? (
-                  <tr><td colSpan={5} style={{ padding: '24px 14px', textAlign: 'center', color: '#94a3b8' }}>Belum ada transaksi personal buyer</td></tr>
+                  <tr><td colSpan={8} style={{ padding: '24px 14px', textAlign: 'center', color: '#94a3b8' }}>Belum ada transaksi personal buyer</td></tr>
                 ) : p.personal_buyer_transactions.map((t: any) => (
                   <tr key={t.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '10px 14px' }}>{new Date(t.date).toLocaleDateString('id-ID')}</td>
-                    <td style={{ padding: '10px 14px', fontWeight: 600, color: '#0f172a' }}>{t.buyer_name}</td>
-                    <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#15803d' }}>{formatRp(t.amount)}</td>
+                    <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>{new Date(t.date).toLocaleDateString('id-ID')}</td>
+                    <td style={{ padding: '10px 14px', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap' }}>{t.buyer_name}</td>
+                    <td style={{ padding: '10px 14px', fontWeight: 600, color: '#334155' }}>{t.product_name || '-'}</td>
+                    <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: '#0284c7' }}>{t.quantity ? `${t.quantity} pcs` : '1 pcs'}</td>
+                    <td style={{ padding: '10px 14px', textAlign: 'right', color: '#64748b' }}>{t.price_per_unit ? formatRp(t.price_per_unit) : '-'}</td>
+                    <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#15803d', whiteSpace: 'nowrap' }}>{formatRp(t.amount)}</td>
                     <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{t.description || '-'}</td>
                     <td style={{ padding: '10px 14px', textAlign: 'center' }}>
                       <button
                         onClick={() => handleDeletePB(t.id)}
                         disabled={deleting === t.id}
                         style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', fontSize: 11, fontWeight: 600, cursor: deleting === t.id ? 'wait' : 'pointer' }}
+                        title="Hapus Transaksi"
                       >
                         {deleting === t.id ? '⏳' : '🗑️'}
                       </button>
@@ -935,7 +1052,7 @@ function MarketingMyDashboard({ data, mutate }: { data: any; mutate: () => void 
         </div>
       </div>
 
-      {showAddModal && <AddPersonalBuyerModal onClose={() => setShowAddModal(false)} onSaved={mutate} />}
+      {showAddModal && <AddPersonalBuyerModal onClose={() => setShowAddModal(false)} onSaved={mutate} products={data?.products} />}
     </div>
   );
 }

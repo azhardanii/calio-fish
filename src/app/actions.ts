@@ -595,7 +595,15 @@ export async function setMarketingTarget(employeeId: string, bulan: number, tahu
 }
 
 // Personal Buyer Transactions
-export async function createPersonalBuyerTransaction(data: { buyer_name: string; amount: number; description?: string; date?: string }) {
+export async function createPersonalBuyerTransaction(data: { 
+  buyer_name: string; 
+  product_name?: string;
+  quantity?: number;
+  price_per_unit?: number;
+  amount: number; 
+  description?: string; 
+  date?: string 
+}) {
   const user = await verifySession();
   if (!user) throw new Error('Tidak terautentikasi');
 
@@ -611,6 +619,9 @@ export async function createPersonalBuyerTransaction(data: { buyer_name: string;
     data: {
       employee_id: user.id,
       buyer_name: data.buyer_name,
+      product_name: data.product_name || null,
+      quantity: data.quantity && data.quantity > 0 ? data.quantity : 1,
+      price_per_unit: data.price_per_unit || null,
       amount: data.amount,
       description: data.description || null,
       date: data.date ? new Date(data.date) : new Date(),
@@ -618,6 +629,7 @@ export async function createPersonalBuyerTransaction(data: { buyer_name: string;
   });
 
   revalidatePath('/marketing');
+  revalidatePath('/overview');
   return result;
 }
 
@@ -638,6 +650,7 @@ export async function deletePersonalBuyerTransaction(id: string) {
 
   await prisma.personalBuyerTransaction.delete({ where: { id } });
   revalidatePath('/marketing');
+  revalidatePath('/overview');
 }
 
 // ═══════════════════════════════════════════════════════════
