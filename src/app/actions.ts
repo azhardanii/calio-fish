@@ -90,9 +90,26 @@ export async function createOutlet(data: any) {
     assignedPengelolaId = user.id;
   }
 
+  // Anti-duplicate protection:
+  // Cek apakah outlet dengan nama dan pengelola yang sama baru saja dibuat dalam 10 detik terakhir (mencegah double/multiple click)
+  const trimmedNama = (data.nama || '').trim();
+  const tenSecondsAgo = new Date(Date.now() - 10000);
+  const existingRecent = await prisma.outlet.findFirst({
+    where: {
+      nama: { equals: trimmedNama, mode: 'insensitive' },
+      pengelola_id: assignedPengelolaId,
+      created_at: { gte: tenSecondsAgo }
+    }
+  });
+
+  if (existingRecent) {
+    console.log(`[Anti-Spam] Outlet '${trimmedNama}' baru saja dibuat, mengabaikan duplikasi submission.`);
+    return existingRecent;
+  }
+
   const res = await prisma.outlet.create({ 
     data: {
-      nama: data.nama,
+      nama: trimmedNama,
       tlp: data.tlp,
       alamat: data.alamat,
       wilayah: data.wilayah,

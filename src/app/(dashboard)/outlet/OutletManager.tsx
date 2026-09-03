@@ -21,6 +21,9 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
 
   const [wilayahFilter, setWilayahFilter] = useState<string>('');
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isTxSubmitting, setIsTxSubmitting] = useState(false);
+
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [txType, setTxType] = useState<'PIUTANG' | 'PELUNASAN'>('PIUTANG');
   const [txAmount, setTxAmount] = useState<number | ''>('');
@@ -66,23 +69,32 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   };
 
   const closeModal = () => {
+    if (isSubmitting) return;
     setIsModalOpen(false);
     setFormData({});
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isEditing) {
-      await updateOutlet(formData.id, formData);
-    } else {
-      await createOutlet(formData);
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      if (isEditing) {
+        await updateOutlet(formData.id, formData);
+      } else {
+        await createOutlet(formData);
+      }
+      await Promise.all([
+        mutate('/api/data/outlets'),
+        mutate('/api/data/employees')
+      ]);
+      closeModal();
+      if (isDetailModalOpen) closeDetailModal(); // close detail to refresh properly
+    } catch (err: any) {
+      alert(err.message || 'Gagal menyimpan data outlet');
+    } finally {
+      setIsSubmitting(false);
     }
-    await Promise.all([
-      mutate('/api/data/outlets'),
-      mutate('/api/data/employees')
-    ]);
-    closeModal();
-    if (isDetailModalOpen) closeDetailModal(); // close detail to refresh properly
   };
 
   const handleDelete = async (id: string) => {
@@ -561,22 +573,37 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">No Telp</label>
-                  <input type="text" className="w-full border rounded p-2" value={formData.tlp || ''} onChange={e => setFormData({...formData, tlp: e.target.value})} />
+                  <label className="block text-sm font-medium mb-1">Nama PIC</label>
+                  <input type="text" placeholder="Cth: Budi" className="w-full border rounded p-2 text-sm" value={formData.pic || ''} onChange={e => setFormData({...formData, pic: e.target.value})} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">PIC</label>
-                  <input type="text" className="w-full border rounded p-2" value={formData.pic || ''} onChange={e => setFormData({...formData, pic: e.target.value})} />
+                  <label className="block text-sm font-medium mb-1">Nomor PIC (WA)</label>
+                  <input type="text" placeholder="08123456789" className="w-full border rounded p-2 text-sm" value={formData.tlp || ''} onChange={e => setFormData({...formData, tlp: e.target.value})} />
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Alamat</label>
-                <textarea className="w-full border rounded p-2" value={formData.alamat || ''} onChange={e => setFormData({...formData, alamat: e.target.value})} />
+                <textarea className="w-full border rounded p-2 text-sm" value={formData.alamat || ''} onChange={e => setFormData({...formData, alamat: e.target.value})} placeholder="Alamat lengkap outlet..." rows={3} />
               </div>
               
-              <div className="flex justify-end gap-3 pt-4">
-                <button type="button" onClick={closeModal} className="px-4 py-2 border rounded hover:bg-gray-50">Batal</button>
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Simpan</button>
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                <button type="button" onClick={closeModal} disabled={isSubmitting} className="px-4 py-2 border rounded text-sm hover:bg-gray-50 transition-colors disabled:opacity-50">Batal</button>
+                <button 
+                  type="submit" 
+                  disabled={isSubmitting} 
+                  className={`px-5 py-2 bg-blue-600 text-white rounded text-sm font-medium flex items-center justify-center gap-2 shadow-sm transition-all ${
+                    isSubmitting ? 'opacity-60 cursor-not-allowed bg-blue-400' : 'hover:bg-blue-700 active:scale-95 cursor-pointer'
+                  }`}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <span>Simpan Outlet</span>
+                  )}
+                </button>
               </div>
             </form>
           </div>
