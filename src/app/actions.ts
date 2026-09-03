@@ -252,6 +252,38 @@ export async function addPelunasan(outletId: string, amount: number, description
   revalidatePath('/outlet');
 }
 
+export async function resetOutletFinance(outletId: string) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+
+  if (!isOwnerOrAdmin) {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat mereset data keuangan & tagihan outlet.');
+  }
+
+  const outlet = await prisma.outlet.findUnique({ where: { id: outletId } });
+  if (!outlet) throw new Error('Outlet tidak ditemukan');
+
+  // Delete all financial transaction records for this outlet
+  await prisma.outletTransaction.deleteMany({
+    where: { outlet_id: outletId }
+  });
+
+  // Reset tagihan, payment, and sisa_tagihan to 0
+  const updated = await prisma.outlet.update({
+    where: { id: outletId },
+    data: {
+      tagihan: 0,
+      payment: 0,
+      sisa_tagihan: 0,
+      order_baru: 0
+    }
+  });
+
+  revalidatePath('/outlet');
+  return updated;
+}
+
 export async function deleteOutlet(id: string) {
   const user = await verifySession();
   const role = (user?.role || '').toUpperCase();

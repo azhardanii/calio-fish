@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
-import { createOutlet, updateOutlet, deleteOutlet, addPiutang, addPelunasan, adjustOutletStock } from '@/app/actions';
+import { createOutlet, updateOutlet, deleteOutlet, addPiutang, addPelunasan, adjustOutletStock, resetOutletFinance } from '@/app/actions';
 import { mutate } from 'swr';
 import { updateOutletProductPrice } from './actions';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { RotateCcw } from 'lucide-react';
 
 export function OutletManager({ outlets, currentUser, employees }: { outlets: any[], currentUser: any, employees: any[] }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -26,6 +27,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const [isTxSubmitting, setIsTxSubmitting] = useState(false);
   const [isSavingStock, setIsSavingStock] = useState(false);
   const [isSavingPrice, setIsSavingPrice] = useState(false);
+  const [isResettingFinance, setIsResettingFinance] = useState(false);
 
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [txType, setTxType] = useState<'PIUTANG' | 'PELUNASAN'>('PIUTANG');
@@ -186,6 +188,38 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
       alert(err.message || 'Gagal menyimpan transaksi');
     } finally {
       setIsTxSubmitting(false);
+    }
+  };
+
+  const handleResetFinance = async () => {
+    if (!selectedOutlet || isResettingFinance) return;
+    const isOwnerOrAdmin = currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN';
+    if (!isOwnerOrAdmin) {
+      alert('Akses ditolak: Hanya Owner atau Admin yang dapat mereset data keuangan.');
+      return;
+    }
+
+    const confirmText = `Apakah Anda yakin ingin mereset seluruh data tagihan, pembayaran, dan riwayat transaksi untuk outlet "${selectedOutlet.nama}" menjadi Rp 0?\n\nTindakan ini HANYA DAPAT DILAKUKAN OLEH ADMIN/OWNER dan TIDAK DAPAT DIBATALKAN.`;
+    if (!confirm(confirmText)) return;
+
+    setIsResettingFinance(true);
+    try {
+      await resetOutletFinance(selectedOutlet.id);
+
+      setSelectedOutlet({
+        ...selectedOutlet,
+        tagihan: 0,
+        payment: 0,
+        sisa_tagihan: 0,
+        order_baru: 0,
+        transactions: []
+      });
+
+      await mutate('/api/data/outlets');
+    } catch (err: any) {
+      alert(err.message || 'Gagal mereset keuangan outlet');
+    } finally {
+      setIsResettingFinance(false);
     }
   };
 
@@ -529,7 +563,28 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
 
               {activeTab === 'KEUANGAN' && (
                 <div className="space-y-3">
-                  <div className="flex gap-2 justify-end">
+                  <div className="flex flex-wrap gap-2 justify-end items-center">
+                    {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN') && (
+                      <button 
+                        type="button"
+                        onClick={handleResetFinance}
+                        disabled={isResettingFinance}
+                        className="bg-red-50 text-red-700 hover:bg-red-100 px-3 py-1.5 rounded-lg font-medium text-sm transition-colors border border-red-200 flex items-center gap-1.5 disabled:opacity-50 cursor-pointer mr-auto"
+                        title="Reset tagihan, pembayaran, dan riwayat transaksi outlet ini menjadi Rp 0 (Khusus Admin/Owner)"
+                      >
+                        {isResettingFinance ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+                            <span>Mereset Keuangan...</span>
+                          </>
+                        ) : (
+                          <>
+                            <RotateCcw size={14} className="text-red-600" />
+                            <span>Reset Keuangan</span>
+                          </>
+                        )}
+                      </button>
+                    )}
                     <button onClick={() => openTxModal('PIUTANG')} className="bg-red-50 text-red-700 hover:bg-red-100 px-3 py-1.5 rounded-lg font-medium text-sm transition-colors border border-red-100 flex items-center gap-1">
                       <span className="text-lg leading-none">+</span> Input Piutang
                     </button>
