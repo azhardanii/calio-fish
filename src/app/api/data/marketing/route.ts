@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { serializeDeep } from '@/lib/serialize';
-import { getOfflineTarget, getOnlineTarget } from '@/lib/settings';
+import { getOnlineTarget } from '@/lib/settings';
 import { verifySession } from '@/lib/auth';
 
 export async function GET() {
@@ -179,10 +179,9 @@ export async function GET() {
 
   if (isOwnerOrAdmin) {
     // Admin/Owner sees all marketing performance + legacy reports + event booths
-    const [offlineReports, onlineReports, globalOfflineTarget, globalShopeeTarget, globalTiktokTarget, totalOutlets, eventBooths] = await Promise.all([
+    const [offlineReports, onlineReports, globalShopeeTarget, globalTiktokTarget, totalOutlets, eventBooths] = await Promise.all([
       prisma.marketingOffline.findMany({ orderBy: { date: 'desc' }, include: { employee: true } }),
       prisma.marketingOnline.findMany({ orderBy: { date: 'desc' }, include: { employee: true } }),
-      getOfflineTarget(),
       getOnlineTarget('shopee'),
       getOnlineTarget('tiktok'),
       prisma.outlet.count(),
@@ -199,10 +198,12 @@ export async function GET() {
     const totalBoothKasAll = eventBooths.reduce((sum, b) => sum + Number(b.kas_masuk), 0);
     const activeBoothCount = eventBooths.filter(b => b.status === 'AKTIF').length;
 
+    const globalMarketingTarget = marketingPerformance.reduce((sum, p) => sum + p.target_omset, 0);
+
     response.marketingPerformance = marketingPerformance;
     response.offlineReports = offlineReports;
     response.onlineReports = onlineReports;
-    response.globalOfflineTarget = globalOfflineTarget;
+    response.globalOfflineTarget = globalMarketingTarget;
     response.globalShopeeTarget = globalShopeeTarget;
     response.globalTiktokTarget = globalTiktokTarget;
     response.totalOutlets = totalOutlets;

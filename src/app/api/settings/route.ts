@@ -3,6 +3,10 @@ import { prisma } from '@/lib/prisma';
 
 // GET: Fetch all settings
 export async function GET() {
+  try {
+    await prisma.reportSettings.deleteMany({ where: { key: 'offline_target_bulanan' } });
+  } catch {}
+
   const settings = await prisma.reportSettings.findMany();
   const map: Record<string, number> = {};
   for (const s of settings) {

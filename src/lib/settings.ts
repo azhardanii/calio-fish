@@ -14,10 +14,3 @@ export async function getSetting(key: string): Promise<number> {
 export async function getOnlineTarget(platform: string): Promise<number> {
   return getSetting(`${platform.toLowerCase()}_target_mtd`);
 }
-
-/**
- * Get offline monthly target
- */
-export async function getOfflineTarget(): Promise<number> {
-  return getSetting('offline_target_bulanan');
-}

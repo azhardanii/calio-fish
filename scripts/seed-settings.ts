@@ -3,11 +3,6 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  await prisma.reportSettings.upsert({
-    where: { key: 'offline_target_bulanan' },
-    update: {},
-    create: { key: 'offline_target_bulanan', value: 5000000, label: 'Target Bulanan Marketing Offline (Konsinyasi)' },
-  });
 
   await prisma.reportSettings.upsert({
     where: { key: 'shopee_target_mtd' },

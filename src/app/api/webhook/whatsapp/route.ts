@@ -345,15 +345,25 @@ export async function POST(req: Request) {
            where: { date: { gte: startOfMonth, lte: endOfMonth } }
         });
         const currentMtd = Number(agg._sum.omset_harian ?? 0);
-        const targetObj = await prisma.systemSetting.findUnique({ where: { key: 'offline_target_bulanan' }});
-        const targetVal = Number(targetObj?.value ?? 0);
-        const gap = Number(targetVal) - Number(currentMtd);
-        const percentage = Number(targetVal) > 0 ? ((Number(currentMtd) / Number(targetVal)) * 100).toFixed(1) : 0;
+        // Ambil target marketing staf terkait atau akumulasi target bulan berjalan dari MarketingTarget
+        const staffTarget = employeeId ? await prisma.marketingTarget.findFirst({
+          where: {
+            employee_id: employeeId,
+            bulan: tDate.getMonth() + 1,
+            tahun: tDate.getFullYear(),
+          }
+        }) : null;
+        const targetVal = staffTarget ? Number(staffTarget.target_omset) : 0;
+        const gap = targetVal > 0 ? targetVal - currentMtd : 0;
+        const percentage = targetVal > 0 ? ((currentMtd / targetVal) * 100).toFixed(1) : 0;
 
         replyMsg = `✅ *Marketing Offline* ${parsedData.date} tercatat.\n` + 
                    `💰 Omset Hari Ini: Rp ${(data.omset_harian || 0).toLocaleString('id-ID')}\n` +
                    `📈 Total MTD: Rp ${currentMtd.toLocaleString('id-ID')}\n` +
-                   `🎯 Kekurangan Target: Rp ${gap > 0 ? gap.toLocaleString('id-ID') : '0 (Tercapai!)'} (${percentage}%)`;
+                   (targetVal > 0 
+                     ? `🎯 Target Anda: Rp ${targetVal.toLocaleString('id-ID')}\n` +
+                       `🎯 Kekurangan Target: Rp ${gap > 0 ? gap.toLocaleString('id-ID') : '0 (Tercapai!)'} (${percentage}%)`
+                     : `🎯 Target: Belum diset di sistem`);
 
       } else if (parsedData.report_type === 'MARKETING_ONLINE') {
         await prisma.$transaction(async (tx) => {

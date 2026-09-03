@@ -8,17 +8,23 @@ interface SettingItem {
   key: string;
   label: string;
   value: number;
+  unit?: 'currency' | 'pcs' | 'kg';
 }
 
 const SETTING_DEFINITIONS: SettingItem[] = [
-  { key: 'offline_target_bulanan', label: 'Target Bulanan Marketing Offline (Konsinyasi)', value: 0 },
-  { key: 'shopee_target_mtd', label: 'Target MTD Shopee', value: 0 },
-  { key: 'tiktok_target_mtd', label: 'Target MTD TikTok', value: 0 },
-  { key: 'target_produksi_pcs', label: 'Target Harian Produksi (Pcs)', value: 200 },
-  { key: 'target_produksi_kg', label: 'Target Harian Barang Setengah Jadi (Kg)', value: 50 },
+  { key: 'shopee_target_mtd', label: 'Target MTD Shopee', value: 0, unit: 'currency' },
+  { key: 'tiktok_target_mtd', label: 'Target MTD TikTok', value: 0, unit: 'currency' },
+  { key: 'target_produksi_pcs', label: 'Target Harian Produksi (Pcs)', value: 200, unit: 'pcs' },
+  { key: 'target_produksi_kg', label: 'Target Harian Barang Setengah Jadi (Kg)', value: 50, unit: 'kg' },
 ];
 
-function formatRupiah(val: number) {
+function formatSettingValue(val: number, unit?: 'currency' | 'pcs' | 'kg') {
+  if (unit === 'pcs') {
+    return `${val.toLocaleString('id-ID')} Pcs`;
+  }
+  if (unit === 'kg') {
+    return `${val.toLocaleString('id-ID')} Kg`;
+  }
   return 'Rp ' + val.toLocaleString('id-ID');
 }
 
@@ -71,7 +77,7 @@ export default function SettingsPage() {
     <div className="p-6 max-w-3xl mx-auto space-y-6">
       <h1 className="text-3xl font-bold tracking-tight text-gray-900">⚙️ Pengaturan Sistem</h1>
       <p className="text-gray-500 text-sm">
-        Ubah target bulanan di sini. Perubahan <strong>tidak</strong> akan mengubah data historis yang sudah tercatat — hanya laporan <strong>baru</strong> yang akan menggunakan target terbaru.
+        Ubah target operasional dan e-commerce di sini. Perubahan <strong>tidak</strong> akan mengubah data historis yang sudah tercatat — hanya laporan <strong>baru</strong> yang akan menggunakan target terbaru.
       </p>
 
       {toast && (
@@ -87,7 +93,7 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Target Penjualan</CardTitle>
+          <CardTitle>Target E-Commerce &amp; Operasional Produksi</CardTitle>
         </CardHeader>
         <CardContent>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -111,7 +117,7 @@ export default function SettingsPage() {
                         type="text"
                         value={editValue}
                         onChange={(e) => setEditValue(e.target.value)}
-                        placeholder="contoh: 5000000"
+                        placeholder={s.unit === 'pcs' ? 'contoh: 200' : s.unit === 'kg' ? 'contoh: 50' : 'contoh: 5000000'}
                         style={{
                           padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db',
                           fontSize: 14, width: 180,
@@ -148,7 +154,7 @@ export default function SettingsPage() {
                           fontWeight: 700, fontSize: 18, color: '#059669',
                           fontFamily: 'monospace',
                         }}>
-                          {formatRupiah(s.value)}
+                          {formatSettingValue(s.value, s.unit)}
                         </span>
                       )}
                       <button
