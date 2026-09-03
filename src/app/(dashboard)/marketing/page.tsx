@@ -143,12 +143,12 @@ function AddPersonalBuyerModal({ onClose, onSaved }: { onClose: () => void; onSa
 // ─── KPI CARD (reusable mini) ────────────────────────────
 function KpiMini({ icon, label, value, color, sub }: { icon: string; label: string; value: string; color: string; sub?: string }) {
   return (
-    <div style={{ background: `${color}08`, borderRadius: 14, padding: '14px 16px', border: `1px solid ${color}22`, flex: '1 1 0', minWidth: 130 }}>
-      <div style={{ fontSize: 11, color: `${color}cc`, fontWeight: 700, letterSpacing: 0.5, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ fontSize: 14 }}>{icon}</span> {label}
+    <div style={{ background: `${color}08`, borderRadius: 14, padding: '12px 14px', border: `1px solid ${color}22`, flex: '1 1 0', minWidth: 120 }}>
+      <div style={{ fontSize: 10, color: `${color}cc`, fontWeight: 700, letterSpacing: 0.5, marginBottom: 3, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <span style={{ fontSize: 13 }}>{icon}</span> <span>{label}</span>
       </div>
-      <div style={{ fontSize: 18, fontWeight: 800, color: `${color}` }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{sub}</div>}
+      <div style={{ fontSize: 16, fontWeight: 800, color: `${color}`, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</div>
+      {sub && <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>}
     </div>
   );
 }
@@ -383,8 +383,8 @@ function PersonalBuyerTab({ data, mutate }: { data: any; mutate: () => void }) {
 
       {/* Table */}
       <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <div style={{ overflowX: 'auto' }} className="no-scrollbar">
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 550 }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
                 <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, letterSpacing: 0.5, borderBottom: '1px solid #e2e8f0' }}>TANGGAL</th>
@@ -446,95 +446,158 @@ function ECommerceTab({ data }: { data: any }) {
   const tiktokPersentase = globalTiktokTarget > 0 ? (tiktokOmsetMtd / globalTiktokTarget) * 100 : 0;
 
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
+    <section className="flex flex-col gap-5 w-full">
+      {/* Cards Container */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Shopee Card */}
-        <div style={{ background: 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)', borderRadius: 16, padding: 24, border: '1px solid #fed7aa', position: 'relative', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 24 }}>🛍️</span>
-              <span style={{ fontSize: 18, color: '#c2410c', fontWeight: 800 }}>Shopee</span>
+        <div className="bg-gradient-to-br from-orange-50/80 to-amber-100/60 rounded-2xl p-4 sm:p-5 border border-orange-200 shadow-xs flex flex-col justify-between gap-3.5">
+          {/* Header */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-orange-200/70 pb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">🛍️</span>
+              <div>
+                <h4 className="text-base sm:text-lg font-black text-orange-950 leading-tight">Shopee</h4>
+                <span className="text-[11px] font-semibold text-orange-700/80">Marketplace Online</span>
+              </div>
             </div>
-            <span style={{ fontSize: 12, color: '#9a3412', background: 'rgba(255,237,213,0.8)', padding: '6px 12px', borderRadius: 20, fontWeight: 600, border: '1px solid #fdba74' }}>
-              Target: {globalShopeeTarget > 0 ? formatRp(globalShopeeTarget) : '-'}
-            </span>
+            <div className="bg-orange-200/70 text-orange-900 border border-orange-300/80 text-xs px-2.5 py-1 rounded-full font-bold whitespace-nowrap">
+              Target: {globalShopeeTarget > 0 ? formatRp(globalShopeeTarget) : 'Belum diset'}
+            </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-            <div style={{ background: '#fff', padding: '10px 14px', borderRadius: 12, border: '1px solid #ffedd5' }}>
-              <div style={{ fontSize: 10, color: '#ea580c', fontWeight: 700, marginBottom: 3, letterSpacing: 0.5 }}>OMSET MTD</div>
-              <div style={{ fontSize: 17, fontWeight: 800, color: '#7c2d12' }}>{formatRp(shopeeOmsetMtd)}</div>
+
+          {/* Progress Bar */}
+          <div>
+            <div className="flex justify-between text-xs font-semibold text-orange-900 mb-1.5">
+              <span>Pencapaian MTD</span>
+              <span className="font-extrabold">{shopeePersentase.toFixed(1)}%</span>
             </div>
-            <div style={{ background: '#fff', padding: '10px 14px', borderRadius: 12, border: '1px solid #ffedd5' }}>
-              <div style={{ fontSize: 10, color: '#ea580c', fontWeight: 700, marginBottom: 3, letterSpacing: 0.5 }}>PENCAPAIAN</div>
-              <div style={{ fontSize: 17, fontWeight: 800, color: '#7c2d12' }}>{shopeePersentase.toFixed(1)}%</div>
+            <ProgressBar value={shopeePersentase} color="#ea580c" />
+          </div>
+
+          {/* Stats Grid: On mobile each is full width row, on sm+ 3 columns */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="bg-white/90 backdrop-blur-xs p-3 rounded-xl border border-orange-100 flex sm:flex-col justify-between sm:justify-start items-center sm:items-start gap-1">
+              <div className="text-[10px] sm:text-[11px] text-orange-600 font-bold uppercase tracking-wider">OMSET MTD</div>
+              <div className="text-sm sm:text-base font-black text-orange-950 whitespace-nowrap">{formatRp(shopeeOmsetMtd)}</div>
             </div>
-            <div style={{ background: '#fff', padding: '10px 14px', borderRadius: 12, border: '1px solid #ffedd5' }}>
-              <div style={{ fontSize: 10, color: '#ea580c', fontWeight: 700, marginBottom: 3, letterSpacing: 0.5 }}>GAP</div>
-              <div style={{ fontSize: 17, fontWeight: 800, color: (shopeeOmsetMtd - globalShopeeTarget) >= 0 ? '#15803d' : '#b91c1c' }}>{formatRp(Math.abs(shopeeOmsetMtd - globalShopeeTarget))}</div>
+
+            <div className="bg-white/90 backdrop-blur-xs p-3 rounded-xl border border-orange-100 flex sm:flex-col justify-between sm:justify-start items-center sm:items-start gap-1">
+              <div className="text-[10px] sm:text-[11px] text-orange-600 font-bold uppercase tracking-wider">PENCAPAIAN</div>
+              <div className="text-sm sm:text-base font-black text-orange-950 whitespace-nowrap">{shopeePersentase.toFixed(1)}%</div>
+            </div>
+
+            <div className="bg-white/90 backdrop-blur-xs p-3 rounded-xl border border-orange-100 flex sm:flex-col justify-between sm:justify-start items-center sm:items-start gap-1">
+              <div className="text-[10px] sm:text-[11px] text-orange-600 font-bold uppercase tracking-wider">GAP TARGET</div>
+              <div className={`text-sm sm:text-base font-black whitespace-nowrap ${(shopeeOmsetMtd - globalShopeeTarget) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {(shopeeOmsetMtd - globalShopeeTarget) >= 0 ? '+' : '-'}{formatRp(Math.abs(shopeeOmsetMtd - globalShopeeTarget))}
+              </div>
             </div>
           </div>
         </div>
 
         {/* TikTok Card */}
-        <div style={{ background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', borderRadius: 16, padding: 24, border: '1px solid #e2e8f0', position: 'relative', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 24 }}>🎵</span>
-              <span style={{ fontSize: 18, color: '#334155', fontWeight: 800 }}>TikTok</span>
+        <div className="bg-gradient-to-br from-slate-50 to-slate-100/90 rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col justify-between gap-3.5">
+          {/* Header */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">🎵</span>
+              <div>
+                <h4 className="text-base sm:text-lg font-black text-slate-900 leading-tight">TikTok Shop</h4>
+                <span className="text-[11px] font-semibold text-slate-500">Social Commerce</span>
+              </div>
             </div>
-            <span style={{ fontSize: 12, color: '#1e293b', background: 'rgba(226,232,240,0.8)', padding: '6px 12px', borderRadius: 20, fontWeight: 600, border: '1px solid #cbd5e1' }}>
-              Target: {globalTiktokTarget > 0 ? formatRp(globalTiktokTarget) : '-'}
-            </span>
+            <div className="bg-slate-200/80 text-slate-800 border border-slate-300 text-xs px-2.5 py-1 rounded-full font-bold whitespace-nowrap">
+              Target: {globalTiktokTarget > 0 ? formatRp(globalTiktokTarget) : 'Belum diset'}
+            </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-            <div style={{ background: '#fff', padding: '10px 14px', borderRadius: 12, border: '1px solid #f1f5f9' }}>
-              <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, marginBottom: 3, letterSpacing: 0.5 }}>OMSET MTD</div>
-              <div style={{ fontSize: 17, fontWeight: 800, color: '#0f172a' }}>{formatRp(tiktokOmsetMtd)}</div>
+
+          {/* Progress Bar */}
+          <div>
+            <div className="flex justify-between text-xs font-semibold text-slate-700 mb-1.5">
+              <span>Pencapaian MTD</span>
+              <span className="font-extrabold">{tiktokPersentase.toFixed(1)}%</span>
             </div>
-            <div style={{ background: '#fff', padding: '10px 14px', borderRadius: 12, border: '1px solid #f1f5f9' }}>
-              <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, marginBottom: 3, letterSpacing: 0.5 }}>PENCAPAIAN</div>
-              <div style={{ fontSize: 17, fontWeight: 800, color: '#0f172a' }}>{tiktokPersentase.toFixed(1)}%</div>
+            <ProgressBar value={tiktokPersentase} color="#0f172a" />
+          </div>
+
+          {/* Stats Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="bg-white/90 backdrop-blur-xs p-3 rounded-xl border border-slate-200 flex sm:flex-col justify-between sm:justify-start items-center sm:items-start gap-1">
+              <div className="text-[10px] sm:text-[11px] text-slate-500 font-bold uppercase tracking-wider">OMSET MTD</div>
+              <div className="text-sm sm:text-base font-black text-slate-900 whitespace-nowrap">{formatRp(tiktokOmsetMtd)}</div>
             </div>
-            <div style={{ background: '#fff', padding: '10px 14px', borderRadius: 12, border: '1px solid #f1f5f9' }}>
-              <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, marginBottom: 3, letterSpacing: 0.5 }}>GAP</div>
-              <div style={{ fontSize: 17, fontWeight: 800, color: (tiktokOmsetMtd - globalTiktokTarget) >= 0 ? '#15803d' : '#b91c1c' }}>{formatRp(Math.abs(tiktokOmsetMtd - globalTiktokTarget))}</div>
+
+            <div className="bg-white/90 backdrop-blur-xs p-3 rounded-xl border border-slate-200 flex sm:flex-col justify-between sm:justify-start items-center sm:items-start gap-1">
+              <div className="text-[10px] sm:text-[11px] text-slate-500 font-bold uppercase tracking-wider">PENCAPAIAN</div>
+              <div className="text-sm sm:text-base font-black text-slate-900 whitespace-nowrap">{tiktokPersentase.toFixed(1)}%</div>
+            </div>
+
+            <div className="bg-white/90 backdrop-blur-xs p-3 rounded-xl border border-slate-200 flex sm:flex-col justify-between sm:justify-start items-center sm:items-start gap-1">
+              <div className="text-[10px] sm:text-[11px] text-slate-500 font-bold uppercase tracking-wider">GAP TARGET</div>
+              <div className={`text-sm sm:text-base font-black whitespace-nowrap ${(tiktokOmsetMtd - globalTiktokTarget) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {(tiktokOmsetMtd - globalTiktokTarget) >= 0 ? '+' : '-'}{formatRp(Math.abs(tiktokOmsetMtd - globalTiktokTarget))}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Online History Table */}
-      <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
-          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0f172a' }}>📋 History Laporan Online</h3>
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="p-4 sm:p-5 border-b border-slate-100 flex justify-between items-center">
+          <div>
+            <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
+              <span>📋</span> History Laporan Harian E-Commerce
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">Daftar transaksi harian Shopee dan TikTok yang telah dilaporkan</p>
+          </div>
+          <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full whitespace-nowrap">
+            {onlineReports.length} Laporan
+          </span>
         </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+
+        <div className="overflow-x-auto no-scrollbar">
+          <table className="w-full text-left text-xs sm:text-sm border-collapse min-w-[500px]">
             <thead>
-              <tr style={{ background: '#f8fafc' }}>
-                <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>TANGGAL</th>
-                <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>PLATFORM</th>
-                <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>OMSET HARIAN</th>
-                <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>DIINPUT OLEH</th>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="p-3 sm:px-4 sm:py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">TANGGAL</th>
+                <th className="p-3 sm:px-4 sm:py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">PLATFORM</th>
+                <th className="p-3 sm:px-4 sm:py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right">OMSET HARIAN</th>
+                <th className="p-3 sm:px-4 sm:py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">PELAPOR</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-100">
               {onlineReports.length === 0 ? (
-                <tr><td colSpan={4} style={{ padding: '24px 16px', textAlign: 'center', color: '#94a3b8' }}>Belum ada data laporan online</td></tr>
-              ) : onlineReports.slice(0, 50).map((r: any) => (
-                <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '10px 16px' }}>{new Date(r.date).toLocaleDateString('id-ID')}</td>
-                  <td style={{ padding: '10px 16px' }}>
-                    <span style={{
-                      background: r.platform?.toLowerCase() === 'shopee' ? '#ffedd5' : '#e2e8f0',
-                      color: r.platform?.toLowerCase() === 'shopee' ? '#c2410c' : '#334155',
-                      padding: '3px 10px', borderRadius: 8, fontWeight: 600, fontSize: 11, textTransform: 'capitalize' as const
-                    }}>{r.platform || '-'}</span>
+                <tr>
+                  <td colSpan={4} className="p-8 text-center text-slate-400">
+                    <div className="text-2xl mb-1">🛒</div>
+                    Belum ada data laporan penjualan e-commerce.
                   </td>
-                  <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600 }}>{formatRp(Number(r.omset_harian))}</td>
-                  <td style={{ padding: '10px 16px', color: '#64748b' }}>{r.employee ? r.employee.nama : 'Sistem'}</td>
                 </tr>
-              ))}
+              ) : (
+                onlineReports.slice(0, 50).map((r: any) => (
+                  <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="p-3 sm:px-4 sm:py-3 font-medium text-slate-700 whitespace-nowrap">
+                      {new Date(r.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </td>
+                    <td className="p-3 sm:px-4 sm:py-3 whitespace-nowrap">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 ${
+                        r.platform?.toLowerCase() === 'shopee'
+                          ? 'bg-orange-100 text-orange-700 border border-orange-200'
+                          : 'bg-slate-100 text-slate-800 border border-slate-300'
+                      }`}>
+                        {r.platform?.toLowerCase() === 'shopee' ? '🛍️ Shopee' : '🎵 TikTok'}
+                      </span>
+                    </td>
+                    <td className="p-3 sm:px-4 sm:py-3 text-right font-black text-slate-900 whitespace-nowrap">
+                      {formatRp(Number(r.omset_harian))}
+                    </td>
+                    <td className="p-3 sm:px-4 sm:py-3 text-slate-600 whitespace-nowrap">
+                      <span className="text-xs font-semibold">{r.employee ? r.employee.nama : 'Sistem'}</span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -592,8 +655,8 @@ function EventBoothTab({ data }: { data: any }) {
           </a>
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <div style={{ overflowX: 'auto' }} className="no-scrollbar">
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 680 }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
                 <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>NAMA BOOTH / EVENT</th>

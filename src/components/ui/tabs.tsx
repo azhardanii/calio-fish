@@ -17,15 +17,15 @@ export function Tabs({ tabs }: TabsProps) {
 
   return (
     <div className="w-full">
-      <div className="flex space-x-1 border-b border-gray-200 mb-6">
+      <div className="flex space-x-1 border-b border-gray-200 mb-5 overflow-x-auto no-scrollbar scroll-smooth">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors duration-200 ease-in-out ${
+            className={`px-3.5 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition-all duration-200 ease-in-out whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
               activeTab === tab.id
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                ? 'border-blue-600 text-blue-600 bg-blue-50/60 rounded-t-lg'
+                : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300'
             }`}
           >
             {tab.label}
