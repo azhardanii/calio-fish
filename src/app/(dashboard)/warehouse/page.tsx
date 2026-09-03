@@ -54,6 +54,7 @@ export default function WarehousePage() {
   }, 0);
 
   const openCreateModal = () => {
+    if (!isOwnerOrAdmin) return;
     setFormError(null);
     setIsEditing(false);
     setFormData({
@@ -65,6 +66,7 @@ export default function WarehousePage() {
   };
 
   const openEditModal = (w: any) => {
+    if (!isOwnerOrAdmin) return;
     setFormError(null);
     setIsEditing(true);
     setFormData({
@@ -78,6 +80,7 @@ export default function WarehousePage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isOwnerOrAdmin) return;
     setFormError(null);
     setIsSubmitting(true);
     try {
@@ -96,6 +99,7 @@ export default function WarehousePage() {
   };
 
   const handleDelete = async (w: any) => {
+    if (!isOwnerOrAdmin) return;
     const totalStock = (w.stocks || []).reduce((acc: number, s: any) => acc + (s.quantity || 0) + (s.returned_qty || 0), 0);
     if (totalStock > 0) {
       alert(`Gudang "${w.name}" tidak dapat dihapus karena masih memiliki stok aktif sebanyak ${totalStock} pcs.\n\nSilakan mutasikan atau transfer stok terlebih dahulu ke gudang lain.`);
@@ -135,7 +139,7 @@ export default function WarehousePage() {
         </div>
         <div className="flex items-center gap-2.5 flex-wrap">
           <PdfExportButton targetId="warehouse-report" filename="laporan-warehouse" />
-          {isOwnerOrAdmin && (
+          {isOwnerOrAdmin ? (
             <button
               onClick={openCreateModal}
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95"
@@ -143,6 +147,10 @@ export default function WarehousePage() {
               <Plus className="w-4 h-4" />
               <span>Tambah Warehouse</span>
             </button>
+          ) : (
+            <span className="text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200/80 px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-2xs">
+              <span>👁️</span> Mode View Only
+            </span>
           )}
         </div>
       </div>
