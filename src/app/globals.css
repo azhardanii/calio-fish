@@ -466,8 +466,9 @@ body {
 /* ══════════════════════════════════════════════════════════════════════════════
    BOTTOM NAVIGATION BAR
    ══════════════════════════════════════════════════════════════════════════════ */
-.bottom-nav {
-  display: none; /* Hidden on desktop, shown on mobile via media query */
+.bottom-nav,
+.bottom-nav-reopen {
+  display: none !important; /* Hidden on desktop, shown on mobile via media query */
 }
 
 .bottom-nav-item {
@@ -723,6 +724,10 @@ body {
     transform: translateY(100%);
     opacity: 0;
     pointer-events: none;
+  }
+
+  .bottom-nav-reopen {
+    display: flex !important;
   }
 
   /* ── Mobile brand in header ── */

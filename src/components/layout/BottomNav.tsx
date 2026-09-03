@@ -246,7 +246,7 @@ export function BottomNav({ user }: BottomNavProps) {
 
   return (
     <>
-      {/* Floating Reopen Pill when BottomNav is hidden (Only shown when not in a modal and not typing) */}
+      {/* Floating Reopen Pill when BottomNav is hidden (Only shown when not in a modal and not typing, strictly on mobile) */}
       {!shouldShow && !isModalOpen && !isInputFocused && (
         <button
           type="button"
@@ -255,7 +255,7 @@ export function BottomNav({ user }: BottomNavProps) {
             setIsVisible(true);
             resetInactivityTimer();
           }}
-          className="fixed bottom-3 left-1/2 -translate-x-1/2 z-40 bg-slate-900/90 hover:bg-slate-900 text-white backdrop-blur-md rounded-full px-3.5 py-1.5 shadow-lg border border-white/20 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 animate-in fade-in slide-in-from-bottom-2"
+          className="bottom-nav-reopen md:hidden fixed bottom-3 left-1/2 -translate-x-1/2 z-40 bg-slate-900/90 hover:bg-slate-900 text-white backdrop-blur-md rounded-full px-3.5 py-1.5 shadow-lg border border-white/20 text-xs font-semibold items-center gap-1.5 cursor-pointer transition-all active:scale-95 animate-in fade-in slide-in-from-bottom-2"
           title="Buka Menu Navigasi"
         >
           <Compass size={14} className="text-cyan-400" />
@@ -277,10 +277,10 @@ export function BottomNav({ user }: BottomNavProps) {
             setIsVisible(false);
           }}
           className="absolute -top-6 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-md border border-slate-200/90 border-b-0 rounded-t-lg px-2.5 py-0.5 text-[10px] font-semibold text-slate-500 hover:text-slate-800 shadow-xs flex items-center gap-1 cursor-pointer transition-all active:scale-95"
-          title="Sembunyikan Menu Navigasi"
+          title="Tutup Menu Navigasi"
         >
           <ChevronDown size={12} className="text-slate-400" />
-          <span>Tutup Nav</span>
+          <span>Tutup</span>
         </button>
         {primaryItems.slice(0, 4).map((item) => {
           const active = isActive(item.href);
