@@ -227,7 +227,7 @@ export function EmployeeManager({ employees, currentUser }: { employees: any[], 
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold mb-4">{isEditing ? 'Edit Karyawan' : 'Tambah Karyawan'}</h3>
             <form onSubmit={handleSubmit} className="space-y-4">

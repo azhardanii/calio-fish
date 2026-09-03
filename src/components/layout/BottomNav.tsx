@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Gauge,
   TrendingUp,
@@ -19,6 +19,9 @@ import {
   MessageCircle,
   LogOut,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Compass,
 } from "lucide-react";
 
 interface BottomNavProps {
@@ -29,7 +32,13 @@ export function BottomNav({ user }: BottomNavProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [isVisible, setIsVisible] = useState(true);
+  const [isManuallyHidden, setIsManuallyHidden] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isInputFocused, setIsInputFocused] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastScrollY = useRef(0);
 
   const role = (user.role || '').toUpperCase();
   const isOwnerOrAdmin = role === "OWNER" || role === "ADMIN";
@@ -37,10 +46,123 @@ export function BottomNav({ user }: BottomNavProps) {
   const isMarketing = isOwnerOrAdmin || role === "MARKETING" || role.includes("MARKETING");
   const isMitra = isOwnerOrAdmin || role === "MITRA" || role.includes("MITRA");
 
+  // Inactivity timer: auto-hide after 6 seconds of no user interaction
+  const resetInactivityTimer = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (moreOpen) return;
+
+    timerRef.current = setTimeout(() => {
+      setIsVisible(false);
+    }, 6000); // 6 detik
+  }, [moreOpen]);
+
+  // Reset timer on user touch/click
+  useEffect(() => {
+    const handleActivity = () => {
+      if (!isManuallyHidden && !isModalOpen && !isInputFocused) {
+        setIsVisible(true);
+      }
+      resetInactivityTimer();
+    };
+
+    window.addEventListener("touchstart", handleActivity, { passive: true });
+    window.addEventListener("click", handleActivity, { passive: true });
+    resetInactivityTimer();
+
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      window.removeEventListener("touchstart", handleActivity);
+      window.removeEventListener("click", handleActivity);
+    };
+  }, [resetInactivityTimer, isManuallyHidden, isModalOpen, isInputFocused]);
+
+  // Scroll detection: auto-hide on scroll down, auto-show on scroll up
+  useEffect(() => {
+    const handleScroll = (e: Event) => {
+      const target = (e.target === document ? document.documentElement : e.target) as HTMLElement;
+      const currentScrollY = target.scrollTop || window.scrollY || 0;
+      const diff = currentScrollY - lastScrollY.current;
+
+      if (Math.abs(diff) > 8) {
+        if (diff > 0 && currentScrollY > 50) {
+          // Scrolling down -> hide nav
+          setIsVisible(false);
+        } else if (diff < 0) {
+          // Scrolling up -> show nav & clear manual hide
+          setIsVisible(true);
+          setIsManuallyHidden(false);
+          resetInactivityTimer();
+        }
+        lastScrollY.current = currentScrollY;
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    const contentEl = document.querySelector(".content");
+    if (contentEl) {
+      contentEl.addEventListener("scroll", handleScroll, { passive: true });
+    }
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      if (contentEl) {
+        contentEl.removeEventListener("scroll", handleScroll);
+      }
+    };
+  }, [resetInactivityTimer]);
+
+  // Auto-hide when form inputs are focused (prevents virtual keyboard overlap with save button)
+  useEffect(() => {
+    const onFocusIn = (e: FocusEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+        setIsInputFocused(true);
+      }
+    };
+
+    const onFocusOut = () => {
+      setTimeout(() => {
+        const activeTag = (document.activeElement as HTMLElement)?.tagName;
+        if (activeTag !== "INPUT" && activeTag !== "TEXTAREA" && activeTag !== "SELECT") {
+          setIsInputFocused(false);
+          setIsVisible(true);
+          resetInactivityTimer();
+        }
+      }, 200);
+    };
+
+    window.addEventListener("focusin", onFocusIn);
+    window.addEventListener("focusout", onFocusOut);
+
+    return () => {
+      window.removeEventListener("focusin", onFocusIn);
+      window.removeEventListener("focusout", onFocusOut);
+    };
+  }, [resetInactivityTimer]);
+
+  // Auto-hide when ANY modal dialog is open in the DOM
+  useEffect(() => {
+    const checkModals = () => {
+      const modals = document.querySelectorAll(
+        '.fixed.inset-0:not(.more-sheet-overlay)'
+      );
+      setIsModalOpen(modals.length > 0);
+    };
+
+    checkModals();
+    const observer = new MutationObserver(checkModals);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => observer.disconnect();
+  }, []);
+
   // Close sheet on route change
   useEffect(() => {
     setMoreOpen(false);
-  }, [pathname]);
+    setIsVisible(true);
+    setIsManuallyHidden(false);
+    resetInactivityTimer();
+  }, [pathname, resetInactivityTimer]);
 
   // Close on backdrop click
   useEffect(() => {
@@ -119,10 +241,47 @@ export function BottomNav({ user }: BottomNavProps) {
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
   const isMoreActive = secondaryItems.some((item) => isActive(item.href));
 
+  // Determine whether to display the bottom navigation bar
+  const shouldShow = (!isModalOpen && !isInputFocused && !isManuallyHidden && isVisible) || moreOpen;
+
   return (
     <>
+      {/* Floating Reopen Pill when BottomNav is hidden (Only shown when not in a modal and not typing) */}
+      {!shouldShow && !isModalOpen && !isInputFocused && (
+        <button
+          type="button"
+          onClick={() => {
+            setIsManuallyHidden(false);
+            setIsVisible(true);
+            resetInactivityTimer();
+          }}
+          className="fixed bottom-3 left-1/2 -translate-x-1/2 z-40 bg-slate-900/90 hover:bg-slate-900 text-white backdrop-blur-md rounded-full px-3.5 py-1.5 shadow-lg border border-white/20 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 animate-in fade-in slide-in-from-bottom-2"
+          title="Buka Menu Navigasi"
+        >
+          <Compass size={14} className="text-cyan-400" />
+          <span>Buka Menu</span>
+          <ChevronUp size={13} className="text-slate-300" />
+        </button>
+      )}
+
       {/* Bottom Navigation Bar */}
-      <nav className="bottom-nav" aria-label="Mobile navigation">
+      <nav 
+        className={`bottom-nav ${shouldShow ? "" : "nav-hidden"}`} 
+        aria-label="Mobile navigation"
+      >
+        {/* Toggle Minimize Handle */}
+        <button
+          type="button"
+          onClick={() => {
+            setIsManuallyHidden(true);
+            setIsVisible(false);
+          }}
+          className="absolute -top-6 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-md border border-slate-200/90 border-b-0 rounded-t-lg px-2.5 py-0.5 text-[10px] font-semibold text-slate-500 hover:text-slate-800 shadow-xs flex items-center gap-1 cursor-pointer transition-all active:scale-95"
+          title="Sembunyikan Menu Navigasi"
+        >
+          <ChevronDown size={12} className="text-slate-400" />
+          <span>Tutup Nav</span>
+        </button>
         {primaryItems.slice(0, 4).map((item) => {
           const active = isActive(item.href);
           return (
