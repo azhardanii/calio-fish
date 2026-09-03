@@ -50,7 +50,9 @@ data: [
     "source_name": "string", // e.g. "Banyuwangi", "Malang", "Booth Jatim Expo"
     "destination_type": "WAREHOUSE" | "OUTLET" | "BOOTH" | "E-COMMERCE" | "SAMPLE" | "AFFILIATE",
     "destination_name": "string", // e.g. "Malang", "Booth Jatim Expo", "Shopee"
-    "items": [ { "product_key": "string", "qty": number } ]
+    "items": [ { "product_key": "string", "qty": number } ],
+    "total_produk": number, // optional, for sample
+    "biaya_ekspedisi": number // optional, for sample/shipping cost
   }
 ]
 **NOTE ON BOOTH LOGISTICS:**
@@ -86,8 +88,9 @@ data: { "booth_name": "string", "omset_harian": number, "metode_pembayaran": "TU
 
 export async function parseWhatsAppReport(text: string) {
   try {
+    const cleanedText = text.replace(/^[\/!#]?(lapor|laporkan)\s*/i, '').trim();
     const currentDate = new Date().toLocaleDateString('en-CA');
-    const fullPrompt = SYSTEM_PROMPT + '\n\nCURRENT_DATE: ' + currentDate + '\n\nMessage:\n' + text;
+    const fullPrompt = SYSTEM_PROMPT + '\n\nCURRENT_DATE: ' + currentDate + '\n\nMessage:\n' + cleanedText;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.1-flash-lite',
@@ -99,8 +102,9 @@ export async function parseWhatsAppReport(text: string) {
       }
     });
 
-    const resultText = response.text || "{}";
-    return JSON.parse(resultText);
+    const raw = response.text || "{}";
+    const cleanJson = raw.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+    return JSON.parse(cleanJson);
   } catch (error) {
     console.error('Error parsing WhatsApp report with Gemini:', error);
     return null;

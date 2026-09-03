@@ -48,11 +48,22 @@ export async function POST(req: Request) {
     const isLapor = textBody.startsWith('/lapor') || textBody.startsWith('!lapor') || textBody.startsWith('#lapor') || textBody.startsWith('lapor');
     const isMasuk = textBody.startsWith('/masuk') || textBody.startsWith('!masuk') || textBody.startsWith('#masuk') || textBody.startsWith('masuk');
     const isIzin = textBody.startsWith('/izin') || textBody.startsWith('!izin') || textBody.startsWith('#izin') || textBody.startsWith('izin');
+    const isSakit = textBody.startsWith('/sakit') || textBody.startsWith('!sakit') || textBody.startsWith('#sakit') || textBody.startsWith('sakit');
     
-    const isTriggered = isLapor || isMasuk || isIzin;
+    // Support structured reports and operational messages even without explicit /lapor prefix
+    const structuredKeywords = [
+      'kirim barang', 'pengiriman', 'retur', 'sample', 'distribusi',
+      'laporan penjualan booth', 'laporan marketing', 'laporan shopee', 'laporan tiktok',
+      'pembayaran outlet', 'pelunasan outlet', 'piutang outlet', 'bon outlet',
+      'produksi', 'mengemas', 'pembersihan kulit', 'jadwal kol', 'affiliate',
+      'booth', 'pameran', 'pengembalian'
+    ];
+    const isStructuredReport = structuredKeywords.some(kw => textBody.includes(kw));
+
+    const isTriggered = isLapor || isMasuk || isIzin || isSakit || isStructuredReport;
     
     if (!isTriggered) {
-      return NextResponse.json({ status: 'ignored', reason: 'no trigger prefix' });
+      return NextResponse.json({ status: 'ignored', reason: 'no trigger prefix or report keyword' });
     }
 
     if (payload.is_from_me) {
@@ -109,7 +120,7 @@ export async function POST(req: Request) {
     await readMessage(payload.chat_id, payload.id);
     await sendChatPresence(payload.chat_id, 'composing');
 
-    if (isMasuk || isIzin) {
+    if (isMasuk || isIzin || isSakit) {
         if (!employeeId) {
             await sendMessage(payload.chat_id, "⚠️ Maaf, nomor HP Anda belum terdaftar di Database Karyawan. Silakan hubungi admin.", payload.id);
             return NextResponse.json({ status: 'success', reason: 'employee not found' });
@@ -130,8 +141,12 @@ export async function POST(req: Request) {
             return NextResponse.json({ status: 'success', reason: 'already presensi' });
         }
         
-        let status: 'HADIR' | 'IZIN' | 'SAKIT' = isMasuk ? 'HADIR' : 'IZIN';
-        let notes = isIzin ? (payload.body || '').replace(/^\/?izin\s*/i, '').trim() : '';
+        let status: 'HADIR' | 'IZIN' | 'SAKIT' = isMasuk ? 'HADIR' : isSakit ? 'SAKIT' : 'IZIN';
+        let notes = isSakit 
+          ? (payload.body || '').replace(/^[\/!#]?sakit\s*/i, '').trim()
+          : isIzin 
+          ? (payload.body || '').replace(/^[\/!#]?izin\s*/i, '').trim() 
+          : '';
         
         await prisma.attendance.create({
             data: {
@@ -245,6 +260,21 @@ export async function POST(req: Request) {
           }
         });
         replyMsg = `✅ *Stok Bahan* (${data.kategori}) berhasil diperbarui!`;
+
+      } else if (parsedData.report_type === 'PEMBERSIHAN_KULIT') {
+        await prisma.produksi.create({
+          data: {
+            date: new Date(parsedData.date),
+            kegiatan: 'Pembersihan',
+            jenis_produksi: 'Pembersihan Kulit',
+            bahan_baku: data.berat_beku_kg ? Number(data.berat_beku_kg) : null,
+            bahan_jadi: data.hasil_bersih_kg ? Number(data.hasil_bersih_kg) : null,
+            employee_id: employeeId
+          }
+        });
+        replyMsg = `✅ *Pembersihan Kulit* tanggal ${parsedData.date} berhasil dicatat!\n` +
+                   `🧊 Bahan Baku Beku: ${data.berat_beku_kg || 0} kg\n` +
+                   `✨ Hasil Bersih Siap Olah: ${data.hasil_bersih_kg || 0} kg`;
 
       } else if (parsedData.report_type === 'MARKETING_OFFLINE') {
         await prisma.$transaction(async (tx) => {
@@ -503,6 +533,21 @@ export async function POST(req: Request) {
         });
         replyMsg = `✅ *Jadwal KOL* untuk ${data.nama_kol} berhasil dicatat!`;
 
+      } else if (parsedData.report_type === 'DATABASE_AFFILIATE') {
+        const aff = await prisma.affiliate.create({
+          data: {
+            nama: data.nama || 'Affiliate Baru',
+            akun_medsos: data.akun_medsos || data.nama || '-',
+            no_hp: data.no_hp || null,
+            alamat: data.alamat || null,
+            jenis_postingan: data.jenis_postingan || null,
+            media_upload: data.media_upload || null,
+            ratecard: data.ratecard ? Number(data.ratecard) : null,
+            link_unggahan: data.link_unggahan || null,
+          }
+        });
+        replyMsg = `✅ *Database Affiliate* atas nama ${aff.nama} (@${aff.akun_medsos}) berhasil didaftarkan!`;
+
       } else if (parsedData.report_type === 'LOGISTIK_MULTI') {
         const activities = Array.isArray(data) ? data : [data];
         let totalShipments = 0;
@@ -618,12 +663,13 @@ export async function POST(req: Request) {
 
             // Optional: If it's a sample, record to distribusiSample table
             if (kategori === 'SAMPLE') {
+              const sampleTotal = Number(route.total_produk) || items.reduce((sum: number, it: any) => sum + (Number(it.qty) || 0), 0);
               await tx.distribusiSample.create({
                 data: {
                   date: parsedData.date ? new Date(parsedData.date) : new Date(),
                   jenis_sample: destName,
-                  total_produk: route.total_produk || 0,
-                  biaya_ekspedisi: route.biaya_ekspedisi || 0,
+                  total_produk: sampleTotal,
+                  biaya_ekspedisi: Number(route.biaya_ekspedisi) || 0,
                   employee_id: employeeId
                 }
               });
