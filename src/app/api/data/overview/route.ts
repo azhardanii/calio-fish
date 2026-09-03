@@ -76,7 +76,9 @@ export async function GET(req: NextRequest) {
     boothSalesAgg, boothSalesToday, boothSalesDaily, recentBoothSales,
     activeBoothCount, totalBoothCount, boothStockAgg,
     // NEW: Kas Masuk Pelunasan Outlet
-    outletPaymentAgg, recentOutletPayments
+    outletPaymentAgg, recentOutletPayments,
+    // NEW: Tim Marketing Employees & Individual Targets
+    marketingEmployees
   ] = await Promise.all([
     prisma.marketingOffline.findFirst({ where: { date: { gte: todayStart, lte: todayEnd } }, orderBy: { created_at: 'desc' } }),
     prisma.marketingOffline.aggregate({ _sum: { omset_harian: true, target_bulanan: true }, where: dateFilter ? { date: dateFilter } : {} }),
@@ -116,10 +118,118 @@ export async function GET(req: NextRequest) {
     // Kas Masuk Outlet Payment
     prisma.outletTransaction.aggregate({ _sum: { amount: true }, where: { type: 'PAYMENT', ...(dateFilter ? { date: dateFilter } : {}) } }),
     prisma.outletTransaction.findMany({ where: { type: 'PAYMENT' }, take: 3, orderBy: { created_at: 'desc' }, select: { amount: true, date: true, created_at: true, outlet: { select: { nama: true } } } }),
+
+    // Tim Marketing Employees & Individual Targets
+    prisma.employee.findMany({
+      where: {
+        OR: [
+          { role: 'MARKETING' },
+          { role: { contains: 'MARKETING' } },
+          { posisi: { contains: 'Marketing', mode: 'insensitive' } },
+        ],
+        status_aktif: true,
+      },
+      include: {
+        managed_outlets: {
+          include: {
+            transactions: { orderBy: { date: 'desc' } },
+          }
+        },
+        marketing_targets: {
+          where: { bulan: now.getMonth() + 1, tahun: now.getFullYear() }
+        },
+        personal_buyer_transactions: {
+          orderBy: { date: 'desc' },
+        },
+        managed_booths: {
+          include: {
+            sales: { orderBy: { date: 'desc' } }
+          }
+        },
+      },
+      orderBy: { nama: 'asc' },
+    }),
   ]);
 
-  // Calculations: Revenue per channel
-  const offlineTarget = baseOfflineTarget * monthsCount;
+  // Tim Marketing Evaluation & Performance
+  const marketingStaffPerformance = (marketingEmployees as any[]).map((emp: any) => {
+    const target = emp.marketing_targets[0];
+    const targetOmset = target ? Number(target.target_omset) : 0;
+
+    let totalBillingThisMonth = 0;
+    let totalPaymentThisMonth = 0;
+    let totalOutstandingAll = 0;
+
+    emp.managed_outlets.forEach((outlet: any) => {
+      totalOutstandingAll += Number(outlet.sisa_tagihan);
+      outlet.transactions.forEach((tx: any) => {
+        const txDate = new Date(tx.date);
+        const matchDate = dateFilter ? (txDate >= startDate! && txDate <= endDate!) : true;
+        if (matchDate) {
+          if (tx.type === 'PIUTANG' || tx.type === 'BILLING' || tx.type === 'TAGIHAN' || tx.type === 'ORDER') {
+            totalBillingThisMonth += Number(tx.amount);
+          } else if (tx.type === 'PELUNASAN' || tx.type === 'PAYMENT') {
+            totalPaymentThisMonth += Number(tx.amount);
+          }
+        }
+      });
+    });
+
+    const personalBuyerThisMonth = emp.personal_buyer_transactions
+      .filter((t: any) => {
+        const d = new Date(t.date);
+        return dateFilter ? (d >= startDate! && d <= endDate!) : true;
+      })
+      .reduce((sum: number, t: any) => sum + Number(t.amount), 0);
+
+    const boothSalesThisMonth = emp.managed_booths.reduce((sum: number, b: any) => {
+      const bSales = b.sales
+        .filter((s: any) => {
+          const d = new Date(s.date);
+          return dateFilter ? (d >= startDate! && d <= endDate!) : true;
+        })
+        .reduce((sSum: number, s: any) => sSum + Number(s.total_price), 0);
+      return sum + bSales;
+    }, 0);
+
+    const totalOmsetThisMonth = totalBillingThisMonth + personalBuyerThisMonth + boothSalesThisMonth;
+    const pencapaian = targetOmset > 0 ? (totalOmsetThisMonth / targetOmset) * 100 : 0;
+    const gap = totalOmsetThisMonth - targetOmset;
+
+    let status: 'on_track' | 'behind' | 'critical' = 'on_track';
+    if (targetOmset > 0) {
+      const dayOfMonth = now.getDate();
+      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      const expectedProgress = (dayOfMonth / daysInMonth) * 100;
+      if (pencapaian < expectedProgress * 0.5) status = 'critical';
+      else if (pencapaian < expectedProgress * 0.8) status = 'behind';
+    }
+
+    return {
+      id: emp.id,
+      nama: emp.nama,
+      posisi: emp.posisi,
+      no_hp: emp.no_hp,
+      target_omset: targetOmset,
+      total_billing_this_month: totalBillingThisMonth,
+      total_payment_this_month: totalPaymentThisMonth,
+      personal_buyer_this_month: personalBuyerThisMonth,
+      booth_sales_this_month: boothSalesThisMonth,
+      total_omset_this_month: totalOmsetThisMonth,
+      pencapaian: Math.round(pencapaian * 10) / 10,
+      gap,
+      status,
+      outlet_count: emp.managed_outlets.length,
+      total_outstanding_all: totalOutstandingAll,
+    };
+  });
+
+  const totalMarketingTarget = marketingStaffPerformance.reduce((s: number, m: any) => s + m.target_omset, 0);
+  const totalMarketingOmset = marketingStaffPerformance.reduce((s: number, m: any) => s + m.total_omset_this_month, 0);
+
+  // Target B2B Outlet & Marketing: Menggunakan total target tim marketing yang dikelola staf!
+  // Jika belum diset individu oleh admin/owner, fallback ke baseOfflineTarget * monthsCount
+  const offlineTarget = totalMarketingTarget > 0 ? totalMarketingTarget : (baseOfflineTarget * monthsCount);
   const offlineOmset = toNum(offlineFilterAgg._sum.omset_harian);
   const shopeeTarget = baseShopeeTarget * monthsCount;
   const tiktokTarget = baseTiktokTarget * monthsCount;
@@ -308,12 +418,31 @@ export async function GET(req: NextRequest) {
 
     // Channels breakdown
     channels: [
-      { name: 'B2B Outlet Mitra', mtd: offlineOmset, target: offlineTarget, icon: '🏪', pct: totalOmset > 0 ? Math.round((offlineOmset / totalOmset) * 100) : 0 },
+      { 
+        name: 'Tim Marketing (B2B Outlet)', 
+        mtd: offlineOmset, 
+        target: offlineTarget, 
+        icon: '👥', 
+        pct: totalOmset > 0 ? Math.round((offlineOmset / totalOmset) * 100) : 0,
+        staffCount: marketingStaffPerformance.length,
+      },
       { name: 'Shopee Official', mtd: shopeeOmset, target: shopeeTarget, icon: '🛒', pct: totalOmset > 0 ? Math.round((shopeeOmset / totalOmset) * 100) : 0 },
       { name: 'TikTok Shop', mtd: tiktokOmset, target: tiktokTarget, icon: '📱', pct: totalOmset > 0 ? Math.round((tiktokOmset / totalOmset) * 100) : 0 },
       { name: 'Event & Open Booth', mtd: boothOmset, target: 0, icon: '🎪', pct: totalOmset > 0 ? Math.round((boothOmset / totalOmset) * 100) : 0 },
       { name: 'Personal Buyer Direct', mtd: personalBuyerOmset, target: 0, icon: '👤', pct: totalOmset > 0 ? Math.round((personalBuyerOmset / totalOmset) * 100) : 0 },
     ],
+
+    // Marketing Staff Evaluation (Direct monitoring for underperforming users)
+    marketingEvaluation: {
+      totalStaff: marketingStaffPerformance.length,
+      totalTarget: offlineTarget,
+      totalRealisasi: totalMarketingOmset,
+      pencapaian: offlineTarget > 0 ? Math.round((totalMarketingOmset / offlineTarget) * 1000) / 10 : 0,
+      criticalCount: marketingStaffPerformance.filter((m: any) => m.status === 'critical').length,
+      behindCount: marketingStaffPerformance.filter((m: any) => m.status === 'behind').length,
+      onTrackCount: marketingStaffPerformance.filter((m: any) => m.status === 'on_track').length,
+      staff: marketingStaffPerformance,
+    },
 
     // Financial Health: Kas Masuk vs Piutang
     financials: {

@@ -71,6 +71,31 @@ interface OverviewData {
     boothOmset: number;
     boothStok: number;
   };
+  marketingEvaluation?: {
+    totalStaff: number;
+    totalTarget: number;
+    totalRealisasi: number;
+    pencapaian: number;
+    criticalCount: number;
+    behindCount: number;
+    onTrackCount: number;
+    staff: Array<{
+      id: string;
+      nama: string;
+      posisi?: string;
+      no_hp?: string;
+      target_omset: number;
+      total_billing_this_month: number;
+      personal_buyer_this_month: number;
+      booth_sales_this_month: number;
+      total_omset_this_month: number;
+      pencapaian: number;
+      gap: number;
+      status: 'on_track' | 'behind' | 'critical';
+      outlet_count: number;
+      total_outstanding_all?: number;
+    }>;
+  };
   chartData: { 
     date: string; 
     displayDate: string; 
@@ -150,6 +175,7 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
     totalGap = 0,
     totalPersentase = 0,
     channels = [],
+    marketingEvaluation,
     financials,
     boothSummary,
     chartData = [],
@@ -184,6 +210,7 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
   });
 
   const [isMounted, setIsMounted] = useState(false);
+  const [evalFilter, setEvalFilter] = useState<'all' | 'critical' | 'behind' | 'on_track'>('all');
 
   useEffect(() => {
     setIsMounted(true);
@@ -211,6 +238,11 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
   };
 
   const totalKasMasuk = financials?.totalKasMasuk ?? (totalOmset - totalSisaTagihan);
+
+  const filteredStaff = (marketingEvaluation?.staff || []).filter(st => {
+    if (evalFilter === 'all') return true;
+    return st.status === evalFilter;
+  });
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -527,6 +559,213 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
           </div>
         </div>
       </div>
+
+      {/* ── ROW 2.5: EVALUASI KINERJA TIM MARKETING (PIC MARKETING) ── */}
+      {marketingEvaluation && (
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-base sm:text-lg font-black text-gray-900 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-blue-600" />
+                  <span>Evaluasi Kinerja Tim Marketing</span>
+                </h3>
+                <span className="text-xs bg-blue-50 text-blue-800 font-bold px-2.5 py-0.5 rounded-full border border-blue-200">
+                  Target: {formatRp(marketingEvaluation.totalTarget)}
+                </span>
+                <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
+                  marketingEvaluation.pencapaian >= 100 
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                    : marketingEvaluation.pencapaian >= 60 
+                      ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                      : 'bg-rose-50 text-rose-700 border-rose-200'
+                }`}>
+                  Realisasi: {formatRp(marketingEvaluation.totalRealisasi)} ({marketingEvaluation.pencapaian}%)
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Total target yang dikelola tim marketing: <b>{formatRp(marketingEvaluation.totalTarget)}</b>. Pantau langsung performa tiap staf untuk evaluasi target dan pembagian outlet.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <Link 
+                href="/marketing" 
+                className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+              >
+                <span>Kelola Target di Halaman Marketing</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </div>
+
+          {/* Quick Filter Pills */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs font-bold text-gray-400 mr-1">Filter Kinerja:</span>
+            <button
+              onClick={() => setEvalFilter('all')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                evalFilter === 'all' 
+                  ? 'bg-gray-900 text-white shadow-xs' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Semua ({marketingEvaluation.totalStaff})
+            </button>
+            <button
+              onClick={() => setEvalFilter('critical')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                evalFilter === 'critical' 
+                  ? 'bg-rose-600 text-white shadow-xs' 
+                  : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
+              }`}
+            >
+              <span>🔴 Perlu Evaluasi</span>
+              <span className="px-1.5 py-0.2 bg-white/20 rounded-full text-[10px]">{marketingEvaluation.criticalCount}</span>
+            </button>
+            <button
+              onClick={() => setEvalFilter('behind')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                evalFilter === 'behind' 
+                  ? 'bg-amber-600 text-white shadow-xs' 
+                  : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+              }`}
+            >
+              <span>🟡 Di Bawah Target</span>
+              <span className="px-1.5 py-0.2 bg-white/20 rounded-full text-[10px]">{marketingEvaluation.behindCount}</span>
+            </button>
+            <button
+              onClick={() => setEvalFilter('on_track')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                evalFilter === 'on_track' 
+                  ? 'bg-emerald-600 text-white shadow-xs' 
+                  : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+              }`}
+            >
+              <span>🟢 On Track</span>
+              <span className="px-1.5 py-0.2 bg-white/20 rounded-full text-[10px]">{marketingEvaluation.onTrackCount}</span>
+            </button>
+          </div>
+
+          {/* Warning Banner if any staff is critical */}
+          {marketingEvaluation.criticalCount > 0 && evalFilter === 'all' && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>
+                  <b>{marketingEvaluation.criticalCount} staf marketing</b> berada dalam status <b>Perlu Evaluasi</b> (pencapaian &lt; 50% ekspektasi waktu berjalan).
+                </span>
+              </div>
+              <button 
+                onClick={() => setEvalFilter('critical')}
+                className="underline font-bold text-rose-700 hover:text-rose-900 cursor-pointer"
+              >
+                Lihat Staf Kritis &rarr;
+              </button>
+            </div>
+          )}
+
+          {/* Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filteredStaff.map((st: any) => {
+              const isCritical = st.status === 'critical';
+              const isBehind = st.status === 'behind';
+
+              return (
+                <div 
+                  key={st.id} 
+                  className={`p-3.5 sm:p-4 rounded-xl border transition-all ${
+                    isCritical 
+                      ? 'bg-rose-50/30 border-rose-200/90 shadow-xs' 
+                      : isBehind 
+                        ? 'bg-amber-50/20 border-amber-200/80' 
+                        : 'bg-gray-50/60 border-gray-200/80'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="min-w-0">
+                      <div className="font-black text-gray-900 text-sm truncate flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{
+                          backgroundColor: isCritical ? '#e11d48' : isBehind ? '#d97706' : '#059669'
+                        }} />
+                        <span className="truncate">{st.nama}</span>
+                      </div>
+                      <div className="text-[11px] text-gray-400 truncate mt-0.5">
+                        {st.posisi || 'Marketing'} {st.no_hp ? `• ${st.no_hp}` : ''}
+                      </div>
+                    </div>
+
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${
+                      isCritical 
+                        ? 'bg-rose-100/80 text-rose-700 border-rose-300' 
+                        : isBehind 
+                          ? 'bg-amber-100/80 text-amber-800 border-amber-300' 
+                          : 'bg-emerald-100/80 text-emerald-800 border-emerald-300'
+                    }`}>
+                      {isCritical ? '🔴 Perlu Evaluasi' : isBehind ? '🟡 Di Bawah Target' : '🟢 On Track'}
+                    </span>
+                  </div>
+
+                  {/* Numbers */}
+                  <div className="grid grid-cols-2 gap-2 my-2 bg-white p-2.5 rounded-lg border border-gray-100">
+                    <div>
+                      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">REALISASI OMSET</div>
+                      <div className="text-sm font-black text-blue-900 mt-0.5">{formatRp(st.total_omset_this_month)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">TARGET OMSET</div>
+                      <div className="text-sm font-black text-gray-700 mt-0.5">{formatRp(st.target_omset)}</div>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="space-y-1 mb-2">
+                    <div className="flex justify-between text-[11px]">
+                      <span className="font-bold text-gray-600">Pencapaian:</span>
+                      <span className={`font-black ${isCritical ? 'text-rose-600' : isBehind ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {st.pencapaian}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all ${
+                          st.pencapaian >= 100 ? 'bg-emerald-500' : st.pencapaian >= 60 ? 'bg-blue-600' : 'bg-rose-500'
+                        }`}
+                        style={{ width: `${Math.min(st.pencapaian, 100)}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[10px] text-gray-400">
+                      <span>{st.outlet_count} Outlet Dikelola</span>
+                      <span className={st.gap >= 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold'}>
+                        {st.gap >= 0 ? `+${formatRp(st.gap)} Ahead` : `Gap: ${formatRp(Math.abs(st.gap))}`}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Breakdown footer */}
+                  <div className="pt-2 border-t border-gray-200/60 flex items-center justify-between text-[10px] text-gray-500">
+                    <span className="truncate">
+                      Outlet: {formatRp(st.total_billing_this_month)} • Direct: {formatRp(st.personal_buyer_this_month)}
+                    </span>
+                    <Link 
+                      href="/marketing" 
+                      className="text-blue-600 font-bold hover:underline shrink-0 ml-1"
+                    >
+                      Evaluasi &rarr;
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
+
+            {filteredStaff.length === 0 && (
+              <div className="col-span-full py-8 text-center text-gray-400 text-xs italic bg-gray-50 rounded-xl border border-gray-200/60">
+                Tidak ada staf marketing dalam kategori filter ini.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── ROW 3: STOCK ECOSYSTEM + OPERATIONAL STATUS + RECENT ACTIVITY ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
