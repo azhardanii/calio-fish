@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createOutlet, updateOutlet, deleteOutlet, addPiutang, addPelunasan, adjustOutletStock, resetOutletFinance } from '@/app/actions';
 import { mutate } from 'swr';
 import { updateOutletProductPrice } from './actions';
@@ -22,7 +22,8 @@ import {
   TrendingUp, 
   Truck, 
   Receipt,
-  Info
+  Info,
+  Search
 } from 'lucide-react';
 
 export function OutletManager({ outlets, currentUser, employees }: { outlets: any[], currentUser: any, employees: any[] }) {
@@ -39,6 +40,8 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const [stockNote, setStockNote] = useState<string>('');
 
   const [wilayahFilter, setWilayahFilter] = useState<string>('');
+  const [marketingFilter, setMarketingFilter] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -53,12 +56,59 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const [txDesc, setTxDesc] = useState('');
   const [txDate, setTxDate] = useState(() => new Date().toISOString().split('T')[0]);
 
-  const filteredOutlets = outlets.filter((o) => {
-    if (wilayahFilter && o.wilayah !== wilayahFilter) return false;
-    return true;
-  });
+  // List unique marketing employees (from employees list or assigned outlet pengelola)
+  const marketingList = useMemo(() => {
+    const listMap = new Map<string, { id: string; nama: string; role?: string }>();
+
+    (employees || []).forEach(emp => {
+      const r = (emp.role || '').toUpperCase();
+      const p = (emp.posisi || '').toLowerCase();
+      if (r === 'MARKETING' || r.includes('MARKETING') || p.includes('marketing')) {
+        listMap.set(emp.id, { id: emp.id, nama: emp.nama, role: emp.role });
+      }
+    });
+
+    outlets.forEach(o => {
+      if (o.pengelola && o.pengelola.id) {
+        if (!listMap.has(o.pengelola.id)) {
+          listMap.set(o.pengelola.id, { id: o.pengelola.id, nama: o.pengelola.nama });
+        }
+      }
+    });
+
+    return Array.from(listMap.values()).sort((a, b) => a.nama.localeCompare(b.nama));
+  }, [employees, outlets]);
 
   const uniqueWilayah = Array.from(new Set(outlets.map((o) => o.wilayah).filter(Boolean))) as string[];
+
+  const filteredOutlets = outlets.filter((o) => {
+    // 1. Search Query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchName = o.nama?.toLowerCase().includes(q);
+      const matchContact = o.kontak?.toLowerCase().includes(q);
+      const matchAddress = o.alamat?.toLowerCase().includes(q);
+      const matchWilayah = o.wilayah?.toLowerCase().includes(q);
+      const matchPengelola = o.pengelola?.nama?.toLowerCase().includes(q);
+      if (!matchName && !matchContact && !matchAddress && !matchWilayah && !matchPengelola) {
+        return false;
+      }
+    }
+
+    // 2. Wilayah Filter
+    if (wilayahFilter && o.wilayah !== wilayahFilter) return false;
+
+    // 3. Marketing User Filter
+    if (marketingFilter) {
+      if (marketingFilter === 'unassigned') {
+        if (o.pengelola_id) return false;
+      } else {
+        if (o.pengelola_id !== marketingFilter) return false;
+      }
+    }
+
+    return true;
+  });
 
   const openDetailModal = (outlet: any) => {
     setSelectedOutlet(outlet);
@@ -243,22 +293,93 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
 
   return (
     <>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-4">
-        <h2 className="text-xl font-bold">Daftar Outlet ({filteredOutlets.length})</h2>
-        <div className="flex items-center gap-3">
-          <select 
-            className="border border-gray-300 rounded-lg p-2 text-sm bg-white min-w-[150px]"
-            value={wilayahFilter} 
-            onChange={e => setWilayahFilter(e.target.value)}
-          >
-            <option value="">Semua Wilayah</option>
-            {uniqueWilayah.map(w => (
-              <option key={w} value={w}>{w}</option>
-            ))}
-          </select>
+      <div className="flex flex-col gap-3 mb-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Daftar Outlet ({filteredOutlets.length})</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Kelola kemitraan outlet, stok konsinyasi, dan penugasan tim marketing
+            </p>
+          </div>
           {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN' || (currentUser?.role || '').toUpperCase().includes('MARKETING') || currentUser?.role === 'MITRA') && (
-            <button onClick={() => openModal()} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium shadow transition-colors whitespace-nowrap">
-              + Tambah Outlet
+            <button 
+              onClick={() => openModal()} 
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm transition-all whitespace-nowrap self-start sm:self-auto flex items-center gap-1.5"
+            >
+              <span>+</span> Tambah Outlet
+            </button>
+          )}
+        </div>
+
+        {/* Filter & Search Toolbar */}
+        <div className="flex flex-wrap items-center gap-2.5 bg-gray-50 p-2.5 rounded-xl border border-gray-200">
+          {/* Search Input */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Cari nama outlet, alamat, pengelola..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-7 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs font-bold"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Filter User Marketing */}
+          <div className="min-w-[180px]">
+            <select
+              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              value={marketingFilter}
+              onChange={e => setMarketingFilter(e.target.value)}
+            >
+              <option value="">👤 Semua Marketing ({outlets.length})</option>
+              {marketingList.map(m => {
+                const count = outlets.filter(o => o.pengelola_id === m.id).length;
+                return (
+                  <option key={m.id} value={m.id}>
+                    {m.nama} ({count} outlet)
+                  </option>
+                );
+              })}
+              <option value="unassigned">
+                ⚠️ Belum Ada Pengelola ({outlets.filter(o => !o.pengelola_id).length})
+              </option>
+            </select>
+          </div>
+
+          {/* Filter Wilayah */}
+          <div className="min-w-[140px]">
+            <select 
+              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              value={wilayahFilter} 
+              onChange={e => setWilayahFilter(e.target.value)}
+            >
+              <option value="">📍 Semua Wilayah</option>
+              {uniqueWilayah.map(w => (
+                <option key={w} value={w}>{w}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Reset Button */}
+          {(marketingFilter || wilayahFilter || searchQuery) && (
+            <button
+              onClick={() => {
+                setMarketingFilter('');
+                setWilayahFilter('');
+                setSearchQuery('');
+              }}
+              className="text-xs text-red-600 hover:text-red-700 font-semibold px-2.5 py-1.5 bg-red-50 hover:bg-red-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" /> Reset
             </button>
           )}
         </div>
@@ -288,7 +409,13 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                   <div className="text-xs text-gray-500">{o.alamat || '-'}</div>
                 </TableCell>
                 <TableCell>
-                  <div className="text-sm font-medium">{o.pengelola?.nama || 'Pusat'}</div>
+                  {o.pengelola?.nama ? (
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold">
+                      <span>👤</span> {o.pengelola.nama}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-gray-400 italic">Belum ada</span>
+                  )}
                 </TableCell>
                 <TableCell>{o.stocks?.reduce((acc: number, s: any) => acc + s.quantity, 0) || 0} pcs</TableCell>
                 <TableCell style={{ color: Number(o.sisa_tagihan) > 0 ? '#dc2626' : '#16a34a', fontWeight: 600 }}>
@@ -301,8 +428,10 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
             ))}
             {filteredOutlets.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-gray-500 py-8">
-                  Belum ada data outlet.
+                <TableCell colSpan={6} className="text-center text-gray-500 py-10">
+                  <div className="text-2xl mb-2">🔍</div>
+                  <div className="font-semibold text-gray-700">Tidak ada outlet yang cocok dengan filter</div>
+                  <div className="text-xs text-gray-400 mt-1">Coba ubah kata kunci pencarian, filter marketing, atau wilayah</div>
                 </TableCell>
               </TableRow>
             )}
