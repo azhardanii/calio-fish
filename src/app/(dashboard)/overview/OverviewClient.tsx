@@ -52,6 +52,7 @@ interface OverviewData {
   filterState: { from: string; to: string; filterLabel: string };
   highlightOmset: { title: string; value: number; note: string; isUp: boolean };
   totalOmset: number;
+  targetChannelsOmset?: number;
   totalTarget: number;
   totalGap: number;
   totalPersentase: number;
@@ -70,6 +71,13 @@ interface OverviewData {
     totalBoothCount: number;
     boothOmset: number;
     boothStok: number;
+    today?: number;
+  };
+  personalBuyerSummary?: {
+    omset: number;
+    today: number;
+    count: number;
+    allOmset?: number;
   };
   marketingEvaluation?: {
     totalStaff: number;
@@ -171,6 +179,7 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
     filterState,
     highlightOmset = { title: 'Omset Hari Ini', value: 0, note: '', isUp: false },
     totalOmset = 0,
+    targetChannelsOmset,
     totalTarget = 0,
     totalGap = 0,
     totalPersentase = 0,
@@ -178,6 +187,7 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
     marketingEvaluation,
     financials,
     boothSummary,
+    personalBuyerSummary,
     chartData = [],
     totalOutlets = 0,
     totalSisaTagihan = 0,
@@ -272,78 +282,144 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
         </div>
       </div>
 
-      {/* ── TOP STAT CARDS (RESPONSIVE GRID) ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-        {/* 1. Omset Hari Ini */}
-        <div className="bg-white rounded-xl sm:rounded-2xl p-3.5 sm:p-4 border border-gray-200/90 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between gap-1 mb-1">
-            <span className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider truncate">
-              {highlightOmset.title}
-            </span>
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0">
-              💰
+      {/* ── SECTION DIBAWAH HEADER: TOTAL KAS TERKUMPUL (STANDOUT) & KARTU METRIK ── */}
+      <div className="space-y-3 sm:space-y-4">
+
+        {/* 1. STANDOUT HERO CARD: TOTAL KAS TERKUMPUL (HASIL KESELURUHAN OMSET PERUSAHAAN) */}
+        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-900 text-white p-5 sm:p-7 shadow-xl shadow-emerald-950/20 border-2 border-emerald-400/40">
+          <div className="absolute -right-10 -bottom-10 w-64 h-64 rounded-full bg-white/5 pointer-events-none blur-2xl" />
+          <div className="absolute right-1/3 -top-12 w-48 h-48 rounded-full bg-emerald-300/10 pointer-events-none blur-xl" />
+
+          <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+            <div className="space-y-2 max-w-2xl">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="bg-emerald-400/20 text-emerald-100 border border-emerald-300/40 text-[11px] sm:text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5 shadow-xs">
+                  <span className="text-sm">💎</span>
+                  <span>Akumulasi Total Kas Terkumpul</span>
+                </span>
+                <span className="bg-white/10 text-emerald-100 text-[11px] font-bold px-2.5 py-0.5 rounded-full backdrop-blur-xs">
+                  Hasil Keseluruhan Omset Perusahaan
+                </span>
+              </div>
+              <div className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white drop-shadow-sm">
+                {formatRp(totalKasMasuk)}
+              </div>
+              <p className="text-xs sm:text-sm text-emerald-100/90 leading-relaxed font-medium">
+                Akumulasi seluruh dana kas riil yang terkumpul dan masuk ke kas perusahaan dari semua perputaran bisnis: Pelunasan Tagihan Outlet Mitra, Penjualan Event &amp; Booth, Transaksi Personal Buyer, serta E-Commerce (Shopee &amp; TikTok).
+              </p>
             </div>
-          </div>
-          <div className="text-base sm:text-2xl font-black text-gray-900 whitespace-nowrap truncate">
-            {formatRp(highlightOmset.value)}
-          </div>
-          <div className="text-[10px] sm:text-xs font-semibold text-emerald-600 mt-1 flex items-center gap-1 truncate">
-            <span>{highlightOmset.note || 'Semua kanal aktif'}</span>
+
+            {/* Quick 4-Pillars Cash Inflow Breakdown */}
+            <div className="grid grid-cols-2 gap-2 sm:gap-2.5 w-full lg:w-auto shrink-0">
+              <div className="bg-emerald-950/40 border border-emerald-400/20 rounded-xl p-2.5 sm:p-3 backdrop-blur-xs">
+                <div className="text-[10px] text-emerald-200 font-bold uppercase flex items-center gap-1">
+                  <span>🏪</span> Pelunasan Outlet
+                </div>
+                <div className="text-sm sm:text-base font-black text-white mt-0.5">
+                  {formatRp(financials?.kasPelunasanOutlet ?? 0)}
+                </div>
+              </div>
+              <div className="bg-emerald-950/40 border border-emerald-400/20 rounded-xl p-2.5 sm:p-3 backdrop-blur-xs">
+                <div className="text-[10px] text-emerald-200 font-bold uppercase flex items-center gap-1">
+                  <span>🎪</span> Kas Event &amp; Booth
+                </div>
+                <div className="text-sm sm:text-base font-black text-white mt-0.5">
+                  {formatRp(financials?.kasBooth ?? 0)}
+                </div>
+              </div>
+              <div className="bg-emerald-950/40 border border-emerald-400/20 rounded-xl p-2.5 sm:p-3 backdrop-blur-xs">
+                <div className="text-[10px] text-emerald-200 font-bold uppercase flex items-center gap-1">
+                  <span>👤</span> Personal Buyer (Semua)
+                </div>
+                <div className="text-sm sm:text-base font-black text-white mt-0.5">
+                  {formatRp(financials?.kasPersonalBuyer ?? 0)}
+                </div>
+              </div>
+              <div className="bg-emerald-950/40 border border-emerald-400/20 rounded-xl p-2.5 sm:p-3 backdrop-blur-xs">
+                <div className="text-[10px] text-emerald-200 font-bold uppercase flex items-center gap-1">
+                  <span>🛒</span> E-Commerce Online
+                </div>
+                <div className="text-sm sm:text-base font-black text-white mt-0.5">
+                  {formatRp(financials?.kasEcommerce ?? 0)}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* 2. Total Omset Seluruh Jalur */}
-        <div className="bg-white rounded-xl sm:rounded-2xl p-3.5 sm:p-4 border border-gray-200/90 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between gap-1 mb-1">
-            <span className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider truncate">
-              Total Omset Penjualan
-            </span>
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm shrink-0">
-              📈
+        {/* 2. 4 STRATEGIC METRIC CARDS */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+          {/* 1. Total Omset Seluruh Jalur */}
+          <div className="bg-white rounded-xl sm:rounded-2xl p-3.5 sm:p-4 border border-gray-200/90 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between gap-1 mb-1">
+              <span className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider truncate">
+                Total Omset Penjualan
+              </span>
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm shrink-0">
+                📈
+              </div>
+            </div>
+            <div className="text-base sm:text-2xl font-black text-indigo-900 whitespace-nowrap truncate">
+              {formatRp(totalOmset)}
+            </div>
+            <div className="text-[10px] sm:text-xs text-indigo-600 font-bold mt-1 truncate">
+              Target Gabungan: {totalPersentase}% ({formatRp(totalTarget)})
             </div>
           </div>
-          <div className="text-base sm:text-2xl font-black text-indigo-900 whitespace-nowrap truncate">
-            {formatRp(totalOmset)}
-          </div>
-          <div className="text-[10px] sm:text-xs text-indigo-600 font-bold mt-1 truncate">
-            {totalPersentase}% dari target {formatRp(totalTarget)}
-          </div>
-        </div>
 
-        {/* 3. Total Kas Masuk (Dana Cair) */}
-        <div className="bg-white rounded-xl sm:rounded-2xl p-3.5 sm:p-4 border border-gray-200/90 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between gap-1 mb-1">
-            <span className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider truncate">
-              Total Kas Terkumpul
-            </span>
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-sm shrink-0">
-              💵
+          {/* 2. Omset Hari Ini */}
+          <div className="bg-white rounded-xl sm:rounded-2xl p-3.5 sm:p-4 border border-gray-200/90 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between gap-1 mb-1">
+              <span className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider truncate">
+                {highlightOmset.title}
+              </span>
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0">
+                💰
+              </div>
+            </div>
+            <div className="text-base sm:text-2xl font-black text-gray-900 whitespace-nowrap truncate">
+              {formatRp(highlightOmset.value)}
+            </div>
+            <div className="text-[10px] sm:text-xs font-semibold text-emerald-600 mt-1 flex items-center gap-1 truncate">
+              <span>{highlightOmset.note || 'Semua kanal aktif'}</span>
             </div>
           </div>
-          <div className="text-base sm:text-2xl font-black text-emerald-700 whitespace-nowrap truncate">
-            {formatRp(totalKasMasuk)}
-          </div>
-          <div className="text-[10px] sm:text-xs text-gray-500 mt-1 truncate">
-            Dana riil masuk kas perusahaan
-          </div>
-        </div>
 
-        {/* 4. Event & Open Booth Summary */}
-        <div className="bg-white rounded-xl sm:rounded-2xl p-3.5 sm:p-4 border border-gray-200/90 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between gap-1 mb-1">
-            <span className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider truncate">
-              Event &amp; Open Booth
-            </span>
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-sm shrink-0">
-              🎪
+          {/* 3. Event & Open Booth Summary */}
+          <div className="bg-white rounded-xl sm:rounded-2xl p-3.5 sm:p-4 border border-gray-200/90 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between gap-1 mb-1">
+              <span className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider truncate">
+                Event &amp; Open Booth
+              </span>
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-sm shrink-0">
+                🎪
+              </div>
+            </div>
+            <div className="text-base sm:text-2xl font-black text-purple-900 whitespace-nowrap truncate">
+              {formatRp(boothSummary?.boothOmset || 0)}
+            </div>
+            <div className="text-[10px] sm:text-xs text-purple-700 font-bold mt-1 flex items-center gap-1 truncate">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
+              <span>{boothSummary?.activeBoothCount || 0} Booth Aktif Berjalan</span>
             </div>
           </div>
-          <div className="text-base sm:text-2xl font-black text-purple-900 whitespace-nowrap truncate">
-            {formatRp(boothSummary?.boothOmset || 0)}
-          </div>
-          <div className="text-[10px] sm:text-xs text-purple-700 font-bold mt-1 flex items-center gap-1 truncate">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
-            <span>{boothSummary?.activeBoothCount || 0} Booth Aktif Berjalan</span>
+
+          {/* 4. Personal Buyer Direct (Pusat) */}
+          <div className="bg-white rounded-xl sm:rounded-2xl p-3.5 sm:p-4 border border-gray-200/90 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between gap-1 mb-1">
+              <span className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider truncate">
+                Personal Buyer (Pusat)
+              </span>
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-sm shrink-0">
+                👤
+              </div>
+            </div>
+            <div className="text-base sm:text-2xl font-black text-amber-900 whitespace-nowrap truncate">
+              {formatRp(personalBuyerSummary?.omset || 0)}
+            </div>
+            <div className="text-[10px] sm:text-xs text-amber-700 font-bold mt-1 flex items-center gap-1 truncate">
+              <span>{personalBuyerSummary?.count || 0} Penjualan Diinput Pusat</span>
+            </div>
           </div>
         </div>
       </div>
@@ -508,7 +584,8 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
 
             <div className="space-y-3">
               {channels.map((ch: Channel, i: number) => {
-                const pct = totalOmset > 0 ? Math.round((ch.mtd / totalOmset) * 100) : 0;
+                const targetBase = targetChannelsOmset ?? totalOmset;
+                const pct = targetBase > 0 ? Math.round((ch.mtd / targetBase) * 100) : 0;
                 return (
                   <div key={i} className="p-2.5 bg-gray-50/70 border border-gray-100 rounded-xl">
                     <div className="flex items-center justify-between text-xs mb-1.5">
@@ -527,7 +604,7 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
                       />
                     </div>
                     <div className="flex justify-between items-center text-[10px] text-gray-400 mt-1">
-                      <span>Porsi: <b>{pct}%</b> dari total omset</span>
+                      <span>Porsi: <b>{pct}%</b> {ch.target > 0 ? `(Capaian: ${Math.round((ch.mtd / ch.target) * 100)}%)` : ''}</span>
                       {ch.target > 0 && <span>Target: {formatRp(ch.target)}</span>}
                     </div>
                   </div>
@@ -551,7 +628,7 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
               />
             </div>
             <div className="flex justify-between text-[11px] text-gray-500 mt-1.5">
-              <span>{formatRp(totalOmset)} tercapai</span>
+              <span>{formatRp(targetChannelsOmset ?? totalOmset)} dari target {formatRp(totalTarget)}</span>
               <span className={totalGap >= 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold'}>
                 {totalGap >= 0 ? `+${formatRp(totalGap)} Ahead` : `Gap: ${formatRp(Math.abs(totalGap))}`}
               </span>

@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
     onlineFilterByPlatform,
     shipmentsData,
     // NEW: Personal Buyer
-    personalBuyerAgg, personalBuyerToday, personalBuyerDaily, recentPersonalBuyer,
+    personalBuyerAllAgg, personalBuyerDirectAgg, personalBuyerDirectToday, personalBuyerDirectCount, personalBuyerDaily, recentPersonalBuyer,
     // NEW: Event & Open Booth
     boothSalesAgg, boothSalesToday, boothSalesDaily, recentBoothSales,
     activeBoothCount, totalBoothCount, boothStockAgg,
@@ -98,9 +98,53 @@ export async function GET(req: NextRequest) {
     prisma.marketingOnline.groupBy({ by: ['platform'], _sum: { omset_harian: true }, where: dateFilter ? { date: dateFilter } : {} }),
     prisma.outboundShipment.findMany({ where: dateFilter ? { date: dateFilter } : {}, include: { items: true } }),
 
-    // Personal Buyer
+    // Personal Buyer (Semua untuk Kas Masuk)
     prisma.personalBuyerTransaction.aggregate({ _sum: { amount: true }, where: dateFilter ? { date: dateFilter } : {} }),
-    prisma.personalBuyerTransaction.aggregate({ _sum: { amount: true }, where: { date: { gte: todayStart, lte: todayEnd } } }),
+    // Personal Buyer Direct: DIINPUT OLEH PUSAT (Karyawan yang BUKAN user marketing)
+    prisma.personalBuyerTransaction.aggregate({ 
+      _sum: { amount: true }, 
+      where: { 
+        ...(dateFilter ? { date: dateFilter } : {}),
+        employee: {
+          NOT: {
+            OR: [
+              { role: 'MARKETING' },
+              { role: { contains: 'MARKETING' } },
+              { posisi: { contains: 'Marketing', mode: 'insensitive' } },
+            ]
+          }
+        }
+      } 
+    }),
+    prisma.personalBuyerTransaction.aggregate({ 
+      _sum: { amount: true }, 
+      where: { 
+        date: { gte: todayStart, lte: todayEnd },
+        employee: {
+          NOT: {
+            OR: [
+              { role: 'MARKETING' },
+              { role: { contains: 'MARKETING' } },
+              { posisi: { contains: 'Marketing', mode: 'insensitive' } },
+            ]
+          }
+        }
+      } 
+    }),
+    prisma.personalBuyerTransaction.count({
+      where: { 
+        ...(dateFilter ? { date: dateFilter } : {}),
+        employee: {
+          NOT: {
+            OR: [
+              { role: 'MARKETING' },
+              { role: { contains: 'MARKETING' } },
+              { posisi: { contains: 'Marketing', mode: 'insensitive' } },
+            ]
+          }
+        }
+      }
+    }),
     prisma.personalBuyerTransaction.findMany({ where: dateFilter ? { date: dateFilter } : {}, orderBy: { date: 'asc' }, select: { date: true, amount: true, buyer_name: true } }),
     prisma.personalBuyerTransaction.findMany({ take: 3, orderBy: { created_at: 'desc' }, select: { amount: true, buyer_name: true, date: true, created_at: true } }),
 
@@ -234,19 +278,27 @@ export async function GET(req: NextRequest) {
   const tiktokTarget = baseTiktokTarget * monthsCount;
   const shopeeOmset = toNum(onlineFilterByPlatform.find(x => x.platform === 'shopee')?._sum.omset_harian);
   const tiktokOmset = toNum(onlineFilterByPlatform.find(x => x.platform === 'tiktok')?._sum.omset_harian);
-  const personalBuyerOmset = toNum(personalBuyerAgg._sum.amount);
+  const personalBuyerDirectOmset = toNum(personalBuyerDirectAgg._sum.amount);
+  const personalBuyerDirectTodayOmset = toNum(personalBuyerDirectToday._sum.amount);
+  const personalBuyerAllOmset = toNum(personalBuyerAllAgg._sum.amount);
   const boothOmset = toNum(boothSalesAgg._sum.total_price);
+  const boothTodayOmset = toNum(boothSalesToday._sum.total_price);
 
-  // Total Omset (Seluruh Jalur Penjualan: Tim Marketing + Shopee + TikTok + Personal Buyer + Event Booth)
-  const totalOmset = offlineOmset + shopeeOmset + tiktokOmset + personalBuyerOmset + boothOmset;
+  // Target Gabungan: HANYA dari 3 jalur distribusi yang memiliki target (Tim Marketing + Shopee + TikTok)
+  // Event & Booth serta Personal Buyer Direct DIKELUARKAN dari perhitungan target gabungan!
+  const targetChannelsOmset = offlineOmset + shopeeOmset + tiktokOmset;
   const totalTarget = marketingTarget + shopeeTarget + tiktokTarget;
-  const totalGap = totalOmset - totalTarget;
-  const totalPersentase = totalTarget > 0 ? (totalOmset / totalTarget) * 100 : 0;
+  const totalGap = targetChannelsOmset - totalTarget;
+  const totalPersentase = totalTarget > 0 ? (targetChannelsOmset / totalTarget) * 100 : 0;
+
+  // Total Omset Keseluruhan Perusahaan (Seluruh Jalur: Tim Marketing + Shopee + TikTok + Personal Buyer Direct Pusat + Event Booth)
+  const totalOmset = offlineOmset + shopeeOmset + tiktokOmset + personalBuyerDirectOmset + boothOmset;
 
   // Kas Masuk (Dana Cair / Kas Terkumpul)
+  // Event & Booth dan Personal Buyer Direct TETAP masuk ke akumulasi total kas yang terkumpul!
   const kasPelunasanOutlet = toNum(outletPaymentAgg._sum.amount);
   const kasBooth = boothOmset; // Penjualan booth langsung tunai / QRIS / transfer
-  const kasPersonalBuyer = personalBuyerOmset; // Penjualan langsung perorangan
+  const kasPersonalBuyer = personalBuyerAllOmset; // Seluruh penjualan langsung perorangan tunai/transfer
   const kasEcommerce = shopeeOmset + tiktokOmset; // Penjualan online
   const totalKasMasuk = kasPelunasanOutlet + kasBooth + kasPersonalBuyer + kasEcommerce;
   const totalSisaTagihan = toNum(outletTagihanAgg._sum.sisa_tagihan);
@@ -254,8 +306,8 @@ export async function GET(req: NextRequest) {
   // Omset Hari Ini
   const omsetHariIni = toNum(offlineToday?.omset_harian) + 
     toNum(onlineTodayAgg._sum.omset_harian) + 
-    toNum(personalBuyerToday._sum.amount) + 
-    toNum(boothSalesToday._sum.total_price);
+    personalBuyerDirectTodayOmset + 
+    boothTodayOmset;
 
   // Chart data
   const chartMap = new Map<string, { date: string; displayDate: string; offline: number; online: number; booth: number; personal: number; total: number }>();
@@ -411,24 +463,36 @@ export async function GET(req: NextRequest) {
     filterState: { from: fromParam, to: toParam, filterLabel },
     highlightOmset: { title: highlightTitle, value: highlightValue, note: highlightNote, isUp: highlightUp },
     totalOmset, 
+    targetChannelsOmset,
     totalTarget, 
     totalGap,
     totalPersentase: Math.round(totalPersentase * 10) / 10,
 
-    // Channels breakdown
+    // Channels breakdown (HANYA 3 KANAL DISTRIBUSI YANG MEMILIKI TARGET)
+    // Event & Booth dan Personal Buyer Direct dikeluarkan dari list ini
     channels: [
       { 
         name: 'Tim Marketing', 
         mtd: offlineOmset, 
         target: marketingTarget, 
         icon: '👥', 
-        pct: totalOmset > 0 ? Math.round((offlineOmset / totalOmset) * 100) : 0,
+        pct: targetChannelsOmset > 0 ? Math.round((offlineOmset / targetChannelsOmset) * 100) : 0,
         staffCount: marketingStaffPerformance.length,
       },
-      { name: 'Shopee Official', mtd: shopeeOmset, target: shopeeTarget, icon: '🛒', pct: totalOmset > 0 ? Math.round((shopeeOmset / totalOmset) * 100) : 0 },
-      { name: 'TikTok Shop', mtd: tiktokOmset, target: tiktokTarget, icon: '📱', pct: totalOmset > 0 ? Math.round((tiktokOmset / totalOmset) * 100) : 0 },
-      { name: 'Event & Open Booth', mtd: boothOmset, target: 0, icon: '🎪', pct: totalOmset > 0 ? Math.round((boothOmset / totalOmset) * 100) : 0 },
-      { name: 'Personal Buyer Direct', mtd: personalBuyerOmset, target: 0, icon: '👤', pct: totalOmset > 0 ? Math.round((personalBuyerOmset / totalOmset) * 100) : 0 },
+      { 
+        name: 'Shopee Official', 
+        mtd: shopeeOmset, 
+        target: shopeeTarget, 
+        icon: '🛒', 
+        pct: targetChannelsOmset > 0 ? Math.round((shopeeOmset / targetChannelsOmset) * 100) : 0 
+      },
+      { 
+        name: 'TikTok Shop', 
+        mtd: tiktokOmset, 
+        target: tiktokTarget, 
+        icon: '📱', 
+        pct: targetChannelsOmset > 0 ? Math.round((tiktokOmset / targetChannelsOmset) * 100) : 0 
+      },
     ],
 
     // Marketing Staff Evaluation (Direct monitoring for underperforming users)
@@ -460,6 +524,15 @@ export async function GET(req: NextRequest) {
       totalBoothCount,
       boothOmset,
       boothStok,
+      today: boothTodayOmset,
+    },
+
+    // Personal Buyer Summary (Diinput Pusat / Non-Marketing)
+    personalBuyerSummary: {
+      omset: personalBuyerDirectOmset,
+      today: personalBuyerDirectTodayOmset,
+      count: personalBuyerDirectCount,
+      allOmset: personalBuyerAllOmset,
     },
 
     chartData, 
