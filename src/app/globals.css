@@ -466,9 +466,11 @@ body {
 /* ══════════════════════════════════════════════════════════════════════════════
    BOTTOM NAVIGATION BAR
    ══════════════════════════════════════════════════════════════════════════════ */
-.bottom-nav,
-.bottom-nav-reopen {
-  display: none !important; /* Hidden on desktop, shown on mobile via media query */
+@media (min-width: 769px) {
+  .bottom-nav,
+  .bottom-nav-reopen {
+    display: none !important;
+  }
 }
 
 .bottom-nav-item {
@@ -709,21 +711,22 @@ body {
     bottom: 0;
     left: 0;
     right: 0;
-    z-index: 40;
-    background: rgba(255, 255, 255, 0.92);
+    z-index: 50;
+    background: rgba(255, 255, 255, 0.96);
     backdrop-filter: saturate(180%) blur(20px);
     -webkit-backdrop-filter: saturate(180%) blur(20px);
-    border-top: 1px solid rgba(200, 221, 240, 0.6);
+    border-top: 1px solid rgba(200, 221, 240, 0.7);
     padding: 4px 0;
     padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
     box-shadow: 0 -4px 20px rgba(10, 30, 61, 0.08);
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease, visibility 0.25s;
   }
 
   .bottom-nav.nav-hidden {
     transform: translateY(100%);
     opacity: 0;
     pointer-events: none;
+    visibility: hidden;
   }
 
   .bottom-nav-reopen {
