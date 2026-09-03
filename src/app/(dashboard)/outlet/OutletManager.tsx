@@ -350,7 +350,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                 );
               })}
               <option value="unassigned">
-                ⚠️ Belum Ada Pengelola ({outlets.filter(o => !o.pengelola_id).length})
+                🏢 Dikelola Pusat ({outlets.filter(o => !o.pengelola_id).length})
               </option>
             </select>
           </div>
@@ -414,7 +414,9 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                       <span>👤</span> {o.pengelola.nama}
                     </div>
                   ) : (
-                    <span className="text-xs text-gray-400 italic">Belum ada</span>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold">
+                      <span>🏢</span> Dikelola Pusat
+                    </span>
                   )}
                 </TableCell>
                 <TableCell>{o.stocks?.reduce((acc: number, s: any) => acc + s.quantity, 0) || 0} pcs</TableCell>
