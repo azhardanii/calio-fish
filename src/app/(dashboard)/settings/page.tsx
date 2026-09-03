@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ResetDataSection } from './ResetDataSection';
 
 interface SettingItem {
   key: string;
@@ -179,6 +180,8 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <ResetDataSection />
     </div>
   );
 }
