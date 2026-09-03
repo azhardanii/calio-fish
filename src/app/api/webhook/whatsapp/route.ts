@@ -270,6 +270,12 @@ export async function POST(req: Request) {
             const outletName = data.outlet_name || '-';
             const o = await tx.outlet.findFirst({ where: { nama: { contains: outletName, mode: 'insensitive' } }});
             if (o) {
+              // Validasi role marketing: hanya boleh input ke outlet yang dihandle
+              if (employee && (employee.role === 'MARKETING' || employee.role?.includes('MARKETING'))) {
+                if (o.pengelola_id !== employee.id) {
+                  throw new Error(`AMBIGUOUS:Akses ditolak. Anda (${employee.nama}) tidak memiliki izin untuk menginput laporan ke Outlet '${o.nama}' karena bukan outlet yang ditugaskan kepada Anda.`);
+                }
+              }
               for (const item of items) {
                 if (item.product_key && item.qty > 0) {
                   const product = await tx.product.findUnique({ where: { sku: item.product_key } });
@@ -726,6 +732,14 @@ export async function POST(req: Request) {
         }
 
         const outlet = os[0];
+
+        // Validasi role marketing: hanya boleh input keuangan ke outlet yang dihandle
+        if (employee && (employee.role === 'MARKETING' || employee.role?.includes('MARKETING'))) {
+          if (outlet.pengelola_id !== employee.id) {
+            throw new Error(`AMBIGUOUS:Akses ditolak. Anda (${employee.nama}) tidak memiliki izin untuk menginput keuangan ke Outlet '${outlet.nama}' karena bukan outlet yang ditugaskan kepada Anda.`);
+          }
+        }
+
         const nominal = data.nominal || 0;
         const ket = data.keterangan || `Laporan WA`;
         const tgl = parsedData.date ? new Date(parsedData.date) : new Date();

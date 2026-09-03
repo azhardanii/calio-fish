@@ -7,7 +7,10 @@ export async function GET() {
   const user = await verifySession();
   
   let whereClause = {};
-  if (user && user.role === 'MITRA') {
+  const role = (user?.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+
+  if (!isOwnerOrAdmin && user && (role === 'MARKETING' || role.includes('MARKETING') || role === 'MITRA')) {
     whereClause = { pengelola_id: user.id };
   }
 

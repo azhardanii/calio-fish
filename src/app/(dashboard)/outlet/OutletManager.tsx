@@ -46,11 +46,20 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   };
 
   const openModal = (outlet?: any) => {
+    const isMarketing = (currentUser?.role || '').toUpperCase().includes('MARKETING');
     if (outlet) {
       setFormData(outlet);
       setIsEditing(true);
     } else {
-      setFormData({ status: 'Active', order_baru: 0, tagihan: 0, payment: 0, sisa_tagihan: 0, wilayah: '', pengelola_id: '' });
+      setFormData({ 
+        status: 'Active', 
+        order_baru: 0, 
+        tagihan: 0, 
+        payment: 0, 
+        sisa_tagihan: 0, 
+        wilayah: '', 
+        pengelola_id: isMarketing && currentUser?.id ? currentUser.id : '' 
+      });
       setIsEditing(false);
     }
     setIsModalOpen(true);
@@ -157,7 +166,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
               <option key={w} value={w}>{w}</option>
             ))}
           </select>
-          {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN' || currentUser?.role === 'MITRA') && (
+          {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN' || (currentUser?.role || '').toUpperCase().includes('MARKETING') || currentUser?.role === 'MITRA') && (
             <button onClick={() => openModal()} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium shadow transition-colors whitespace-nowrap">
               + Tambah Outlet
             </button>
@@ -537,11 +546,11 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
               
               {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN') && (
                 <div>
-                  <label className="block text-sm font-medium mb-1">Pengelola (Mitra)</label>
+                  <label className="block text-sm font-medium mb-1">Pengelola / Marketing</label>
                   <select className="w-full border rounded p-2" value={formData.pengelola_id || ''} onChange={e => setFormData({...formData, pengelola_id: e.target.value})}>
-                    <option value="">-- Dikelola Pusat --</option>
-                    {employees.filter(e => e.role === 'MITRA').map((emp) => (
-                      <option key={emp.id} value={emp.id}>{emp.nama}</option>
+                    <option value="">-- Dikelola Pusat / Belum Ditugaskan --</option>
+                    {employees.filter(e => (e.role || '').toUpperCase().includes('MARKETING') || (e.posisi || '').toUpperCase().includes('MARKETING') || e.role === 'MITRA').map((emp) => (
+                      <option key={emp.id} value={emp.id}>{emp.nama} ({emp.role || emp.posisi || 'Marketing'})</option>
                     ))}
                   </select>
                 </div>

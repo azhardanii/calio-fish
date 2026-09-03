@@ -4,7 +4,14 @@ import { serializeDeep } from '@/lib/serialize';
 
 export async function GET() {
   const [employees, attendances] = await Promise.all([
-    prisma.employee.findMany({ orderBy: { nama: 'asc' } }),
+    prisma.employee.findMany({
+      orderBy: { nama: 'asc' },
+      include: {
+        managed_outlets: {
+          select: { id: true, nama: true, wilayah: true }
+        }
+      }
+    }),
     prisma.attendance.findMany({
       orderBy: { waktu: 'desc' },
       include: { employee: true },

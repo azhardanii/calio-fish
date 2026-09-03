@@ -2,39 +2,79 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
+import { verifySession } from '@/lib/auth';
 
 // Karyawan
-export async function createKaryawan(data: any) {
+export async function createKaryawan(data: any, outletIds?: string[]) {
   if (data.posisi) {
     let newRole = data.posisi.toUpperCase();
     if (newRole === 'STAFF PRODUKSI' || newRole.includes('PRODUKSI')) newRole = 'PRODUKSI';
     else if (newRole === 'STAFF MARKETING' || newRole.includes('MARKETING')) newRole = 'MARKETING';
     data.role = newRole;
   }
-  await prisma.employee.create({ data });
+  const employee = await prisma.employee.create({ data });
+
+  // If role is MARKETING and outletIds provided, assign them to this employee
+  if (outletIds && Array.isArray(outletIds) && outletIds.length > 0) {
+    await prisma.outlet.updateMany({
+      where: { id: { in: outletIds } },
+      data: { pengelola_id: employee.id }
+    });
+  }
+
   revalidatePath('/karyawan');
+  revalidatePath('/outlet');
+  return employee;
 }
-export async function updateKaryawan(id: string, data: any) {
+
+export async function updateKaryawan(id: string, data: any, outletIds?: string[]) {
   if (data.posisi) {
     let newRole = data.posisi.toUpperCase();
     if (newRole === 'STAFF PRODUKSI' || newRole.includes('PRODUKSI')) newRole = 'PRODUKSI';
     else if (newRole === 'STAFF MARKETING' || newRole.includes('MARKETING')) newRole = 'MARKETING';
     data.role = newRole;
   }
-  await prisma.employee.update({ where: { id }, data });
+  const employee = await prisma.employee.update({ where: { id }, data });
+
+  // If outletIds is passed, sync the handled outlets for this employee
+  if (outletIds !== undefined && Array.isArray(outletIds)) {
+    // 1. Remove pengelola_id for outlets unselected
+    await prisma.outlet.updateMany({
+      where: {
+        pengelola_id: id,
+        id: { notIn: outletIds }
+      },
+      data: { pengelola_id: null }
+    });
+
+    // 2. Set pengelola_id for selected outlets
+    if (outletIds.length > 0) {
+      await prisma.outlet.updateMany({
+        where: { id: { in: outletIds } },
+        data: { pengelola_id: id }
+      });
+    }
+  }
+
   revalidatePath('/karyawan');
+  revalidatePath('/outlet');
+  return employee;
 }
+
 export async function deleteKaryawan(id: string) {
+  // Clear pengelola_id on any outlets managed by this employee before deleting
+  await prisma.outlet.updateMany({
+    where: { pengelola_id: id },
+    data: { pengelola_id: null }
+  });
   await prisma.employee.delete({ where: { id } });
   revalidatePath('/karyawan');
+  revalidatePath('/outlet');
 }
 
 // Outlet
 export async function createOutlet(data: any) {
   // Convert decimal fields if they come as strings
-  if (data.tagihan !== undefined) data.tagihan = Number(data.tagihan);
-  if (data.payment !== undefined) data.payment = Number(data.payment);
-  if (data.sisa_tagihan !== undefined) data.sisa_tagihan = Number(data.sisa_tagihan);
   if (data.tagihan !== undefined) data.tagihan = Number(data.tagihan);
   if (data.payment !== undefined) data.payment = Number(data.payment);
   if (data.sisa_tagihan !== undefined) data.sisa_tagihan = Number(data.sisa_tagihan);
@@ -69,7 +109,22 @@ export async function createOutlet(data: any) {
   revalidatePath('/outlet');
   return res;
 }
+
 export async function updateOutlet(id: string, data: any) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+
+  const existingOutlet = await prisma.outlet.findUnique({ where: { id } });
+  if (!existingOutlet) throw new Error('Outlet tidak ditemukan');
+
+  // Marketing users can only update outlets they handle
+  if (!isOwnerOrAdmin && (role === 'MARKETING' || role.includes('MARKETING'))) {
+    if (existingOutlet.pengelola_id !== user?.id) {
+      throw new Error(`Akses ditolak: Anda tidak memiliki izin mengubah data outlet "${existingOutlet.nama}".`);
+    }
+  }
+
   const updateData: any = {
     nama: data.nama,
     tlp: data.tlp,
@@ -77,8 +132,12 @@ export async function updateOutlet(id: string, data: any) {
     wilayah: data.wilayah,
     status: data.status,
     pic: data.pic,
-    pengelola_id: data.pengelola_id === '' ? null : data.pengelola_id
   };
+
+  // Only Owner / Admin can change pengelola_id
+  if (isOwnerOrAdmin && data.pengelola_id !== undefined) {
+    updateData.pengelola_id = data.pengelola_id === '' ? null : data.pengelola_id;
+  }
   
   if (data.tagihan !== undefined) updateData.tagihan = Number(data.tagihan);
   if (data.payment !== undefined) updateData.payment = Number(data.payment);
@@ -93,8 +152,19 @@ export async function updateOutlet(id: string, data: any) {
 }
 
 export async function addPiutang(outletId: string, amount: number, description: string = '', dateString?: string) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+
   const outlet = await prisma.outlet.findUnique({ where: { id: outletId } });
-  if (!outlet) return;
+  if (!outlet) throw new Error('Outlet tidak ditemukan');
+
+  // Marketing users can only add piutang to outlets they handle
+  if (!isOwnerOrAdmin && (role === 'MARKETING' || role.includes('MARKETING'))) {
+    if (outlet.pengelola_id !== user?.id) {
+      throw new Error(`Akses ditolak: Anda tidak memiliki izin untuk menginput tagihan ke outlet "${outlet.nama}".`);
+    }
+  }
 
   const newTagihan = Number(outlet.tagihan) + amount;
   const newSisa = newTagihan - Number(outlet.payment);
@@ -118,8 +188,19 @@ export async function addPiutang(outletId: string, amount: number, description: 
 }
 
 export async function addPelunasan(outletId: string, amount: number, description: string = '', dateString?: string) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+
   const outlet = await prisma.outlet.findUnique({ where: { id: outletId } });
-  if (!outlet) return;
+  if (!outlet) throw new Error('Outlet tidak ditemukan');
+
+  // Marketing users can only add pelunasan to outlets they handle
+  if (!isOwnerOrAdmin && (role === 'MARKETING' || role.includes('MARKETING'))) {
+    if (outlet.pengelola_id !== user?.id) {
+      throw new Error(`Akses ditolak: Anda tidak memiliki izin untuk menginput pelunasan ke outlet "${outlet.nama}".`);
+    }
+  }
 
   const newPayment = Number(outlet.payment) + amount;
   const newSisa = Number(outlet.tagihan) - newPayment;
@@ -141,17 +222,31 @@ export async function addPelunasan(outletId: string, amount: number, description
   ]);
   revalidatePath('/outlet');
 }
+
 export async function deleteOutlet(id: string) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  if (role !== 'OWNER' && role !== 'ADMIN') {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat menghapus outlet.');
+  }
   await prisma.outlet.delete({ where: { id } });
   revalidatePath('/outlet');
 }
 
-import { verifySession } from '@/lib/auth';
-
 export async function adjustOutletStock(outletStockId: string, newQty: number, note: string) {
   const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+
   const os = await prisma.outletStock.findUnique({ where: { id: outletStockId }, include: { product: true, outlet: true } });
-  if (!os) return;
+  if (!os) throw new Error('Outlet stock tidak ditemukan');
+
+  // Marketing users can only adjust stock for outlets they handle
+  if (!isOwnerOrAdmin && (role === 'MARKETING' || role.includes('MARKETING'))) {
+    if (os.outlet.pengelola_id !== user?.id) {
+      throw new Error(`Akses ditolak: Anda tidak memiliki izin untuk mengubah stok outlet "${os.outlet.nama}".`);
+    }
+  }
 
   const diff = newQty - os.quantity;
   if (diff === 0) return;
@@ -165,7 +260,7 @@ export async function adjustOutletStock(outletStockId: string, newQty: number, n
         type: 'OPNAME_OUTLET',
         flow: diff > 0 ? 'IN' : 'OUT',
         qty: Math.abs(diff),
-        balance: newQty, // This is outlet balance, which might be confusing globally but it's ok since type is OPNAME_OUTLET
+        balance: newQty,
         description: `Penyesuaian Manual Stok Outlet ${os.outlet.nama}: ${note}`,
         date: new Date(),
         destination_id: os.outlet_id,
