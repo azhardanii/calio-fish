@@ -538,12 +538,23 @@ export async function POST(req: Request) {
                 throw new Error(`AMBIGUOUS:Tidak dapat menemukan Outlet Asal dengan nama '${srcName}'. Pastikan nama outlet sudah benar dan aktif.`);
               }
               if (os.length === 1) sourceId = os[0].id;
+            } else if (srcType === 'BOOTH') {
+              const bs = await tx.eventBooth.findMany({ where: { nama: { contains: srcName, mode: 'insensitive' }, status: 'AKTIF' }});
+              if (bs.length > 1) {
+                const names = bs.map(b => b.nama).slice(0, 3).join(', ');
+                throw new Error(`AMBIGUOUS:Ada lebih dari 1 booth aktif dengan kata kunci '${srcName}' (${names}).`);
+              }
+              if (bs.length === 0) {
+                throw new Error(`AMBIGUOUS:Tidak dapat menemukan Booth Asal yang aktif dengan nama '${srcName}'.`);
+              }
+              if (bs.length === 1) sourceId = bs[0].id;
             }
 
             // 2. Resolve Destination
             let destId = null;
             let outletId = null;
             let affiliateId = null;
+            let boothId = null;
             if (destType === 'WAREHOUSE') {
               const ws = await tx.warehouse.findMany({ where: { name: { contains: destName, mode: 'insensitive' } }});
               if (ws.length > 1) {
@@ -574,6 +585,16 @@ export async function POST(req: Request) {
                 throw new Error(`AMBIGUOUS:Tidak dapat menemukan Affiliator dengan nama '${destName}'. Pastikan nama affiliator sesuai dengan database.`);
               }
               if (as.length === 1) affiliateId = as[0].id;
+            } else if (destType === 'BOOTH') {
+              const bs = await tx.eventBooth.findMany({ where: { nama: { contains: destName, mode: 'insensitive' }, status: 'AKTIF' }});
+              if (bs.length > 1) {
+                const names = bs.map(b => b.nama).slice(0, 3).join(', ');
+                throw new Error(`AMBIGUOUS:Ada lebih dari 1 booth aktif dengan kata kunci '${destName}' (${names}).`);
+              }
+              if (bs.length === 0) {
+                throw new Error(`AMBIGUOUS:Tidak dapat menemukan Booth Tujuan yang aktif dengan nama '${destName}'.`);
+              }
+              if (bs.length === 1) { destId = bs[0].id; boothId = bs[0].id; }
             }
             
             // 3. Create Shipment Record
@@ -587,6 +608,7 @@ export async function POST(req: Request) {
                 destination_name: destName,
                 outlet_id: outletId,
                 affiliate_id: affiliateId,
+                booth_id: boothId,
                 status: 'SHIPPED',
                 employee_id: employeeId,
                 notes: kategori === 'SAMPLE' ? `Total Produk: ${route.total_produk || 0} | Biaya Ekspedisi: Rp ${route.biaya_ekspedisi || 0}` : null
@@ -624,13 +646,16 @@ export async function POST(req: Request) {
                    } else if (srcType === 'OUTLET' && sourceId) {
                      const os = await tx.outletStock.findUnique({ where: { outlet_id_product_id: { outlet_id: sourceId, product_id: product.id } }});
                      if (os) await tx.outletStock.update({ where: { id: os.id }, data: { quantity: os.quantity - item.qty }});
+                   } else if (srcType === 'BOOTH' && sourceId) {
+                     const bs = await tx.boothStock.findUnique({ where: { booth_id_product_id: { booth_id: sourceId, product_id: product.id } }});
+                     if (bs) await tx.boothStock.update({ where: { id: bs.id }, data: { quantity: Math.max(0, bs.quantity - item.qty) }});
                    }
 
                    // Increment Destination Stock (If internal transfer)
                    if (destType === 'WAREHOUSE' && destId) {
                      const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: destId, product_id: product.id } }});
                      if (ws) {
-                       // If RETUR, add to returned_qty instead of healthy quantity (Based on previous logic)
+                       // If RETUR, add to returned_qty. If PENGEMBALIAN_BOOTH, add to healthy active quantity!
                        if (kategori === 'RETUR') {
                          await tx.warehouseStock.update({ where: { id: ws.id }, data: { returned_qty: ws.returned_qty + item.qty }});
                        } else {
@@ -654,24 +679,36 @@ export async function POST(req: Request) {
                        });
                      }
                      totalBilling += (Number(hargaBeli) * item.qty);
+                   } else if (destType === 'BOOTH' && destId) {
+                     await tx.boothStock.upsert({
+                       where: { booth_id_product_id: { booth_id: destId, product_id: product.id } },
+                       update: { quantity: { increment: item.qty } },
+                       create: { booth_id: destId, product_id: product.id, quantity: item.qty }
+                     });
                    }
                    
-                   // Decrease global product.stok only if it leaves the internal ecosystem (not to warehouse/outlet)
-                   // But if RETUR, we also decreased it previously because it becomes isolated.
+                   // Global product.stok balance update
                    let newBalance = product.stok;
-                   if (!['WAREHOUSE', 'OUTLET'].includes(destType) || kategori === 'RETUR') {
+                   if (kategori === 'PENGEMBALIAN_BOOTH') {
+                     // Good stock returning from booth to warehouse increases central stock
+                     newBalance += item.qty;
+                     await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
+                   } else if (!['WAREHOUSE', 'OUTLET'].includes(destType) || kategori === 'RETUR') {
                      newBalance -= item.qty;
                      await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
                    }
                    
+                   const txType = kategori === 'RETUR' ? 'RETUR' : kategori === 'PENGEMBALIAN_BOOTH' ? 'PENGEMBALIAN_BOOTH' : destType === 'BOOTH' ? 'DISTRIBUSI_BOOTH' : 'DISTRIBUSI';
+                   const txFlow = kategori === 'PENGEMBALIAN_BOOTH' ? 'IN' : 'OUT';
+
                    await tx.stockTransaction.create({
                      data: {
                        product_id: product.id,
-                       type: kategori === 'RETUR' ? 'RETUR' : 'DISTRIBUSI',
-                       flow: 'OUT',
+                       type: txType,
+                       flow: txFlow,
                        qty: item.qty,
                        balance: newBalance,
-                       description: kategori === 'RETUR' ? `Retur dari ${srcName} ke ${destName}` : `Dari ${srcName} ke ${destName}`,
+                       description: kategori === 'RETUR' ? `Retur dari ${srcName} ke ${destName}` : kategori === 'PENGEMBALIAN_BOOTH' ? `Pengembalian sisa layak jual dari ${srcName} ke ${destName}` : `Dari ${srcName} ke ${destName}`,
                        date: parsedData.date ? new Date(parsedData.date) : new Date(),
                        source_type: srcType,
                        source_id: sourceId,
@@ -783,6 +820,112 @@ export async function POST(req: Request) {
           ]);
           replyMsg = `✅ *Penambahan Piutang/Bon Outlet* ${outlet.nama} sebesar Rp ${nominal.toLocaleString('id-ID')} berhasil dicatat!\nSisa Tagihan saat ini: Rp ${newSisa.toLocaleString('id-ID')}`;
         }
+      } else if (parsedData.report_type === 'PENJUALAN_BOOTH') {
+        const boothName = data.booth_name || '';
+        const omset = Number(data.omset_harian) || 0;
+        const items = Array.isArray(data.items) ? data.items : [];
+        const bayarMethod = (data.metode_pembayaran || 'TUNAI').toUpperCase();
+
+        const bsList = await prisma.eventBooth.findMany({
+          where: { nama: { contains: boothName, mode: 'insensitive' }, status: 'AKTIF' }
+        });
+        if (bsList.length > 1) {
+          const names = bsList.map(b => b.nama).slice(0, 3).join(', ');
+          throw new Error(`AMBIGUOUS:Ada lebih dari 1 booth aktif dengan kata kunci '${boothName}' (${names}).`);
+        }
+        if (bsList.length === 0) {
+          throw new Error(`AMBIGUOUS:Booth aktif dengan nama '${boothName}' tidak ditemukan.`);
+        }
+        const booth = bsList[0];
+
+        await prisma.$transaction(async (tx) => {
+          let calculatedTotal = 0;
+          for (const item of items) {
+            const itemQty = Number(item.qty) || 1;
+            const unitPrice = Number(item.unit_price) || 0;
+            const subtotal = itemQty * unitPrice;
+            calculatedTotal += subtotal;
+
+            // Match bundle first
+            const bundle = await tx.boothBundle.findFirst({
+              where: { booth_id: booth.id, nama: { contains: item.item_name, mode: 'insensitive' } },
+              include: { items: true }
+            });
+
+            if (bundle) {
+              for (const bi of bundle.items) {
+                const bstock = await tx.boothStock.findUnique({
+                  where: { booth_id_product_id: { booth_id: booth.id, product_id: bi.product_id } }
+                });
+                if (bstock) {
+                  await tx.boothStock.update({
+                    where: { id: bstock.id },
+                    data: { quantity: Math.max(0, bstock.quantity - (bi.qty * itemQty)) }
+                  });
+                }
+              }
+              await tx.boothSale.create({
+                data: {
+                  booth_id: booth.id,
+                  bundle_id: bundle.id,
+                  item_name: bundle.nama,
+                  qty: itemQty,
+                  unit_price: unitPrice || bundle.harga_jual,
+                  total_price: subtotal || (itemQty * Number(bundle.harga_jual)),
+                  metode_pembayaran: bayarMethod,
+                  employee_id: employeeId,
+                  catatan: data.keterangan || 'Dari Laporan WA',
+                }
+              });
+            } else {
+              // Direct product
+              const prod = await tx.product.findFirst({
+                where: {
+                  OR: [
+                    { name: { contains: item.item_name, mode: 'insensitive' } },
+                    { short_name: { contains: item.item_name, mode: 'insensitive' } },
+                    { sku: { contains: item.item_name, mode: 'insensitive' } }
+                  ]
+                }
+              });
+              if (prod) {
+                const bstock = await tx.boothStock.findUnique({
+                  where: { booth_id_product_id: { booth_id: booth.id, product_id: prod.id } }
+                });
+                if (bstock) {
+                  await tx.boothStock.update({
+                    where: { id: bstock.id },
+                    data: { quantity: Math.max(0, bstock.quantity - itemQty) }
+                  });
+                }
+              }
+              await tx.boothSale.create({
+                data: {
+                  booth_id: booth.id,
+                  product_id: prod?.id || null,
+                  item_name: item.item_name || 'Produk',
+                  qty: itemQty,
+                  unit_price: unitPrice,
+                  total_price: subtotal,
+                  metode_pembayaran: bayarMethod,
+                  employee_id: employeeId,
+                  catatan: data.keterangan || 'Dari Laporan WA',
+                }
+              });
+            }
+          }
+
+          const finalOmset = omset > 0 ? omset : calculatedTotal;
+          await tx.eventBooth.update({
+            where: { id: booth.id },
+            data: {
+              total_penjualan: { increment: finalOmset },
+              kas_masuk: { increment: finalOmset },
+            }
+          });
+        });
+
+        replyMsg = `✅ *Laporan Penjualan Booth* ${booth.nama} berhasil dicatat!\nTotal Omset: Rp ${omset.toLocaleString('id-ID')}\nMetode: ${bayarMethod}`;
       }
     } catch (dbError: any) {
       console.error('Database insertion error:', dbError);

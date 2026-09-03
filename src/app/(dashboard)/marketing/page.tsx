@@ -245,6 +245,10 @@ function PerformanceDashboard({ data, mutate }: { data: any; mutate: () => void 
                     <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, letterSpacing: 0.5 }}>PERSONAL BUYER</div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#0891b2' }}>{formatRp(p.personal_buyer_this_month)}</div>
                   </div>
+                  <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, letterSpacing: 0.5 }}>EVENT / BOOTH</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#059669' }}>{formatRp(p.booth_sales_this_month || 0)}</div>
+                  </div>
                 </div>
 
                 {/* Gap */}
@@ -583,6 +587,7 @@ function MarketingMyDashboard({ data, mutate }: { data: any; mutate: () => void 
           <KpiMini icon="💰" label="OMSET BULAN INI" value={formatRp(p.total_omset_this_month)} color="#7c3aed" />
           <KpiMini icon="🏪" label="BILLING OUTLET" value={formatRp(p.total_billing_this_month)} color="#0891b2" />
           <KpiMini icon="👤" label="PERSONAL BUYER" value={formatRp(p.personal_buyer_this_month)} color="#d97706" />
+          <KpiMini icon="🎪" label="EVENT / BOOTH" value={formatRp(p.booth_sales_this_month || 0)} color="#059669" />
         </div>
       </div>
 

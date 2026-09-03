@@ -22,6 +22,7 @@ import {
   ChevronDown,
   ChevronUp,
   Compass,
+  Store,
 } from "lucide-react";
 
 interface BottomNavProps {
@@ -185,6 +186,7 @@ export function BottomNav({ user }: BottomNavProps) {
   const secondaryItems = [
     { name: "Produksi", href: "/produksi", icon: Factory, visible: isProduksi && !primaryItems.some(p => p.href === "/produksi") },
     { name: "Marketing", href: "/marketing", icon: TrendingUp, visible: isMarketing && !primaryItems.some(p => p.href === "/marketing") },
+    { name: "Event & Booth", href: "/booth", icon: Store, visible: (isMarketing || isOwnerOrAdmin) && !primaryItems.some(p => p.href === "/booth") },
     { name: "Database Produk", href: "/produk", icon: PackageCheck, visible: isOwnerOrAdmin },
     { name: "Warehouse", href: "/warehouse", icon: WarehouseIcon, visible: isOwnerOrAdmin && !primaryItems.some(p => p.href === "/warehouse") },
     { name: "Karyawan", href: "/karyawan", icon: Users, visible: isOwnerOrAdmin },

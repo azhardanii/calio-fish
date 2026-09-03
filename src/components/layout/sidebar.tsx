@@ -17,6 +17,7 @@ import {
   Network,
   Gauge,
   Warehouse as WarehouseIcon,
+  Store,
   LogOut
 } from "lucide-react";
 
@@ -43,6 +44,7 @@ export function Sidebar({ user }: { user: { id: string; role: string; nama: stri
       visible: isMarketing || isProduksi,
       items: [
         { name: "Marketing", href: "/marketing", icon: TrendingUp, visible: isMarketing },
+        { name: "Event & Booth", href: "/booth", icon: Store, visible: isMarketing || isOwnerOrAdmin },
         { name: "Produksi", href: "/produksi", icon: Factory, visible: isProduksi },
       ]
     },

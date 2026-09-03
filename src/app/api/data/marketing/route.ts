@@ -37,6 +37,11 @@ export async function GET() {
       personal_buyer_transactions: {
         orderBy: { date: 'desc' },
       },
+      managed_booths: {
+        include: {
+          sales: { orderBy: { date: 'desc' } }
+        }
+      },
     },
     orderBy: { nama: 'asc' },
   });
@@ -81,7 +86,18 @@ export async function GET() {
       })
       .reduce((sum, t) => sum + Number(t.amount), 0);
 
-    const totalOmsetThisMonth = totalBillingThisMonth + personalBuyerThisMonth;
+    // Booth sales this month (where this marketing employee is PIC)
+    const boothSalesThisMonth = emp.managed_booths.reduce((sum, b) => {
+      const bMonthSales = b.sales
+        .filter(s => {
+          const d = new Date(s.date);
+          return d >= monthStart && d <= monthEnd;
+        })
+        .reduce((sSum, s) => sSum + Number(s.total_price), 0);
+      return sum + bMonthSales;
+    }, 0);
+
+    const totalOmsetThisMonth = totalBillingThisMonth + personalBuyerThisMonth + boothSalesThisMonth;
     const pencapaian = targetOmset > 0 ? (totalOmsetThisMonth / targetOmset) * 100 : 0;
     const gap = totalOmsetThisMonth - targetOmset;
 
@@ -113,6 +129,7 @@ export async function GET() {
       total_billing_this_month: totalBillingThisMonth,
       total_payment_this_month: totalPaymentThisMonth,
       personal_buyer_this_month: personalBuyerThisMonth,
+      booth_sales_this_month: boothSalesThisMonth,
       total_omset_this_month: totalOmsetThisMonth,
       pencapaian,
       gap,
@@ -121,12 +138,21 @@ export async function GET() {
       total_payment_all: totalPaymentAll,
       total_outstanding_all: totalOutstandingAll,
       outlet_count: emp.managed_outlets.length,
+      booth_count: emp.managed_booths.length,
       personal_buyer_transactions: emp.personal_buyer_transactions.map(t => ({
         id: t.id,
         buyer_name: t.buyer_name,
         amount: Number(t.amount),
         description: t.description,
         date: t.date,
+      })),
+      managed_booths: emp.managed_booths.map(b => ({
+        id: b.id,
+        nama: b.nama,
+        lokasi: b.lokasi,
+        status: b.status,
+        total_penjualan: Number(b.total_penjualan),
+        kas_masuk: Number(b.kas_masuk),
       })),
     };
   });

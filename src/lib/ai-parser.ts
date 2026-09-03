@@ -41,18 +41,21 @@ data: { "kategori": "KEMASAN" | "BUMBU" | "KARDUS", "jenis_ukuran": string, "mas
 
 
 4. LOGISTIK_MULTI
-For reporting ALL types of logistics, shipping, transfers, retur, online order shipping, or sample distributions. 
+For reporting ALL types of logistics, shipping, transfers, retur, pengembalian sisa booth, online order shipping, or sample distributions. 
 Even if only one route is reported, ALWAYS return an array of objects in 'data'. If multiple routes are mentioned, split them into multiple objects in the array.
 data: [
   { 
-    "kategori_logistik": "PENGIRIMAN_GUDANG" | "PENGIRIMAN_OUTLET" | "RETUR" | "ONLINE" | "SAMPLE",
-    "source_type": "WAREHOUSE" | "OUTLET",
-    "source_name": "string", // e.g. "Banyuwangi", "Malang", "Outlet A"
-    "destination_type": "WAREHOUSE" | "OUTLET" | "E-COMMERCE" | "SAMPLE" | "AFFILIATE",
-    "destination_name": "string", // e.g. "Malang", "Outlet A", "Shopee", "Influencer Budi"
+    "kategori_logistik": "PENGIRIMAN_GUDANG" | "PENGIRIMAN_OUTLET" | "PENGIRIMAN_BOOTH" | "PENGEMBALIAN_BOOTH" | "RETUR" | "ONLINE" | "SAMPLE",
+    "source_type": "WAREHOUSE" | "OUTLET" | "BOOTH",
+    "source_name": "string", // e.g. "Banyuwangi", "Malang", "Booth Jatim Expo"
+    "destination_type": "WAREHOUSE" | "OUTLET" | "BOOTH" | "E-COMMERCE" | "SAMPLE" | "AFFILIATE",
+    "destination_name": "string", // e.g. "Malang", "Booth Jatim Expo", "Shopee"
     "items": [ { "product_key": "string", "qty": number } ]
   }
 ]
+**NOTE ON BOOTH LOGISTICS:**
+- If sending items from a warehouse to an event/booth: use kategori_logistik="PENGIRIMAN_BOOTH", destination_type="BOOTH".
+- If returning unsold good items from a booth/event to a warehouse: use kategori_logistik="PENGEMBALIAN_BOOTH", source_type="BOOTH", destination_type="WAREHOUSE". (This is DIFFERENT from "RETUR" which is for damaged/spoiled items).
 **IF source or destination is omitted or vague (e.g., just "kirim ke outlet A" without stating FROM WHERE), set is_ambiguous = true and ask: "Harap sebutkan dari mana barang dikirim (misal: dari Banyuwangi ke Outlet A)."**
 Map product names EXACTLY to these SKUs: "FS Ori" -> FS-ORI-100, "FS SM" -> FS-SM-100, "FS Soto" -> FS-SOTO-100, "FS Rendang" -> FS-RENDANG-100, "Abon" -> AB-TNA-90. Use these SKUs for product_key in ANY report type.
 
@@ -75,6 +78,10 @@ data: { "nama": string, "akun_medsos": string, "no_hp": string, "alamat": string
 9. KEUANGAN_OUTLET
 For reporting payments (pelunasan/pembayaran) or debts (piutang/bon) from/to an outlet.
 data: { "outlet_name": "string", "jenis_transaksi": "PELUNASAN" | "PIUTANG", "nominal": number, "keterangan": "string" }
+
+10. PENJUALAN_BOOTH
+For reporting daily sales at an event booth or exhibition.
+data: { "booth_name": "string", "omset_harian": number, "metode_pembayaran": "TUNAI" | "QRIS" | "TRANSFER", "items": [ { "item_name": "string", "qty": number, "unit_price": number } ], "keterangan": "string" }
 `;
 
 export async function parseWhatsAppReport(text: string) {
