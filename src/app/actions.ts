@@ -407,17 +407,166 @@ export async function adjustStockOpname(id: string, newStok: number, note: strin
   revalidatePath('/produk');
 }
 
-// Warehouse
-export async function updateWarehouse(id: string, data: any) {
-  await prisma.warehouse.update({
-    where: { id },
-    data: {
-      name: data.name,
-      type: data.type,
-      address: data.address
+// Warehouse CRUD (Admin/Owner only)
+export async function createWarehouse(data: { name: string; type: string; address?: string }) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  if (role !== 'OWNER' && role !== 'ADMIN') {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat menambahkan warehouse baru.');
+  }
+
+  const name = (data.name || '').trim();
+  if (!name) {
+    throw new Error('Nama warehouse wajib diisi.');
+  }
+
+  const type = (data.type || 'STORAGE').toUpperCase();
+  if (type !== 'FACTORY' && type !== 'STORAGE') {
+    throw new Error('Tipe warehouse harus FACTORY (Pabrik) atau STORAGE (Gudang Cabang).');
+  }
+
+  // Check duplicate name
+  const existing = await prisma.warehouse.findFirst({
+    where: { name: { equals: name, mode: 'insensitive' } }
+  });
+  if (existing) {
+    throw new Error(`Warehouse dengan nama "${name}" sudah terdaftar.`);
+  }
+
+  const warehouse = await prisma.$transaction(async (tx) => {
+    const created = await tx.warehouse.create({
+      data: {
+        name,
+        type,
+        address: (data.address || '').trim() || null,
+      }
+    });
+
+    // Automatically initialize stock records for all products
+    const products = await tx.product.findMany();
+    for (const p of products) {
+      await tx.warehouseStock.create({
+        data: {
+          warehouse_id: created.id,
+          product_id: p.id,
+          quantity: 0,
+          returned_qty: 0,
+        }
+      });
+    }
+
+    return created;
+  });
+
+  revalidatePath('/warehouse');
+  revalidatePath('/booth');
+  revalidatePath('/pengiriman');
+  return warehouse;
+}
+
+export async function updateWarehouse(id: string, data: { name: string; type: string; address?: string }) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  if (role !== 'OWNER' && role !== 'ADMIN') {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat mengedit warehouse.');
+  }
+
+  const name = (data.name || '').trim();
+  if (!name) {
+    throw new Error('Nama warehouse wajib diisi.');
+  }
+
+  const type = (data.type || 'STORAGE').toUpperCase();
+  if (type !== 'FACTORY' && type !== 'STORAGE') {
+    throw new Error('Tipe warehouse harus FACTORY (Pabrik) atau STORAGE (Gudang Cabang).');
+  }
+
+  // Check duplicate name on other warehouse
+  const existing = await prisma.warehouse.findFirst({
+    where: { 
+      name: { equals: name, mode: 'insensitive' },
+      id: { not: id }
     }
   });
+  if (existing) {
+    throw new Error(`Warehouse dengan nama "${name}" sudah digunakan oleh fasilitas lain.`);
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const res = await tx.warehouse.update({
+      where: { id },
+      data: {
+        name,
+        type,
+        address: (data.address || '').trim() || null
+      }
+    });
+
+    // Ensure all products have a stock record for this warehouse
+    const products = await tx.product.findMany();
+    for (const p of products) {
+      await tx.warehouseStock.upsert({
+        where: {
+          warehouse_id_product_id: {
+            warehouse_id: id,
+            product_id: p.id
+          }
+        },
+        update: {},
+        create: {
+          warehouse_id: id,
+          product_id: p.id,
+          quantity: 0,
+          returned_qty: 0
+        }
+      });
+    }
+
+    return res;
+  });
+
   revalidatePath('/warehouse');
+  revalidatePath('/booth');
+  revalidatePath('/pengiriman');
+  return updated;
+}
+
+export async function deleteWarehouse(id: string) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  if (role !== 'OWNER' && role !== 'ADMIN') {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat menghapus warehouse.');
+  }
+
+  const warehouse = await prisma.warehouse.findUnique({
+    where: { id },
+    include: { stocks: true }
+  });
+
+  if (!warehouse) {
+    throw new Error('Warehouse tidak ditemukan.');
+  }
+
+  // Check if warehouse has active stock
+  const totalStock = warehouse.stocks.reduce((acc, s) => acc + s.quantity + s.returned_qty, 0);
+  if (totalStock > 0) {
+    throw new Error(`Gudang "${warehouse.name}" tidak dapat dihapus karena masih memiliki stok produk sebanyak ${totalStock} pcs. Silakan mutasikan atau kosongkan stok fisik terlebih dahulu.`);
+  }
+
+  // Check if this is the only warehouse
+  const count = await prisma.warehouse.count();
+  if (count <= 1) {
+    throw new Error('Tidak dapat menghapus warehouse. Sistem memerlukan minimal satu fasilitas gudang.');
+  }
+
+  await prisma.warehouse.delete({
+    where: { id }
+  });
+
+  revalidatePath('/warehouse');
+  revalidatePath('/booth');
+  revalidatePath('/pengiriman');
+  return { success: true };
 }
 
 // Marketing Targets (Admin/Owner only)
