@@ -1,12 +1,36 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import useSWR, { mutate } from 'swr';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { 
+  Store, 
+  Search, 
+  Plus, 
+  Trash2, 
+  Edit3, 
+  Phone, 
+  Users, 
+  Filter, 
+  X, 
+  ChevronLeft, 
+  ChevronRight,
+  Building2,
+  Factory,
+  Shield,
+  Crown,
+  ExternalLink,
+  CheckCircle2,
+  AlertCircle
+} from 'lucide-react';
 import { createKaryawan, updateKaryawan, deleteKaryawan } from '@/app/actions';
-import { Store, Search, CheckSquare, Square } from 'lucide-react';
 
-export function EmployeeManager({ employees, currentUser }: { employees: any[], currentUser?: any }) {
+interface EmployeeManagerProps {
+  employees: any[];
+  currentUser?: any;
+  onAddNew?: () => void;
+}
+
+export function EmployeeManager({ employees, currentUser }: EmployeeManagerProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState<any>({});
   const [selectedOutlets, setSelectedOutlets] = useState<string[]>([]);
@@ -15,10 +39,20 @@ export function EmployeeManager({ employees, currentUser }: { employees: any[], 
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Fetch all outlets for assignment
+  // Filter & Search states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 15;
+
+  // Fetch outlets for marketing assignment
   const { data: outletsData } = useSWR<any[]>('/api/data/outlets');
   const allOutlets = Array.isArray(outletsData) ? outletsData : [];
 
+  const isOwnerOrAdmin = currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN';
+
+  // Modal Handlers
   const openModal = (employee?: any) => {
     if (employee) {
       setFormData(employee);
@@ -51,17 +85,17 @@ export function EmployeeManager({ employees, currentUser }: { employees: any[], 
   };
 
   const selectAllFiltered = () => {
-    const filteredIds = filteredOutlets.map(o => o.id);
+    const filteredIds = filteredOutletsModal.map(o => o.id);
     const newSet = new Set([...selectedOutlets, ...filteredIds]);
     setSelectedOutlets(Array.from(newSet));
   };
 
   const deselectAllFiltered = () => {
-    const filteredIds = new Set(filteredOutlets.map(o => o.id));
+    const filteredIds = new Set(filteredOutletsModal.map(o => o.id));
     setSelectedOutlets(prev => prev.filter(id => !filteredIds.has(id)));
   };
 
-  const filteredOutlets = allOutlets.filter(o => {
+  const filteredOutletsModal = allOutlets.filter(o => {
     if (!outletSearch.trim()) return true;
     const query = outletSearch.toLowerCase();
     return (
@@ -109,12 +143,12 @@ export function EmployeeManager({ employees, currentUser }: { employees: any[], 
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (e: any) => {
     if (deletingId) return;
-    if (confirm('Yakin ingin menghapus karyawan ini? Seluruh outlet yang dihandle oleh karyawan ini akan dialihkan ke status tanpa pengelola.')) {
-      setDeletingId(id);
+    if (confirm(`Yakin ingin menghapus karyawan "${e.nama}"?\n\nSeluruh outlet yang dihandle oleh karyawan ini akan dialihkan ke status "Dikelola Pusat".`)) {
+      setDeletingId(e.id);
       try {
-        await deleteKaryawan(id);
+        await deleteKaryawan(e.id);
         await Promise.all([
           mutate('/api/data/employees'),
           mutate('/api/data/outlets')
@@ -127,165 +161,518 @@ export function EmployeeManager({ employees, currentUser }: { employees: any[], 
     }
   };
 
+  // Filter employees
+  const filteredEmployees = useMemo(() => {
+    return employees.filter(emp => {
+      // Search
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchName = (emp.nama || '').toLowerCase().includes(q);
+        const matchRole = (emp.role || emp.posisi || '').toLowerCase().includes(q);
+        const matchPhone = (emp.no_hp || '').toLowerCase().includes(q);
+        const matchOutlet = (emp.managed_outlets || []).some((o: any) => (o.nama || '').toLowerCase().includes(q));
+        if (!matchName && !matchRole && !matchPhone && !matchOutlet) return false;
+      }
+
+      // Role Filter
+      if (roleFilter !== 'ALL') {
+        const role = (emp.role || emp.posisi || '').toUpperCase();
+        if (roleFilter === 'MARKETING' && !role.includes('MARKETING')) return false;
+        if (roleFilter === 'PRODUKSI' && !role.includes('PRODUKSI')) return false;
+        if (roleFilter === 'ADMIN' && !role.includes('ADMIN')) return false;
+        if (roleFilter === 'OWNER' && !role.includes('OWNER')) return false;
+      }
+
+      // Status Filter
+      if (statusFilter !== 'ALL') {
+        if (statusFilter === 'ACTIVE' && !emp.status_aktif) return false;
+        if (statusFilter === 'INACTIVE' && emp.status_aktif) return false;
+      }
+
+      return true;
+    });
+  }, [employees, searchQuery, roleFilter, statusFilter]);
+
+  // Pagination
+  const totalPages = Math.ceil(filteredEmployees.length / pageSize) || 1;
+  const paginatedEmployees = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredEmployees.slice(start, start + pageSize);
+  }, [filteredEmployees, currentPage, pageSize]);
+
+  // Helper for role badge styling
+  const getRoleBadge = (roleStr: string) => {
+    const r = (roleStr || '').toUpperCase();
+    if (r.includes('MARKETING')) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
+          <Store className="w-3.5 h-3.5 text-blue-600" />
+          <span>Marketing</span>
+        </span>
+      );
+    }
+    if (r.includes('PRODUKSI')) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs">
+          <Factory className="w-3.5 h-3.5 text-indigo-600" />
+          <span>Produksi</span>
+        </span>
+      );
+    }
+    if (r.includes('ADMIN')) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200 shadow-2xs">
+          <Shield className="w-3.5 h-3.5 text-purple-600" />
+          <span>Admin</span>
+        </span>
+      );
+    }
+    if (r.includes('OWNER')) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 shadow-2xs">
+          <Crown className="w-3.5 h-3.5 text-amber-600" />
+          <span>Owner</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 border border-gray-200">
+        <span>{roleStr || 'Staff'}</span>
+      </span>
+    );
+  };
+
   return (
-    <>
-      <div className="flex items-center justify-between pb-2 mb-4">
-        <div>
-          <h2 className="text-2xl font-semibold text-gray-800">Database Karyawan</h2>
-          <p className="text-xs text-gray-500 mt-1">Kelola data karyawan dan tentukan outlet yang ditugaskan untuk tim marketing.</p>
+    <div className="space-y-4 sm:space-y-5">
+      {/* ── TOOLBAR: SEARCH, FILTERS, & ADD BUTTON ── */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-gray-200/90 shadow-xs">
+        {/* Left: Search Input */}
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Cari nama, role, outlet, no hp..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-gray-50/80 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
-        {currentUser?.role === 'OWNER' && (
-          <button onClick={() => openModal()} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 text-sm rounded-lg font-medium shadow transition-colors cursor-pointer">
-            + Tambah Karyawan
-          </button>
+
+        {/* Middle: Role & Status Filter */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <select
+            value={roleFilter}
+            onChange={(e) => {
+              setRoleFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="px-3 py-2 text-xs sm:text-sm bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+          >
+            <option value="ALL">Semua Role</option>
+            <option value="MARKETING">Marketing</option>
+            <option value="PRODUKSI">Staff Produksi</option>
+            <option value="ADMIN">Admin</option>
+            <option value="OWNER">Owner</option>
+          </select>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="px-3 py-2 text-xs sm:text-sm bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+          >
+            <option value="ALL">Semua Status</option>
+            <option value="ACTIVE">Aktif</option>
+            <option value="INACTIVE">Non-Aktif</option>
+          </select>
+
+          {/* Add Button */}
+          {isOwnerOrAdmin && (
+            <button
+              onClick={() => openModal()}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-xs hover:shadow transition flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Tambah Karyawan</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Result Count Info */}
+      <div className="flex items-center justify-between text-xs text-gray-500 px-1">
+        <span>
+          Menampilkan <b>{paginatedEmployees.length}</b> dari <b>{filteredEmployees.length}</b> karyawan
+          {(searchQuery || roleFilter !== 'ALL' || statusFilter !== 'ALL') && ' (difilter)'}
+        </span>
+        {filteredEmployees.length > pageSize && (
+          <span>Halaman {currentPage} dari {totalPages}</span>
         )}
       </div>
 
-      <div className="overflow-x-auto mt-4">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Nama</TableHead>
-              <TableHead>Role / Posisi</TableHead>
-              <TableHead>Outlet yang Dihandle</TableHead>
-              <TableHead>No. HP (WA)</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Aksi</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {employees.map((e) => {
-              const eIsMarketing = (e.role || '').toUpperCase().includes('MARKETING') || (e.posisi || '').toUpperCase().includes('MARKETING');
-              const handledOutlets = e.managed_outlets || [];
+      {/* ── 1. DESKTOP VIEW: TABLE (hidden on mobile, visible on md+) ── */}
+      <div className="hidden md:block bg-white rounded-2xl border border-gray-200/90 shadow-xs overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs sm:text-sm border-collapse">
+            <thead>
+              <tr className="bg-gray-50/80 border-b border-gray-200 text-gray-500 font-bold uppercase tracking-wider text-[11px]">
+                <th className="py-3.5 px-4">KARYAWAN</th>
+                <th className="py-3.5 px-4">ROLE / POSISI</th>
+                <th className="py-3.5 px-4">OUTLET DITUGASKAN</th>
+                <th className="py-3.5 px-4">NO. HP (WHATSAPP)</th>
+                <th className="py-3.5 px-4 text-center">STATUS</th>
+                <th className="py-3.5 px-4 text-right">AKSI</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {paginatedEmployees.map((e) => {
+                const eIsMarketing = (e.role || '').toUpperCase().includes('MARKETING') || (e.posisi || '').toUpperCase().includes('MARKETING');
+                const handledOutlets = e.managed_outlets || [];
+                const waNumber = (e.no_hp || '').replace(/\D/g, '');
 
-              return (
-                <TableRow key={e.id} className="hover:bg-gray-50 transition-colors">
-                  <TableCell className="font-bold">{e.nama}</TableCell>
-                  <TableCell>
-                    <span className="font-medium text-gray-900">{e.role || e.posisi || '-'}</span>
-                  </TableCell>
-                  <TableCell>
-                    {eIsMarketing ? (
-                      handledOutlets.length > 0 ? (
-                        <div className="flex flex-col gap-1 max-w-xs">
-                          <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded text-xs font-semibold w-fit">
-                            <Store size={12} />
-                            {handledOutlets.length} Outlet Ditugaskan
+                return (
+                  <tr key={e.id} className="hover:bg-blue-50/30 transition-colors">
+                    {/* Karyawan Name & Avatar */}
+                    <td className="py-3.5 px-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-bold flex items-center justify-center text-xs shrink-0 shadow-xs">
+                          {e.nama ? e.nama.substring(0, 2).toUpperCase() : 'CF'}
+                        </div>
+                        <div>
+                          <div className="font-bold text-gray-900 leading-tight">{e.nama}</div>
+                          <div className="text-[11px] text-gray-400 mt-0.5 font-mono">
+                            {e.id.substring(0, 8)}...
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Role Badge */}
+                    <td className="py-3.5 px-4">
+                      {getRoleBadge(e.role || e.posisi)}
+                    </td>
+
+                    {/* Handled Outlets */}
+                    <td className="py-3.5 px-4">
+                      {eIsMarketing ? (
+                        handledOutlets.length > 0 ? (
+                          <div className="space-y-1">
+                            <span className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-0.5 rounded-full text-xs font-bold">
+                              <Store className="w-3 h-3 text-blue-600" />
+                              <span>{handledOutlets.length} Outlet</span>
+                            </span>
+                            <div className="text-[11px] text-gray-500 line-clamp-1 max-w-xs" title={handledOutlets.map((o: any) => o.nama).join(', ')}>
+                              {handledOutlets.map((o: any) => o.nama).slice(0, 2).join(', ')}
+                              {handledOutlets.length > 2 ? ` +${handledOutlets.length - 2} lainnya` : ''}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200 italic font-medium">
+                            Belum ada outlet
                           </span>
-                          <span className="text-xs text-gray-500 truncate" title={handledOutlets.map((o: any) => o.nama).join(', ')}>
-                            {handledOutlets.map((o: any) => o.nama).slice(0, 3).join(', ')}
-                            {handledOutlets.length > 3 ? ` +${handledOutlets.length - 3} lainnya` : ''}
-                          </span>
+                        )
+                      ) : (
+                        <span className="text-xs text-gray-400 font-medium">-</span>
+                      )}
+                    </td>
+
+                    {/* Contact (WhatsApp) */}
+                    <td className="py-3.5 px-4">
+                      {e.no_hp ? (
+                        <a
+                          href={`https://wa.me/${waNumber}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg text-xs font-semibold transition"
+                          title="Buka WhatsApp"
+                        >
+                          <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>{e.no_hp}</span>
+                          <ExternalLink className="w-3 h-3 opacity-60" />
+                        </a>
+                      ) : (
+                        <span className="text-xs text-gray-400">-</span>
+                      )}
+                    </td>
+
+                    {/* Status */}
+                    <td className="py-3.5 px-4 text-center">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                        e.status_aktif 
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                          : 'bg-gray-100 text-gray-600 border border-gray-200'
+                      }`}>
+                        {e.status_aktif ? 'Aktif' : 'Non-Aktif'}
+                      </span>
+                    </td>
+
+                    {/* Actions */}
+                    <td className="py-3.5 px-4 text-right">
+                      {isOwnerOrAdmin ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => openModal(e)}
+                            className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition cursor-pointer"
+                            title="Edit Karyawan"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
+                            disabled={deletingId === e.id}
+                            onClick={() => handleDelete(e)}
+                            className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition cursor-pointer disabled:opacity-50"
+                            title="Hapus Karyawan"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       ) : (
-                        <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 italic">
-                          Belum ada outlet
-                        </span>
-                      )
-                    ) : (
-                      <span className="text-xs text-gray-400">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell>{e.no_hp || '-'}</TableCell>
-                  <TableCell>
-                    <span style={{
-                      background: e.status_aktif ? '#dcfce7' : '#f3f4f6',
-                      color: e.status_aktif ? '#15803d' : '#4b5563',
-                      padding: '2px 8px', borderRadius: 12, fontWeight: 600, fontSize: 12
-                    }}>
-                      {e.status_aktif ? 'Aktif' : 'Non-Aktif'}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right space-x-2">
-                    {currentUser?.role === 'OWNER' ? (
-                      <>
-                        <button onClick={() => openModal(e)} className="text-blue-600 hover:text-blue-800 font-medium text-sm cursor-pointer">Edit</button>
-                        <button 
-                          disabled={deletingId === e.id} 
-                          onClick={() => handleDelete(e.id)} 
-                          className="text-red-600 hover:text-red-800 font-medium text-sm cursor-pointer disabled:opacity-50"
-                        >
-                          {deletingId === e.id ? 'Menghapus...' : 'Hapus'}
-                        </button>
-                      </>
-                    ) : (
-                      <span className="text-gray-400 text-sm italic">Akses Terbatas</span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-            {employees.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center text-gray-500 py-8">
-                  Belum ada data karyawan.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+                        <span className="text-xs text-gray-400 italic">View only</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {paginatedEmployees.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="text-center py-12 text-gray-400">
+                    <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+                    <div className="font-semibold text-gray-600">Tidak ada data karyawan</div>
+                    <div className="text-xs text-gray-400 mt-1">Coba sesuaikan kata kunci pencarian atau filter Anda</div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
+      {/* ── 2. MOBILE VIEW: RESPONSIVE CARDS (strictly visible on < md) ── */}
+      <div className="block md:hidden space-y-3">
+        {paginatedEmployees.map((e) => {
+          const eIsMarketing = (e.role || '').toUpperCase().includes('MARKETING') || (e.posisi || '').toUpperCase().includes('MARKETING');
+          const handledOutlets = e.managed_outlets || [];
+          const waNumber = (e.no_hp || '').replace(/\D/g, '');
+
+          return (
+            <div 
+              key={e.id} 
+              className="bg-white rounded-2xl border border-gray-200/90 p-4 shadow-xs space-y-3"
+            >
+              {/* Header: Avatar, Name, Role, & Status */}
+              <div className="flex items-start justify-between gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-bold flex items-center justify-center text-sm shrink-0 shadow-xs">
+                    {e.nama ? e.nama.substring(0, 2).toUpperCase() : 'CF'}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-gray-900 text-sm truncate">{e.nama}</div>
+                    <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                      {getRoleBadge(e.role || e.posisi)}
+                    </div>
+                  </div>
+                </div>
+
+                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold shrink-0 ${
+                  e.status_aktif 
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                    : 'bg-gray-100 text-gray-600 border border-gray-200'
+                }`}>
+                  {e.status_aktif ? 'Aktif' : 'Non-Aktif'}
+                </span>
+              </div>
+
+              {/* Handled Outlets (for marketing) */}
+              {eIsMarketing && (
+                <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-2.5 text-xs space-y-1">
+                  <div className="font-bold text-blue-900 flex items-center gap-1.5">
+                    <Store className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <span>Outlet Dihandle: {handledOutlets.length} Toko</span>
+                  </div>
+                  {handledOutlets.length > 0 ? (
+                    <p className="text-[11px] text-blue-800/80 line-clamp-2 leading-relaxed">
+                      {handledOutlets.map((o: any) => o.nama).join(', ')}
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-amber-700 italic">Belum ada outlet ditugaskan</p>
+                  )}
+                </div>
+              )}
+
+              {/* Contact (WhatsApp) & Action Buttons */}
+              <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-2">
+                {e.no_hp ? (
+                  <a
+                    href={`https://wa.me/${waNumber}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition shrink-0"
+                  >
+                    <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>WhatsApp</span>
+                  </a>
+                ) : (
+                  <span className="text-xs text-gray-400 italic">No HP -</span>
+                )}
+
+                {isOwnerOrAdmin && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => openModal(e)}
+                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl text-xs flex items-center gap-1 transition cursor-pointer"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Edit</span>
+                    </button>
+                    <button
+                      disabled={deletingId === e.id}
+                      onClick={() => handleDelete(e)}
+                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs flex items-center gap-1 transition cursor-pointer disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>{deletingId === e.id ? '...' : 'Hapus'}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {paginatedEmployees.length === 0 && (
+          <div className="bg-white rounded-2xl border border-gray-200/90 p-8 text-center text-gray-400">
+            <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+            <div className="font-semibold text-gray-600 text-sm">Tidak ada data karyawan</div>
+            <div className="text-xs text-gray-400 mt-1">Coba sesuaikan kata kunci pencarian atau filter Anda</div>
+          </div>
+        )}
+      </div>
+
+      {/* ── PAGINATION CONTROLS ── */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between bg-white p-3.5 rounded-2xl border border-gray-200/90 shadow-xs">
+          <button
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span>Sebelumnya</span>
+          </button>
+
+          <span className="text-xs font-semibold text-gray-600">
+            Halaman {currentPage} dari {totalPages}
+          </span>
+
+          <button
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+          >
+            <span>Selanjutnya</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* ── MODAL TAMBAH / EDIT KARYAWAN ── */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-xl font-bold mb-4">{isEditing ? 'Edit Karyawan' : 'Tambah Karyawan'}</h3>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-[70] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-5 sm:p-6 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-4">
+              <h3 className="text-lg font-bold text-gray-900">
+                {isEditing ? '✏️ Edit Data Karyawan' : '👤 Tambah Karyawan Baru'}
+              </h3>
+              <button
+                onClick={closeModal}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Nama</label>
-                <input required type="text" className="w-full border rounded p-2 text-sm" value={formData.nama || ''} onChange={e => setFormData({...formData, nama: e.target.value})} />
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Nama Lengkap *
+                </label>
+                <input 
+                  required 
+                  type="text" 
+                  className="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                  placeholder="Contoh: Ahmad Fauzi" 
+                  value={formData.nama || ''} 
+                  onChange={e => setFormData({...formData, nama: e.target.value})} 
+                />
               </div>
+
               <div>
-                <label className="block text-sm font-medium mb-1">Posisi / Role</label>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Role / Divisi Kerja *
+                </label>
                 <select 
-                  className="w-full border rounded p-2 text-sm" 
+                  className="w-full border border-gray-300 rounded-xl p-2.5 text-sm bg-white font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500" 
                   value={formData.posisi || ''} 
                   onChange={e => setFormData({...formData, posisi: e.target.value})}
                   required
                 >
                   <option value="" disabled>Pilih Role...</option>
-                  <option value="Owner">Owner</option>
-                  <option value="Admin">Admin</option>
-                  <option value="Marketing">Marketing</option>
-                  <option value="Staff Produksi">Staff Produksi</option>
+                  <option value="Marketing">Marketing (Penjualan Outlet, Booth, & Buyer)</option>
+                  <option value="Staff Produksi">Staff Produksi (Pengolahan & Pengemasan)</option>
+                  <option value="Admin">Admin (Operasional & Master Data)</option>
+                  <option value="Owner">Owner (Manajemen Eksekutif)</option>
                 </select>
               </div>
 
               {/* Outlet Assignment Section for Role Marketing */}
               {isMarketing && (
-                <div className="bg-blue-50/50 border border-blue-200 rounded-xl p-4 space-y-3">
+                <div className="bg-blue-50/60 border border-blue-200/80 rounded-2xl p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="block text-sm font-semibold text-blue-900 flex items-center gap-1.5">
-                      <Store size={16} className="text-blue-600" />
-                      Pilih Outlet yang Dihandle
+                    <label className="text-xs font-bold text-blue-950 uppercase tracking-wider flex items-center gap-1.5">
+                      <Store className="w-4 h-4 text-blue-600" />
+                      <span>Penugasan Outlet Mitra</span>
                     </label>
-                    <span className="text-xs bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full">
+                    <span className="text-xs bg-blue-600 text-white font-bold px-2.5 py-0.5 rounded-full shadow-2xs">
                       {selectedOutlets.length} Dipilih
                     </span>
                   </div>
-                  <p className="text-xs text-gray-600">
-                    Marketing ini hanya akan melihat dan bisa menginput data/laporan ke outlet yang dipilihkan di bawah ini.
+                  <p className="text-[11px] text-blue-800 leading-relaxed">
+                    Staf marketing ini akan mengelola database, pengiriman, dan pelunasan outlet-outlet terpilih di bawah.
                   </p>
 
                   {/* Search box & Quick Actions */}
                   <div className="space-y-2">
                     <div className="relative">
-                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                       <input
                         type="text"
-                        placeholder="Cari outlet atau wilayah..."
+                        placeholder="Cari nama outlet atau wilayah..."
                         value={outletSearch}
                         onChange={(e) => setOutletSearch(e.target.value)}
-                        className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-gray-300 rounded-lg outline-none focus:border-blue-500"
+                        className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
-                    <div className="flex items-center justify-between text-xs text-gray-500 pt-0.5">
-                      <span>Menampilkan {filteredOutlets.length} dari {allOutlets.length} outlet</span>
+                    <div className="flex items-center justify-between text-[11px] text-gray-500 pt-0.5">
+                      <span>{filteredOutletsModal.length} dari {allOutlets.length} outlet</span>
                       <div className="space-x-2">
                         <button
                           type="button"
                           onClick={selectAllFiltered}
-                          className="text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
+                          className="text-blue-600 hover:text-blue-800 font-bold cursor-pointer"
                         >
                           Pilih Semua
                         </button>
@@ -293,24 +680,24 @@ export function EmployeeManager({ employees, currentUser }: { employees: any[], 
                         <button
                           type="button"
                           onClick={deselectAllFiltered}
-                          className="text-gray-500 hover:text-gray-700 font-medium cursor-pointer"
+                          className="text-gray-500 hover:text-gray-700 font-bold cursor-pointer"
                         >
-                          Hapus Pilihan
+                          Reset
                         </button>
                       </div>
                     </div>
                   </div>
 
                   {/* Outlets Checkbox List */}
-                  <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white divide-y divide-gray-100">
-                    {filteredOutlets.length === 0 ? (
-                      <div className="p-4 text-center text-xs text-gray-500 italic">
+                  <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-xl bg-white divide-y divide-gray-100">
+                    {filteredOutletsModal.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-gray-400 italic">
                         {allOutlets.length === 0 
-                          ? 'Belum ada data outlet di sistem. Silakan tambahkan outlet terlebih dahulu di menu Outlet.'
-                          : 'Tidak ada outlet yang cocok dengan pencarian.'}
+                          ? 'Belum ada data outlet. Tambahkan terlebih dahulu di menu Outlet.'
+                          : 'Tidak ada outlet yang cocok.'}
                       </div>
                     ) : (
-                      filteredOutlets.map((outlet) => {
+                      filteredOutletsModal.map((outlet) => {
                         const isChecked = selectedOutlets.includes(outlet.id);
                         const currentHandler = outlet.pengelola;
                         const isHandledByOther = currentHandler && currentHandler.id !== formData.id;
@@ -319,7 +706,7 @@ export function EmployeeManager({ employees, currentUser }: { employees: any[], 
                           <label
                             key={outlet.id}
                             className={`flex items-start gap-2.5 p-2.5 hover:bg-blue-50/40 cursor-pointer transition-colors ${
-                              isChecked ? 'bg-blue-50/60' : ''
+                              isChecked ? 'bg-blue-50/70' : ''
                             }`}
                           >
                             <input
@@ -332,7 +719,7 @@ export function EmployeeManager({ employees, currentUser }: { employees: any[], 
                               <div className="text-xs font-semibold text-gray-900 flex items-center gap-1.5 flex-wrap">
                                 <span>{outlet.nama}</span>
                                 {outlet.wilayah && (
-                                  <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.2 rounded font-normal">
+                                  <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.2 rounded">
                                     {outlet.wilayah}
                                   </span>
                                 )}
@@ -342,7 +729,7 @@ export function EmployeeManager({ employees, currentUser }: { employees: any[], 
                               )}
                               {isHandledByOther && (
                                 <p className="text-[10px] text-amber-700 font-medium mt-0.5">
-                                  ⚠️ Saat ini dihandle: {currentHandler.nama}
+                                  ⚠️ Pengelola saat ini: {currentHandler.nama}
                                 </p>
                               )}
                             </div>
@@ -355,23 +742,54 @@ export function EmployeeManager({ employees, currentUser }: { employees: any[], 
               )}
 
               <div>
-                <label className="block text-sm font-medium mb-1">No HP (Pastikan awalan 62)</label>
-                <input type="text" className="w-full border rounded p-2 text-sm" value={formData.no_hp || ''} onChange={e => setFormData({...formData, no_hp: e.target.value})} placeholder="628123456789" />
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Nomor WhatsApp (Awalan 62) *
+                </label>
+                <input 
+                  required
+                  type="text" 
+                  className="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                  value={formData.no_hp || ''} 
+                  onChange={e => setFormData({...formData, no_hp: e.target.value})} 
+                  placeholder="Contoh: 6281234567890" 
+                />
+                <p className="text-[11px] text-gray-400 mt-1">Digunakan untuk login OTP dan notifikasi laporan presensi WA.</p>
               </div>
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="status" checked={formData.status_aktif} onChange={e => setFormData({...formData, status_aktif: e.target.checked})} className="cursor-pointer" />
-                <label htmlFor="status" className="text-sm font-medium cursor-pointer">Status Aktif</label>
+
+              <div className="flex items-center gap-2.5 pt-1">
+                <input 
+                  type="checkbox" 
+                  id="status_karyawan" 
+                  checked={formData.status_aktif ?? true} 
+                  onChange={e => setFormData({...formData, status_aktif: e.target.checked})} 
+                  className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer" 
+                />
+                <label htmlFor="status_karyawan" className="text-xs font-bold text-gray-700 cursor-pointer">
+                  Status Karyawan Aktif
+                </label>
               </div>
-              <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                <button type="button" onClick={closeModal} disabled={saving} className="px-4 py-2 border rounded text-sm hover:bg-gray-50 cursor-pointer">Batal</button>
-                <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 font-medium cursor-pointer flex items-center gap-1.5">
-                  {saving ? 'Menyimpan...' : 'Simpan Karyawan'}
+
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-gray-100">
+                <button 
+                  type="button" 
+                  onClick={closeModal} 
+                  disabled={saving} 
+                  className="px-4 py-2 border border-gray-200 rounded-xl text-xs sm:text-sm font-semibold text-gray-600 hover:bg-gray-50 transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={saving} 
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs hover:shadow transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {saving ? 'Menyimpan...' : isEditing ? 'Simpan Perubahan' : 'Simpan Karyawan'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
