@@ -273,16 +273,18 @@ model Employee {
   status_aktif       Boolean            @default(true)
   created_at         DateTime           @default(now())
   updated_at         DateTime           @updatedAt
-  attendances        Attendance[]
-  distribusi_sample  DistribusiSample[]
-  jadwal_kol         JadwalKOL[]
-  marketing_offline  MarketingOffline[]
-  marketing_online   MarketingOnline[]
-  outbound_shipments OutboundShipment[]
-  produksi           Produksi[]
-  stockTransactions  StockTransaction[]
-  stok_bahan         StokBahan[]
-  managed_outlets    Outlet[]           @relation("OutletPengelola")
+  attendances                  Attendance[]
+  distribusi_sample            DistribusiSample[]
+  jadwal_kol                   JadwalKOL[]
+  marketing_offline            MarketingOffline[]
+  marketing_online             MarketingOnline[]
+  outbound_shipments           OutboundShipment[]
+  produksi                     Produksi[]
+  stockTransactions            StockTransaction[]
+  stok_bahan                   StokBahan[]
+  managed_outlets              Outlet[]                     @relation("OutletPengelola")
+  marketing_targets            MarketingTarget[]
+  personal_buyer_transactions  PersonalBuyerTransaction[]
 }
 
 model Attendance {
@@ -303,4 +305,29 @@ model SystemSetting {
   value      String
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+}
+
+model MarketingTarget {
+  id            String   @id @default(uuid())
+  employee_id   String
+  bulan         Int
+  tahun         Int
+  target_omset  Decimal  @default(0) @db.Decimal(14, 2)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+  employee      Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+
+  @@unique([employee_id, bulan, tahun])
+}
+
+model PersonalBuyerTransaction {
+  id            String   @id @default(uuid())
+  employee_id   String
+  buyer_name    String
+  amount        Decimal  @db.Decimal(14, 2)
+  description   String?
+  date          DateTime @default(now())
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+  employee      Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
 }

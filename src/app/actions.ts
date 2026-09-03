@@ -419,3 +419,73 @@ export async function updateWarehouse(id: string, data: any) {
   });
   revalidatePath('/warehouse');
 }
+
+// Marketing Targets (Admin/Owner only)
+export async function setMarketingTarget(employeeId: string, bulan: number, tahun: number, targetOmset: number) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  if (role !== 'OWNER' && role !== 'ADMIN') {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat mengatur target marketing.');
+  }
+
+  await prisma.marketingTarget.upsert({
+    where: {
+      employee_id_bulan_tahun: { employee_id: employeeId, bulan, tahun }
+    },
+    update: { target_omset: targetOmset },
+    create: {
+      employee_id: employeeId,
+      bulan,
+      tahun,
+      target_omset: targetOmset,
+    }
+  });
+
+  revalidatePath('/marketing');
+}
+
+// Personal Buyer Transactions
+export async function createPersonalBuyerTransaction(data: { buyer_name: string; amount: number; description?: string; date?: string }) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const role = (user.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+  const isMarketing = role === 'MARKETING' || role.includes('MARKETING');
+
+  if (!isOwnerOrAdmin && !isMarketing) {
+    throw new Error('Akses ditolak: Hanya Marketing atau Admin/Owner yang dapat menambahkan transaksi personal buyer.');
+  }
+
+  const result = await prisma.personalBuyerTransaction.create({
+    data: {
+      employee_id: user.id,
+      buyer_name: data.buyer_name,
+      amount: data.amount,
+      description: data.description || null,
+      date: data.date ? new Date(data.date) : new Date(),
+    }
+  });
+
+  revalidatePath('/marketing');
+  return result;
+}
+
+export async function deletePersonalBuyerTransaction(id: string) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const role = (user.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+
+  const tx = await prisma.personalBuyerTransaction.findUnique({ where: { id } });
+  if (!tx) throw new Error('Transaksi tidak ditemukan');
+
+  // Marketing can only delete their own transactions
+  if (!isOwnerOrAdmin && tx.employee_id !== user.id) {
+    throw new Error('Akses ditolak: Anda hanya dapat menghapus transaksi milik Anda sendiri.');
+  }
+
+  await prisma.personalBuyerTransaction.delete({ where: { id } });
+  revalidatePath('/marketing');
+}
