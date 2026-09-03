@@ -5,7 +5,25 @@ import { createOutlet, updateOutlet, deleteOutlet, addPiutang, addPelunasan, adj
 import { mutate } from 'swr';
 import { updateOutletProductPrice } from './actions';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { RotateCcw } from 'lucide-react';
+import { 
+  RotateCcw, 
+  Package, 
+  CreditCard, 
+  CheckCircle2, 
+  AlertCircle, 
+  Phone, 
+  MapPin, 
+  User, 
+  Pencil, 
+  Trash2, 
+  X, 
+  ExternalLink, 
+  MessageCircle, 
+  TrendingUp, 
+  Truck, 
+  Receipt,
+  Info
+} from 'lucide-react';
 
 export function OutletManager({ outlets, currentUser, employees }: { outlets: any[], currentUser: any, employees: any[] }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -293,344 +311,693 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
       </div>
 
       {/* Detail Modal */}
-      {isDetailModalOpen && selectedOutlet && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl p-6 max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-start md:items-center mb-4 border-b pb-4">
-              <div>
-                <h3 className="text-2xl font-bold">{selectedOutlet.nama}</h3>
-                <div className="flex items-center gap-2 mt-1">
-                  {selectedOutlet.wilayah && <span className="text-sm text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md font-medium">{selectedOutlet.wilayah}</span>}
-                  <span className="text-xs text-gray-500 font-medium">Pengelola: {selectedOutlet.pengelola?.nama || 'Pusat'}</span>
+      {isDetailModalOpen && selectedOutlet && (() => {
+        const totalPhysicalValue = (selectedOutlet.stocks || []).reduce((acc: number, stock: any) => {
+          const price = Number(stock.harga_beli || stock.product?.base_price || 0);
+          return acc + (Number(stock.quantity || 0) * price);
+        }, 0);
+
+        const totalPhysicalPcs = (selectedOutlet.stocks || []).reduce((acc: number, stock: any) => {
+          return acc + Number(stock.quantity || 0);
+        }, 0);
+
+        const cleanPhone = (selectedOutlet.tlp || '').replace(/\D/g, '');
+        const waNumber = cleanPhone.startsWith('0') ? '62' + cleanPhone.slice(1) : (cleanPhone.startsWith('8') ? '62' + cleanPhone : cleanPhone);
+        const waUrl = waNumber ? `https://wa.me/${waNumber}` : null;
+        const gmapsUrl = selectedOutlet.alamat ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedOutlet.nama + ' ' + selectedOutlet.alamat)}` : null;
+
+        return (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4 md:p-6 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[96vh] md:max-h-[90vh] flex flex-col border border-slate-100 overflow-hidden">
+              
+              {/* Modern Header */}
+              <div className="p-4 sm:p-5 border-b border-slate-100 bg-gradient-to-r from-slate-50/80 via-white to-slate-50/80">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                        selectedOutlet.status?.toLowerCase() === 'active' 
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60' 
+                          : 'bg-rose-50 text-rose-700 border border-rose-200/60'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${selectedOutlet.status?.toLowerCase() === 'active' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+                        {selectedOutlet.status || 'Active'}
+                      </span>
+                      {selectedOutlet.wilayah && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                          <MapPin size={11} />
+                          {selectedOutlet.wilayah}
+                        </span>
+                      )}
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-100">
+                        <User size={11} />
+                        {selectedOutlet.pengelola?.nama || 'Dikelola Pusat'}
+                      </span>
+                    </div>
+                    <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">{selectedOutlet.nama}</h3>
+                  </div>
+
+                  {/* Header Actions */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {waUrl && (
+                      <a 
+                        href={waUrl} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-all active:scale-95 cursor-pointer"
+                        title="Chat WhatsApp PIC"
+                      >
+                        <MessageCircle size={13} />
+                        <span>Chat WA</span>
+                      </a>
+                    )}
+                    <button 
+                      onClick={() => openModal(selectedOutlet)} 
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+                    >
+                      <Pencil size={13} />
+                      <span>Edit Data</span>
+                    </button>
+                    {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN') && (
+                      <button 
+                        disabled={isDeleting}
+                        onClick={async () => {
+                          const deleted = await handleDelete(selectedOutlet.id);
+                          if (deleted) closeDetailModal();
+                        }} 
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-semibold transition-all ${
+                          isDeleting ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+                        }`}
+                      >
+                        {isDeleting ? (
+                          <>
+                            <div className="w-3 h-3 border-2 border-rose-600 border-t-transparent rounded-full animate-spin" />
+                            <span>Menghapus...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 size={13} />
+                            <span>Hapus</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                    <button 
+                      onClick={closeDetailModal} 
+                      className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer ml-1"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => { openModal(selectedOutlet); }} className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-sm font-medium transition-colors">
-                  Edit Data
-                </button>
-                {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN') && (
-                  <button 
-                    disabled={isDeleting}
-                    onClick={async () => {
-                      const deleted = await handleDelete(selectedOutlet.id);
-                      if (deleted) closeDetailModal();
-                    }} 
-                    className={`px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
-                      isDeleting ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
-                    }`}
-                  >
-                    {isDeleting ? (
-                      <>
-                        <div className="w-3.5 h-3.5 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
-                        <span>Menghapus...</span>
-                      </>
-                    ) : (
-                      <span>Hapus</span>
-                    )}
-                  </button>
-                )}
-                <button onClick={closeDetailModal} className="text-gray-400 hover:text-gray-800 ml-1 text-2xl font-light">&times;</button>
-              </div>
-            </div>
-            
-            <div className="overflow-y-auto flex-1 pr-2 space-y-5">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="bg-gray-50 p-3 rounded-lg border">
-                  <div className="text-xs text-gray-500 font-medium mb-1">Status</div>
-                  <div className="font-bold">
-                    <span className="px-2 py-1 rounded-full text-xs font-bold uppercase" style={{
-                      background: selectedOutlet.status?.toLowerCase() === 'active' ? '#dcfce7' : '#fee2e2',
-                      color: selectedOutlet.status?.toLowerCase() === 'active' ? '#15803d' : '#991b1b',
-                    }}>
-                      {selectedOutlet.status || 'Non-Active'}
+
+              {/* KPI Metrics Grid (Solusi 2: Pemisahan Valuasi Stok vs Finansial) */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 p-3 sm:p-5 bg-slate-50/60 border-b border-slate-100">
+                {/* Valuasi Stok Fisik */}
+                <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1">
+                    <span>Valuasi Stok Fisik</span>
+                    <span className="p-1 rounded-md bg-blue-50 text-blue-600"><Package size={14} /></span>
+                  </div>
+                  <div>
+                    <div className="text-base sm:text-lg font-black text-slate-900">
+                      Rp {totalPhysicalValue.toLocaleString('id-ID')}
+                    </div>
+                    <div className="text-[11px] text-blue-600 font-medium mt-0.5">
+                      {totalPhysicalPcs} pcs ikan di freezer
+                    </div>
+                  </div>
+                </div>
+
+                {/* Total Tagihan */}
+                <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1">
+                    <span>Total Tagihan Resmi</span>
+                    <span className="p-1 rounded-md bg-slate-100 text-slate-600"><Receipt size={14} /></span>
+                  </div>
+                  <div>
+                    <div className="text-base sm:text-lg font-black text-slate-800">
+                      Rp {Number(selectedOutlet.tagihan || 0).toLocaleString('id-ID')}
+                    </div>
+                    <div className="text-[11px] text-slate-400 font-normal mt-0.5">
+                      Akumulasi kiriman & nota
+                    </div>
+                  </div>
+                </div>
+
+                {/* Total Pembayaran */}
+                <div className="bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1">
+                    <span>Pembayaran Masuk</span>
+                    <span className="p-1 rounded-md bg-emerald-50 text-emerald-600"><CheckCircle2 size={14} /></span>
+                  </div>
+                  <div>
+                    <div className="text-base sm:text-lg font-black text-emerald-700">
+                      Rp {Number(selectedOutlet.payment || 0).toLocaleString('id-ID')}
+                    </div>
+                    <div className="text-[11px] text-emerald-600 font-medium mt-0.5">
+                      Setoran lunas tercatat
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sisa Tagihan */}
+                <div className={`p-3 rounded-xl border shadow-xs flex flex-col justify-between ${
+                  Number(selectedOutlet.sisa_tagihan || 0) > 0 
+                    ? 'bg-rose-50/70 border-rose-200' 
+                    : 'bg-emerald-50/70 border-emerald-200'
+                }`}>
+                  <div className="flex items-center justify-between text-xs font-semibold mb-1">
+                    <span className={Number(selectedOutlet.sisa_tagihan || 0) > 0 ? 'text-rose-700' : 'text-emerald-700'}>
+                      Sisa Tagihan
+                    </span>
+                    <span className={`p-1 rounded-md ${
+                      Number(selectedOutlet.sisa_tagihan || 0) > 0 ? 'bg-rose-200/60 text-rose-700' : 'bg-emerald-200/60 text-emerald-700'
+                    }`}>
+                      <CreditCard size={14} />
                     </span>
                   </div>
-                </div>
-                <div className="bg-gray-50 p-3 rounded-lg border">
-                  <div className="text-xs text-gray-500 font-medium mb-1">No Telepon</div>
-                  <div className="font-bold text-sm">{selectedOutlet.tlp || '-'}</div>
-                </div>
-                <div className="bg-gray-50 p-3 rounded-lg border">
-                  <div className="text-xs text-gray-500 font-medium mb-1">Total Tagihan</div>
-                  <div className="font-bold text-sm text-slate-700">Rp {Number(selectedOutlet.tagihan).toLocaleString('id-ID')}</div>
-                </div>
-                <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
-                  <div className="text-xs text-blue-700 font-medium mb-1">Sisa Tagihan</div>
-                  <div className={`font-bold text-sm ${Number(selectedOutlet.sisa_tagihan) > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    Rp {Number(selectedOutlet.sisa_tagihan).toLocaleString('id-ID')}
+                  <div>
+                    <div className={`text-base sm:text-lg font-black ${
+                      Number(selectedOutlet.sisa_tagihan || 0) > 0 ? 'text-rose-600' : 'text-emerald-700'
+                    }`}>
+                      Rp {Number(selectedOutlet.sisa_tagihan || 0).toLocaleString('id-ID')}
+                    </div>
+                    <div className={`text-[11px] font-semibold mt-0.5 ${
+                      Number(selectedOutlet.sisa_tagihan || 0) > 0 ? 'text-rose-600' : 'text-emerald-700'
+                    }`}>
+                      {Number(selectedOutlet.sisa_tagihan || 0) > 0 ? '⚠️ Menunggu Pelunasan' : '✅ Lunas / Nihil'}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="flex gap-2 p-1 bg-gray-100 rounded-lg overflow-x-auto">
-                <button onClick={() => setActiveTab('STOK')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${activeTab === 'STOK' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}>Stok & Harga</button>
-                <button onClick={() => setActiveTab('PENGIRIMAN')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${activeTab === 'PENGIRIMAN' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}>Riwayat Pengiriman</button>
-                <button onClick={() => setActiveTab('KEUANGAN')} className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${activeTab === 'KEUANGAN' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}>Keuangan & Tagihan</button>
+              {/* Segmented Tabs Navigation */}
+              <div className="px-3 sm:px-5 pt-2 border-b border-slate-100 flex gap-2 overflow-x-auto no-scrollbar bg-white">
+                <button 
+                  onClick={() => setActiveTab('STOK')}
+                  className={`pb-2.5 px-3 text-xs sm:text-sm font-semibold transition-all border-b-2 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                    activeTab === 'STOK' 
+                      ? 'border-blue-600 text-blue-600' 
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Package size={15} />
+                  <span>Stok & Harga</span>
+                  <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-600 font-bold">
+                    {selectedOutlet.stocks?.length || 0}
+                  </span>
+                </button>
+
+                <button 
+                  onClick={() => setActiveTab('KEUANGAN')}
+                  className={`pb-2.5 px-3 text-xs sm:text-sm font-semibold transition-all border-b-2 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                    activeTab === 'KEUANGAN' 
+                      ? 'border-blue-600 text-blue-600' 
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <CreditCard size={15} />
+                  <span>Keuangan & Tagihan</span>
+                  {Number(selectedOutlet.sisa_tagihan || 0) > 0 && (
+                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                  )}
+                </button>
+
+                <button 
+                  onClick={() => setActiveTab('PENGIRIMAN')}
+                  className={`pb-2.5 px-3 text-xs sm:text-sm font-semibold transition-all border-b-2 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                    activeTab === 'PENGIRIMAN' 
+                      ? 'border-blue-600 text-blue-600' 
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Truck size={15} />
+                  <span>Riwayat Pengiriman</span>
+                  <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-600 font-bold">
+                    {selectedOutlet.shipments?.length || 0}
+                  </span>
+                </button>
+
+                <button 
+                  onClick={() => setActiveTab('INFO')}
+                  className={`pb-2.5 px-3 text-xs sm:text-sm font-semibold transition-all border-b-2 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                    activeTab === 'INFO' 
+                      ? 'border-blue-600 text-blue-600' 
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Info size={15} />
+                  <span>Detail Kontak & Alamat</span>
+                </button>
               </div>
 
-              {activeTab === 'STOK' && (
-                <div>
-                  {selectedOutlet.stocks && selectedOutlet.stocks.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {selectedOutlet.stocks.map((stock: any) => (
-                        <div key={stock.id} className="bg-white p-3 rounded-lg border shadow-sm">
-                          <div className="flex justify-between items-start mb-2">
-                            <div className="font-bold text-slate-800 text-sm">{stock.product.name}</div>
-                          </div>
-                          
-                          {/* Stock Section */}
-                          <div className="mb-3 pb-3 border-b border-gray-100">
-                            {editingStockId === stock.id ? (
-                              <div className="space-y-2 bg-slate-50 p-2 rounded border">
-                                <div className="text-xs font-semibold text-slate-600">Sesuaikan Stok</div>
-                                <div className="flex gap-2">
-                                  <input type="number" className="border rounded px-2 py-1 text-sm w-20" value={newStockQty} onChange={e => setNewStockQty(Number(e.target.value))} />
-                                  <input type="text" className="border rounded px-2 py-1 text-sm flex-1" placeholder="Catatan..." value={stockNote} onChange={e => setStockNote(e.target.value)} />
+              {/* Scrollable Tab Content Body */}
+              <div className="overflow-y-auto flex-1 p-3 sm:p-5 space-y-4">
+                
+                {/* TAB 1: STOK & HARGA */}
+                {activeTab === 'STOK' && (
+                  <div className="space-y-5">
+                    {selectedOutlet.stocks && selectedOutlet.stocks.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {selectedOutlet.stocks.map((stock: any) => {
+                          const unitPrice = Number(stock.harga_beli || stock.product?.base_price || 0);
+                          const subtotal = stock.quantity * unitPrice;
+                          const isLowStock = stock.quantity > 0 && stock.quantity <= 10;
+                          const isOutOfStock = stock.quantity === 0;
+
+                          return (
+                            <div key={stock.id} className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs hover:border-blue-200 transition-all flex flex-col justify-between">
+                              <div>
+                                <div className="flex justify-between items-start gap-2 mb-2">
+                                  <div>
+                                    <div className="font-bold text-slate-800 text-sm">{stock.product.name}</div>
+                                    <div className="text-[10px] font-mono text-slate-400">{stock.product.sku}</div>
+                                  </div>
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                    isOutOfStock 
+                                      ? 'bg-rose-50 text-rose-600 border border-rose-200' 
+                                      : isLowStock 
+                                        ? 'bg-amber-50 text-amber-600 border border-amber-200' 
+                                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  }`}>
+                                    {isOutOfStock ? 'Habis' : isLowStock ? 'Menipis' : 'Aman'}
+                                  </span>
                                 </div>
-                                <div className="flex gap-2 pt-1">
-                                  <button 
-                                    disabled={isSavingStock}
-                                    onClick={async () => {
-                                      setIsSavingStock(true);
-                                      try {
-                                        await adjustOutletStock(stock.id, newStockQty, stockNote);
-                                        const updated = { ...selectedOutlet };
-                                        const sIdx = updated.stocks.findIndex((s: any) => s.id === stock.id);
-                                        if(sIdx > -1) updated.stocks[sIdx].quantity = newStockQty;
-                                        setSelectedOutlet(updated);
-                                        setEditingStockId(null);
-                                      } catch (err: any) {
-                                        alert(err.message || 'Gagal mengubah stok');
-                                      } finally {
-                                        setIsSavingStock(false);
-                                      }
-                                    }} 
-                                    className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded font-medium flex items-center gap-1 disabled:opacity-60 cursor-pointer"
-                                  >
-                                    {isSavingStock ? (
-                                      <>
+
+                                {/* Stock Quantity & Subtotal Value */}
+                                <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 mb-3">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs text-slate-500 font-medium">Stok Fisik:</span>
+                                    <span className="text-sm font-black text-slate-800">{stock.quantity} pcs</span>
+                                  </div>
+                                  <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-200/60 text-[11px]">
+                                    <span className="text-slate-400">Valuasi Aset:</span>
+                                    <span className="font-bold text-blue-700">Rp {subtotal.toLocaleString('id-ID')}</span>
+                                  </div>
+                                </div>
+
+                                {/* Stock Edit Form */}
+                                {editingStockId === stock.id ? (
+                                  <div className="space-y-2 bg-blue-50/50 p-2.5 rounded-lg border border-blue-200 mb-3">
+                                    <div className="text-[11px] font-bold text-blue-900">Sesuaikan Stok Fisik</div>
+                                    <div className="flex gap-1.5">
+                                      <input 
+                                        type="number" 
+                                        className="border rounded px-2 py-1 text-xs w-16 bg-white font-bold" 
+                                        value={newStockQty} 
+                                        onChange={e => setNewStockQty(Number(e.target.value))} 
+                                      />
+                                      <input 
+                                        type="text" 
+                                        className="border rounded px-2 py-1 text-xs flex-1 bg-white" 
+                                        placeholder="Catatan..." 
+                                        value={stockNote} 
+                                        onChange={e => setStockNote(e.target.value)} 
+                                      />
+                                    </div>
+                                    <div className="flex gap-2 pt-0.5">
+                                      <button 
+                                        disabled={isSavingStock}
+                                        onClick={async () => {
+                                          setIsSavingStock(true);
+                                          try {
+                                            await adjustOutletStock(stock.id, newStockQty, stockNote);
+                                            const updated = { ...selectedOutlet };
+                                            const sIdx = updated.stocks.findIndex((s: any) => s.id === stock.id);
+                                            if(sIdx > -1) updated.stocks[sIdx].quantity = newStockQty;
+                                            setSelectedOutlet(updated);
+                                            setEditingStockId(null);
+                                          } catch (err: any) {
+                                            alert(err.message || 'Gagal mengubah stok');
+                                          } finally {
+                                            setIsSavingStock(false);
+                                          }
+                                        }} 
+                                        className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded font-medium flex items-center gap-1 disabled:opacity-60 cursor-pointer"
+                                      >
+                                        {isSavingStock ? (
+                                          <>
+                                            <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                            <span>Menyimpan...</span>
+                                          </>
+                                        ) : (
+                                          <span>Simpan Stok</span>
+                                        )}
+                                      </button>
+                                      <button disabled={isSavingStock} onClick={() => setEditingStockId(null)} className="text-xs text-gray-500 hover:text-gray-700">Batal</button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  (currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN') && (
+                                    <div className="mb-3">
+                                      <button 
+                                        onClick={() => { setEditingStockId(stock.id); setNewStockQty(stock.quantity); setStockNote(''); }} 
+                                        className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 cursor-pointer"
+                                      >
+                                        <Pencil size={11} />
+                                        <span>Sesuaikan Stok Fisik</span>
+                                      </button>
+                                    </div>
+                                  )
+                                )}
+
+                                {/* Price Edit Form */}
+                                {editingPriceId === stock.id ? (
+                                  <div className="flex items-center gap-1.5 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                                    <input 
+                                      type="number" 
+                                      className="border rounded px-2 py-1 text-xs w-full bg-white font-bold" 
+                                      value={newPrice} 
+                                      onChange={e => setNewPrice(Number(e.target.value))} 
+                                    />
+                                    <button 
+                                      disabled={isSavingPrice}
+                                      onClick={async () => {
+                                        setIsSavingPrice(true);
+                                        try {
+                                          await updateOutletProductPrice(stock.id, newPrice);
+                                          const updated = { ...selectedOutlet };
+                                          const sIdx = updated.stocks.findIndex((s: any) => s.id === stock.id);
+                                          if(sIdx > -1) updated.stocks[sIdx].harga_beli = newPrice;
+                                          setSelectedOutlet(updated);
+                                          setEditingPriceId(null);
+                                        } catch (err: any) {
+                                          alert(err.message || 'Gagal mengubah harga');
+                                        } finally {
+                                          setIsSavingPrice(false);
+                                        }
+                                      }} 
+                                      className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded font-medium flex items-center gap-1 disabled:opacity-60 cursor-pointer"
+                                    >
+                                      {isSavingPrice ? (
                                         <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                        <span>Menyimpan...</span>
-                                      </>
-                                    ) : (
-                                      <span>Simpan Stok</span>
-                                    )}
-                                  </button>
-                                  <button disabled={isSavingStock} onClick={() => setEditingStockId(null)} className="text-xs text-gray-500 hover:text-gray-700">Batal</button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-between">
-                                <div className="text-xs text-slate-500">Stok Tersedia: <span className="font-bold text-slate-700 text-sm">{stock.quantity} pcs</span></div>
-                                {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN') && (
-                                  <button onClick={() => { setEditingStockId(stock.id); setNewStockQty(stock.quantity); setStockNote(''); }} className="text-xs text-blue-600 font-medium hover:underline">✎ Edit Stok</button>
+                                      ) : (
+                                        <span>Simpan</span>
+                                      )}
+                                    </button>
+                                    <button disabled={isSavingPrice} onClick={() => setEditingPriceId(null)} className="text-xs text-gray-500 hover:text-gray-700">Batal</button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                                    <div className="text-xs text-slate-500 font-medium">Harga Jual:</div>
+                                    <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                                      Rp {unitPrice.toLocaleString('id-ID')}
+                                      <button 
+                                        onClick={() => { setEditingPriceId(stock.id); setNewPrice(unitPrice); }} 
+                                        className="text-slate-400 hover:text-blue-600 p-0.5 cursor-pointer"
+                                        title="Edit Harga Khusus Outlet"
+                                      >
+                                        <Pencil size={11} />
+                                      </button>
+                                    </div>
+                                  </div>
                                 )}
                               </div>
-                            )}
-                          </div>
-                          
-                          {/* Price Section */}
-                          <div>
-                            {editingPriceId === stock.id ? (
-                              <div className="flex items-center gap-2 bg-slate-50 p-2 rounded border">
-                                <input type="number" className="border rounded px-2 py-1 text-sm w-full" value={newPrice} onChange={e => setNewPrice(Number(e.target.value))} />
-                                <button 
-                                  disabled={isSavingPrice}
-                                  onClick={async () => {
-                                    setIsSavingPrice(true);
-                                    try {
-                                      await updateOutletProductPrice(stock.id, newPrice);
-                                      const updated = { ...selectedOutlet };
-                                      const sIdx = updated.stocks.findIndex((s: any) => s.id === stock.id);
-                                      if(sIdx > -1) updated.stocks[sIdx].harga_beli = newPrice;
-                                      setSelectedOutlet(updated);
-                                      setEditingPriceId(null);
-                                    } catch (err: any) {
-                                      alert(err.message || 'Gagal mengubah harga');
-                                    } finally {
-                                      setIsSavingPrice(false);
-                                    }
-                                  }} 
-                                  className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded font-medium flex items-center gap-1 disabled:opacity-60 cursor-pointer"
-                                >
-                                  {isSavingPrice ? (
-                                    <>
-                                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                      <span>Menyimpan...</span>
-                                    </>
-                                  ) : (
-                                    <span>Simpan</span>
-                                  )}
-                                </button>
-                                <button disabled={isSavingPrice} onClick={() => setEditingPriceId(null)} className="text-xs text-gray-500 hover:text-gray-700">Batal</button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-between">
-                                <div className="text-xs text-gray-500">Harga Khusus Jual</div>
-                                <div className="font-bold text-blue-700 text-sm flex items-center gap-2">
-                                  Rp {Number(stock.harga_beli || stock.product.base_price).toLocaleString('id-ID')}
-                                  <button onClick={() => { setEditingPriceId(stock.id); setNewPrice(Number(stock.harga_beli || stock.product.base_price)); }} className="text-blue-500 hover:text-blue-700">✎</button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="bg-gray-50 p-6 rounded-lg border text-center text-sm text-gray-500 italic">
-                      Belum ada stok produk di outlet ini.
-                    </div>
-                  )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="bg-slate-50 p-8 rounded-xl border border-dashed text-center text-sm text-slate-400 italic">
+                        Belum ada data produk untuk outlet ini.
+                      </div>
+                    )}
 
-                  <div className="mt-6">
-                    <div className="text-sm font-medium text-gray-500 mb-2">Riwayat Penyesuaian Stok</div>
-                    <div className="bg-white border rounded-lg overflow-hidden">
+                    {/* Riwayat Penyesuaian Stok (Audit Trail) */}
+                    <div className="mt-4 pt-4 border-t border-slate-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                          <Package size={14} className="text-slate-500" />
+                          <span>Audit Trail Penyesuaian Stok</span>
+                        </div>
+                      </div>
+                      <div className="bg-white border rounded-xl overflow-hidden shadow-xs">
+                        <Table>
+                          <TableHeader className="bg-slate-50">
+                            <TableRow>
+                              <TableHead className="text-xs">Tanggal</TableHead>
+                              <TableHead className="text-xs">Produk</TableHead>
+                              <TableHead className="text-xs">Penyesuaian</TableHead>
+                              <TableHead className="text-xs">Stok Akhir</TableHead>
+                              <TableHead className="text-xs">Keterangan & PIC</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {selectedOutlet.stock_history?.map((tx: any) => (
+                              <TableRow key={tx.id}>
+                                <TableCell className="text-xs">{new Date(tx.date).toLocaleDateString('id-ID')}</TableCell>
+                                <TableCell className="text-xs font-medium">{tx.product?.name || '-'}</TableCell>
+                                <TableCell className="text-xs">
+                                  <span className={`font-bold px-1.5 py-0.5 rounded text-[11px] ${
+                                    tx.flow === 'IN' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                                  }`}>
+                                    {tx.flow === 'IN' ? '+' : '-'}{tx.qty}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-xs font-bold text-slate-700">{tx.balance} pcs</TableCell>
+                                <TableCell className="text-xs">
+                                  <div className="text-slate-600">{tx.description || '-'}</div>
+                                  {tx.employee && <div className="text-[10px] text-indigo-500 font-medium mt-0.5">PIC: {tx.employee.nama}</div>}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                            {(!selectedOutlet.stock_history || selectedOutlet.stock_history.length === 0) && (
+                              <TableRow>
+                                <TableCell colSpan={5} className="text-center text-xs text-slate-400 py-6">Belum ada riwayat penyesuaian stok.</TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 2: KEUANGAN & TAGIHAN */}
+                {activeTab === 'KEUANGAN' && (
+                  <div className="space-y-4">
+                    {/* Guidance Banner (Solusi 2) */}
+                    <div className="bg-blue-50/80 border border-blue-200/80 rounded-xl p-3 flex items-start gap-2.5 text-xs text-blue-900 leading-relaxed shadow-xs">
+                      <Info size={16} className="text-blue-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold">Ketentuan Finansial:</span> Tagihan bertambah resmi saat ada pengiriman produk (Surat Jalan) dan nota piutang. Pembayaran tercatat dari bukti setoran pelunasan. Mengubah angka stok fisik di freezer toko tidak akan menghapus atau memanipulasi histori uang yang sudah dibayarkan.
+                      </div>
+                    </div>
+
+                    {/* Action Bar */}
+                    <div className="flex flex-wrap gap-2 justify-between items-center bg-slate-50/70 p-3 rounded-xl border border-slate-100">
+                      <div>
+                        {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN') && (
+                          <button 
+                            type="button"
+                            onClick={handleResetFinance}
+                            disabled={isResettingFinance}
+                            className="bg-red-50 text-red-700 hover:bg-red-100 px-3 py-1.5 rounded-lg font-medium text-xs transition-colors border border-red-200 flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                            title="Reset tagihan, pembayaran, dan riwayat transaksi outlet ini menjadi Rp 0 (Khusus Admin/Owner)"
+                          >
+                            {isResettingFinance ? (
+                              <>
+                                <div className="w-3.5 h-3.5 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+                                <span>Mereset Keuangan...</span>
+                              </>
+                            ) : (
+                              <>
+                                <RotateCcw size={13} className="text-red-600" />
+                                <span>Reset Keuangan (Rp 0)</span>
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => openTxModal('PIUTANG')} 
+                          className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg font-semibold text-xs transition-all shadow-xs flex items-center gap-1 cursor-pointer active:scale-95"
+                        >
+                          <span className="text-base leading-none">+</span> Input Piutang
+                        </button>
+                        <button 
+                          onClick={() => openTxModal('PELUNASAN')} 
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-semibold text-xs transition-all shadow-xs flex items-center gap-1 cursor-pointer active:scale-95"
+                        >
+                          <span className="text-base leading-none">+</span> Input Pelunasan
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Financial Transactions Table */}
+                    <div className="bg-white border rounded-xl overflow-hidden shadow-xs">
                       <Table>
                         <TableHeader className="bg-slate-50">
                           <TableRow>
                             <TableHead className="text-xs">Tanggal</TableHead>
-                            <TableHead className="text-xs">Produk</TableHead>
-                            <TableHead className="text-xs">Penyesuaian</TableHead>
-                            <TableHead className="text-xs">Stok Akhir</TableHead>
-                            <TableHead className="text-xs">Keterangan & PIC</TableHead>
+                            <TableHead className="text-xs">Jenis</TableHead>
+                            <TableHead className="text-xs">Keterangan</TableHead>
+                            <TableHead className="text-right text-xs">Jumlah</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {selectedOutlet.stock_history?.map((tx: any) => (
-                            <TableRow key={tx.id}>
-                              <TableCell className="text-xs">{new Date(tx.date).toLocaleDateString('id-ID')}</TableCell>
-                              <TableCell className="text-xs font-medium">{tx.product.name}</TableCell>
-                              <TableCell className="text-xs">
-                                <span className={`font-bold ${tx.flow === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
-                                  {tx.flow === 'IN' ? '+' : '-'}{tx.qty}
-                               </span>
-                              </TableCell>
-                              <TableCell className="text-xs font-bold">{tx.balance}</TableCell>
-                              <TableCell className="text-xs">
-                                <div className="text-gray-600">{tx.description}</div>
-                                {tx.employee && <div className="text-[10px] text-indigo-500 font-medium mt-0.5">PIC: {tx.employee.nama}</div>}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                          {(!selectedOutlet.stock_history || selectedOutlet.stock_history.length === 0) && (
+                          {selectedOutlet.transactions?.map((tx: any) => {
+                            const isPayment = tx.type === 'PELUNASAN';
+                            return (
+                              <TableRow key={tx.id}>
+                                <TableCell className="text-xs text-slate-600">{new Date(tx.date).toLocaleDateString('id-ID')}</TableCell>
+                                <TableCell className="text-xs">
+                                  <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] uppercase tracking-wider ${
+                                    isPayment ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  }`}>
+                                    {tx.type}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-xs text-slate-600">{tx.description || '-'}</TableCell>
+                                <TableCell className={`text-right text-sm font-black ${
+                                  isPayment ? 'text-emerald-700' : 'text-rose-600'
+                                }`}>
+                                  Rp {Number(tx.amount).toLocaleString('id-ID')}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                          {(!selectedOutlet.transactions || selectedOutlet.transactions.length === 0) && (
                             <TableRow>
-                              <TableCell colSpan={5} className="text-center text-xs text-gray-400 py-6">Belum ada riwayat penyesuaian stok.</TableCell>
+                              <TableCell colSpan={4} className="text-center text-xs text-slate-400 py-8">Belum ada riwayat transaksi keuangan.</TableCell>
                             </TableRow>
                           )}
                         </TableBody>
                       </Table>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {activeTab === 'PENGIRIMAN' && (
-                <div>
-                  <div className="bg-white border rounded-lg overflow-hidden">
-                    <Table>
-                      <TableHeader className="bg-slate-50">
-                        <TableRow>
-                          <TableHead className="text-xs">Tanggal</TableHead>
-                          <TableHead className="text-xs">Status</TableHead>
-                          <TableHead className="text-xs">Produk Dikirim</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {selectedOutlet.shipments?.map((ship: any) => (
-                          <TableRow key={ship.id}>
-                            <TableCell className="text-xs">{new Date(ship.date).toLocaleDateString('id-ID')}</TableCell>
-                            <TableCell className="text-xs font-bold text-blue-600">{ship.status}</TableCell>
-                            <TableCell className="text-xs">
-                              <ul className="list-disc pl-4 space-y-1">
-                                {ship.items?.map((item: any) => (
-                                  <li key={item.id}>{item.product.name} ({item.qty} pcs)</li>
-                                ))}
-                              </ul>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                        {(!selectedOutlet.shipments || selectedOutlet.shipments.length === 0) && (
+                {/* TAB 3: RIWAYAT PENGIRIMAN */}
+                {activeTab === 'PENGIRIMAN' && (
+                  <div className="space-y-3">
+                    <div className="bg-white border rounded-xl overflow-hidden shadow-xs">
+                      <Table>
+                        <TableHeader className="bg-slate-50">
                           <TableRow>
-                            <TableCell colSpan={3} className="text-center text-xs text-gray-400 py-6">Belum ada riwayat pengiriman.</TableCell>
+                            <TableHead className="text-xs">Tanggal</TableHead>
+                            <TableHead className="text-xs">Status</TableHead>
+                            <TableHead className="text-xs">Rincian Produk Dikirim</TableHead>
                           </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {selectedOutlet.shipments?.map((ship: any) => (
+                            <TableRow key={ship.id}>
+                              <TableCell className="text-xs text-slate-600 font-medium">
+                                {new Date(ship.date).toLocaleDateString('id-ID')}
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 font-bold text-[10px] rounded-full">
+                                  {ship.status}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                <ul className="space-y-1">
+                                  {ship.items?.map((item: any) => (
+                                    <li key={item.id} className="flex items-center gap-1.5 text-slate-700 font-medium">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                      <span>{item.product?.name || item.product_id}</span>
+                                      <span className="font-bold text-slate-900">({item.qty} pcs)</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                          {(!selectedOutlet.shipments || selectedOutlet.shipments.length === 0) && (
+                            <TableRow>
+                              <TableCell colSpan={3} className="text-center text-xs text-slate-400 py-8">Belum ada riwayat pengiriman.</TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {activeTab === 'KEUANGAN' && (
-                <div className="space-y-3">
-                  <div className="flex flex-wrap gap-2 justify-end items-center">
-                    {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN') && (
-                      <button 
-                        type="button"
-                        onClick={handleResetFinance}
-                        disabled={isResettingFinance}
-                        className="bg-red-50 text-red-700 hover:bg-red-100 px-3 py-1.5 rounded-lg font-medium text-sm transition-colors border border-red-200 flex items-center gap-1.5 disabled:opacity-50 cursor-pointer mr-auto"
-                        title="Reset tagihan, pembayaran, dan riwayat transaksi outlet ini menjadi Rp 0 (Khusus Admin/Owner)"
-                      >
-                        {isResettingFinance ? (
-                          <>
-                            <div className="w-3.5 h-3.5 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
-                            <span>Mereset Keuangan...</span>
-                          </>
-                        ) : (
-                          <>
-                            <RotateCcw size={14} className="text-red-600" />
-                            <span>Reset Keuangan</span>
-                          </>
-                        )}
-                      </button>
-                    )}
-                    <button onClick={() => openTxModal('PIUTANG')} className="bg-red-50 text-red-700 hover:bg-red-100 px-3 py-1.5 rounded-lg font-medium text-sm transition-colors border border-red-100 flex items-center gap-1">
-                      <span className="text-lg leading-none">+</span> Input Piutang
-                    </button>
-                    <button onClick={() => openTxModal('PELUNASAN')} className="bg-green-50 text-green-700 hover:bg-green-100 px-3 py-1.5 rounded-lg font-medium text-sm transition-colors border border-green-100 flex items-center gap-1">
-                      <span className="text-lg leading-none">+</span> Input Pelunasan
-                    </button>
+                {/* TAB 4: DETAIL KONTAK & ALAMAT */}
+                {activeTab === 'INFO' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+                      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Kontak Penanggung Jawab (PIC)</div>
+                      
+                      <div className="space-y-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 rounded-lg bg-blue-50 text-blue-600"><User size={16} /></div>
+                          <div>
+                            <div className="text-xs text-slate-400">Nama PIC</div>
+                            <div className="text-sm font-bold text-slate-800">{selectedOutlet.pic || '-'}</div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600"><Phone size={16} /></div>
+                          <div>
+                            <div className="text-xs text-slate-400">Nomor Telepon / WA</div>
+                            <div className="text-sm font-bold text-slate-800">{selectedOutlet.tlp || '-'}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {waUrl && (
+                        <div className="pt-2">
+                          <a 
+                            href={waUrl} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="inline-flex items-center justify-center gap-2 w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                          >
+                            <MessageCircle size={15} />
+                            <span>Hubungi PIC via WhatsApp</span>
+                          </a>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+                      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Lokasi & Alamat Toko</div>
+
+                      <div className="flex items-start gap-2.5">
+                        <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600 mt-0.5"><MapPin size={16} /></div>
+                        <div>
+                          <div className="text-xs text-slate-400">Alamat Lengkap</div>
+                          <div className="text-sm font-medium text-slate-800 leading-relaxed">
+                            {selectedOutlet.alamat || 'Alamat belum dilengkapi.'}
+                          </div>
+                          {selectedOutlet.wilayah && (
+                            <div className="text-xs text-indigo-600 font-semibold mt-1">
+                              Wilayah Operasional: {selectedOutlet.wilayah}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {gmapsUrl && (
+                        <div className="pt-2">
+                          <a 
+                            href={gmapsUrl} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="inline-flex items-center justify-center gap-2 w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                          >
+                            <ExternalLink size={14} />
+                            <span>Buka di Google Maps</span>
+                          </a>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="bg-white border rounded-lg overflow-hidden">
-                    <Table>
-                      <TableHeader className="bg-slate-50">
-                        <TableRow>
-                          <TableHead className="text-xs">Tanggal</TableHead>
-                          <TableHead className="text-xs">Jenis</TableHead>
-                          <TableHead className="text-xs">Keterangan</TableHead>
-                          <TableHead className="text-right text-xs">Jumlah</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {selectedOutlet.transactions?.map((tx: any) => (
-                          <TableRow key={tx.id}>
-                            <TableCell className="text-xs">{new Date(tx.date).toLocaleDateString('id-ID')}</TableCell>
-                            <TableCell className="text-xs">
-                              <span className={`px-2 py-0.5 rounded-md font-medium text-[11px] uppercase tracking-wider ${tx.type === 'PIUTANG' || tx.type === 'BILLING' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
-                                {tx.type}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-xs text-gray-600">{tx.description || '-'}</TableCell>
-                            <TableCell className={`text-right text-sm font-bold ${tx.type === 'PIUTANG' || tx.type === 'BILLING' ? 'text-red-600' : 'text-green-600'}`}>
-                              Rp {Number(tx.amount).toLocaleString('id-ID')}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                        {(!selectedOutlet.transactions || selectedOutlet.transactions.length === 0) && (
-                          <TableRow>
-                            <TableCell colSpan={4} className="text-center text-xs text-gray-400 py-6">Belum ada riwayat transaksi keuangan.</TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              )}
+                )}
+
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Transaction Modal */}
       {isTxModalOpen && (
