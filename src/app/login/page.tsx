@@ -85,9 +85,12 @@ export default function LoginPage() {
         transition={{ duration: 0.5 }}
         className="w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/20 p-8 rounded-3xl shadow-2xl relative z-10"
       >
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-extrabold text-white tracking-tight mb-2">Calio Fish</h1>
-          <p className="text-blue-200">Sistem Operasional & Manajemen</p>
+        <div className="text-center mb-8 flex flex-col items-center">
+          <div className="w-24 h-24 bg-white rounded-2xl p-1.5 border border-white/40 shadow-xl mb-3 flex items-center justify-center">
+            <img src="/logo.png" alt="CalioFish" className="w-full h-full object-contain rounded-xl" />
+          </div>
+          <h1 className="text-3xl font-extrabold text-white tracking-tight mb-1">Calio Fish</h1>
+          <p className="text-blue-200 text-sm">Sistem Operasional &amp; Manajemen</p>
         </div>
 
         {error && (

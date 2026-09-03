@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { Bell, Moon } from "lucide-react";
 import { usePathname } from "next/navigation";
 
@@ -19,8 +20,15 @@ export function Header({ user }: HeaderProps) {
       <div className="topbar-left">
         {/* Mobile brand - visible only on mobile */}
         <div className="mobile-brand">
-          <div className="mobile-brand-icon">🐟</div>
-          <div className="mobile-brand-text">Calio<span>Fish</span></div>
+          <Link href="/overview" className="flex items-center no-underline" title="CalioFish Dashboard">
+            <div className="p-0.5 bg-white rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-center">
+              <img 
+                src="/logo.png" 
+                alt="CalioFish" 
+                className="w-9 h-9 sm:w-10 sm:h-10 object-contain rounded-lg"
+              />
+            </div>
+          </Link>
         </div>
         {/* Desktop title */}
         <div className="topbar-title-group">

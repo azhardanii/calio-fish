@@ -78,11 +78,16 @@ export function Sidebar({ user }: { user: { id: string; role: string; nama: stri
 
   return (
     <div className="sidebar flex flex-col h-full bg-white border-r">
-      <div className="sb-logo p-6 border-b">
-        <div className="sb-logo-mark flex items-center gap-3">
-          <div className="logo-icon text-3xl">🐟</div>
-          <div className="logo-text text-xl font-bold text-slate-800">Calio<span className="text-blue-600">Fish</span></div>
-        </div>
+      <div className="sb-logo px-4 py-5 border-b border-slate-100 flex items-center justify-center">
+        <Link href="/overview" className="flex items-center justify-center group no-underline" title="CalioFish Dashboard">
+          <div className="p-1.5 bg-white rounded-2xl border border-slate-200/80 shadow-xs group-hover:scale-105 transition-transform duration-200 flex items-center justify-center">
+            <img 
+              src="/logo.png" 
+              alt="CalioFish - Cara Cerdas Makan Ikan" 
+              className="w-24 h-24 sm:w-28 sm:h-28 object-contain rounded-xl"
+            />
+          </div>
+        </Link>
       </div>
 
       <nav className="sb-nav flex-1 overflow-y-auto p-4 space-y-6">
