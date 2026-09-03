@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getOfflineTarget, getOnlineTarget } from '@/lib/settings';
+import { getOnlineTarget } from '@/lib/settings';
 import { serializeDeep } from '@/lib/serialize';
 
 function toNum(val: any): number {
@@ -16,34 +16,29 @@ export async function GET(req: NextRequest) {
 
   let startDate: Date | undefined = undefined;
   let endDate: Date | undefined = undefined;
-  let filterLabel = 'Lifetime (Keseluruhan Waktu)';
+  let filterLabel = 'Bulan Ini';
   let isDailyChart = true;
   let monthsCount = 1;
 
   if (fromParam && toParam) {
-    startDate = new Date(fromParam);
-    startDate.setHours(0, 0, 0, 0);
-    endDate = new Date(toParam);
-    endDate.setHours(23, 59, 59, 999);
-    
-    const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    monthsCount = Math.max(1, diffDays / 30);
-    if (diffDays > 31) {
-      isDailyChart = false;
-    }
-
+    startDate = new Date(`${fromParam}T00:00:00.000`);
+    endDate = new Date(`${toParam}T23:59:59.999`);
+    const diffDays = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24));
+    monthsCount = Math.max(1, Math.round(diffDays / 30));
+    isDailyChart = diffDays <= 90;
     if (fromParam === toParam) {
-       filterLabel = startDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+      filterLabel = startDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
     } else {
-       filterLabel = `${startDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} - ${endDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+      filterLabel = `${startDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - ${endDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}`;
     }
   } else if (searchParams.get('lifetime') === 'true') {
-    isDailyChart = false;
+    startDate = undefined;
+    endDate = undefined;
     monthsCount = 12;
+    isDailyChart = false;
+    filterLabel = 'Lifetime (Keseluruhan Waktu)';
   } else {
-    // Default to this month
+    // Default current month
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
     startDate = new Date(currentYear, currentMonth, 1);
@@ -56,8 +51,11 @@ export async function GET(req: NextRequest) {
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
-  const [baseOfflineTarget, baseShopeeTarget, baseTiktokTarget] = await Promise.all([
-    getOfflineTarget(), getOnlineTarget('shopee'), getOnlineTarget('tiktok'),
+  const targetMonth = startDate ? startDate.getMonth() + 1 : (now.getMonth() + 1);
+  const targetYear = startDate ? startDate.getFullYear() : now.getFullYear();
+
+  const [baseShopeeTarget, baseTiktokTarget] = await Promise.all([
+    getOnlineTarget('shopee'), getOnlineTarget('tiktok'),
   ]);
 
   const [
@@ -136,7 +134,7 @@ export async function GET(req: NextRequest) {
           }
         },
         marketing_targets: {
-          where: { bulan: now.getMonth() + 1, tahun: now.getFullYear() }
+          where: { bulan: targetMonth, tahun: targetYear }
         },
         personal_buyer_transactions: {
           orderBy: { date: 'desc' },
@@ -227,9 +225,8 @@ export async function GET(req: NextRequest) {
   const totalMarketingTarget = marketingStaffPerformance.reduce((s: number, m: any) => s + m.target_omset, 0);
   const totalMarketingOmset = marketingStaffPerformance.reduce((s: number, m: any) => s + m.total_omset_this_month, 0);
 
-  // Target B2B Outlet & Marketing: Menggunakan total target tim marketing yang dikelola staf!
-  // Jika belum diset individu oleh admin/owner, fallback ke baseOfflineTarget * monthsCount
-  const offlineTarget = totalMarketingTarget > 0 ? totalMarketingTarget : (baseOfflineTarget * monthsCount);
+  // Target Tim Marketing: 100% terakumulasi dari target masing-masing user marketing yang ada
+  const marketingTarget = totalMarketingTarget;
   const offlineOmset = toNum(offlineFilterAgg._sum.omset_harian);
   const shopeeTarget = baseShopeeTarget * monthsCount;
   const tiktokTarget = baseTiktokTarget * monthsCount;
@@ -238,9 +235,9 @@ export async function GET(req: NextRequest) {
   const personalBuyerOmset = toNum(personalBuyerAgg._sum.amount);
   const boothOmset = toNum(boothSalesAgg._sum.total_price);
 
-  // Total Omset (Seluruh Jalur Penjualan: B2B Outlet + Shopee + TikTok + Personal Buyer + Event Booth)
+  // Total Omset (Seluruh Jalur Penjualan: Tim Marketing + Shopee + TikTok + Personal Buyer + Event Booth)
   const totalOmset = offlineOmset + shopeeOmset + tiktokOmset + personalBuyerOmset + boothOmset;
-  const totalTarget = offlineTarget + shopeeTarget + tiktokTarget;
+  const totalTarget = marketingTarget + shopeeTarget + tiktokTarget;
   const totalGap = totalOmset - totalTarget;
   const totalPersentase = totalTarget > 0 ? (totalOmset / totalTarget) * 100 : 0;
 
@@ -419,9 +416,9 @@ export async function GET(req: NextRequest) {
     // Channels breakdown
     channels: [
       { 
-        name: 'Tim Marketing (B2B Outlet)', 
+        name: 'Tim Marketing', 
         mtd: offlineOmset, 
-        target: offlineTarget, 
+        target: marketingTarget, 
         icon: '👥', 
         pct: totalOmset > 0 ? Math.round((offlineOmset / totalOmset) * 100) : 0,
         staffCount: marketingStaffPerformance.length,
@@ -435,9 +432,9 @@ export async function GET(req: NextRequest) {
     // Marketing Staff Evaluation (Direct monitoring for underperforming users)
     marketingEvaluation: {
       totalStaff: marketingStaffPerformance.length,
-      totalTarget: offlineTarget,
+      totalTarget: marketingTarget,
       totalRealisasi: totalMarketingOmset,
-      pencapaian: offlineTarget > 0 ? Math.round((totalMarketingOmset / offlineTarget) * 1000) / 10 : 0,
+      pencapaian: marketingTarget > 0 ? Math.round((totalMarketingOmset / marketingTarget) * 1000) / 10 : 0,
       criticalCount: marketingStaffPerformance.filter((m: any) => m.status === 'critical').length,
       behindCount: marketingStaffPerformance.filter((m: any) => m.status === 'behind').length,
       onTrackCount: marketingStaffPerformance.filter((m: any) => m.status === 'on_track').length,

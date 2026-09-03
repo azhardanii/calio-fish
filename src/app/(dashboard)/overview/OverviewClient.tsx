@@ -391,7 +391,7 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
             </div>
             <div className="text-xl sm:text-2xl font-black text-white mt-1">{formatRp(totalOmset)}</div>
             <div className="text-[11px] text-slate-400 mt-1">
-              B2B ({formatRp(channels.find(c => c.name.includes('B2B'))?.mtd || 0)}) + Online ({formatRp((channels.find(c => c.name.includes('Shopee'))?.mtd || 0) + (channels.find(c => c.name.includes('TikTok'))?.mtd || 0))}) + Booth &amp; Personal
+              Tim Marketing ({formatRp(channels.find(c => c.name.includes('Marketing'))?.mtd || 0)}) + Online ({formatRp((channels.find(c => c.name.includes('Shopee'))?.mtd || 0) + (channels.find(c => c.name.includes('TikTok'))?.mtd || 0))}) + Booth &amp; Personal
             </div>
           </div>
 
@@ -429,7 +429,7 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
                 <span>📈 Tren Omset Seluruh Kanal Penjualan</span>
               </div>
               <div className="text-xs text-gray-500 mt-0.5">
-                Akumulasi harian penjualan B2B, E-Commerce, Event Booth, &amp; Personal Buyer ({filterState.filterLabel})
+                Akumulasi harian penjualan Tim Marketing, E-Commerce, Event Booth, &amp; Personal Buyer ({filterState.filterLabel})
               </div>
             </div>
           </div>
@@ -468,7 +468,7 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
                   <Tooltip content={<ChartTooltip />} />
                   <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
                   <Area
-                    type="monotone" dataKey="offline" name="B2B Outlet"
+                    type="monotone" dataKey="offline" name="Tim Marketing"
                     stroke="#3b82f6" fill="url(#colorTotal)" strokeWidth={2}
                   />
                   <Area
@@ -872,7 +872,7 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
                 <div>
                   <div className="text-xs text-gray-500 font-bold uppercase tracking-wider flex items-center gap-1">
                     <Store className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Outlet Mitra B2B</span>
+                    <span>Outlet Mitra</span>
                   </div>
                   <div className="text-xl font-black text-gray-900 mt-0.5">{totalOutlets} Toko</div>
                   <div className="text-[11px] text-gray-500 mt-0.5">Dikelola tim marketing &amp; pusat</div>

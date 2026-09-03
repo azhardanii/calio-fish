@@ -591,6 +591,7 @@ export async function setMarketingTarget(employeeId: string, bulan: number, tahu
   });
 
   revalidatePath('/marketing');
+  revalidatePath('/overview');
 }
 
 // Personal Buyer Transactions
