@@ -162,24 +162,24 @@ export function BottomNav({ user }: BottomNavProps) {
       ]
     : isProduksi
     ? [
-        { name: "Home", href: "/overview", icon: Gauge },
         { name: "Produksi", href: "/produksi", icon: Factory },
         { name: "Gudang", href: "/warehouse", icon: WarehouseIcon },
+        { name: "Chat", href: "/chats", icon: MessageCircle },
       ]
     : isMarketing
     ? [
-        { name: "Home", href: "/overview", icon: Gauge },
         { name: "Marketing", href: "/marketing", icon: TrendingUp },
+        { name: "Booth", href: "/booth", icon: Store },
         { name: "Outlet", href: "/outlet", icon: MapPin },
       ]
     : isMitra
     ? [
-        { name: "Home", href: "/overview", icon: Gauge },
         { name: "Outlet", href: "/outlet", icon: MapPin },
         { name: "Pengiriman", href: "/pengiriman", icon: Package },
+        { name: "Chat", href: "/chats", icon: MessageCircle },
       ]
     : [
-        { name: "Home", href: "/overview", icon: Gauge },
+        { name: "Chat", href: "/chats", icon: MessageCircle },
       ];
 
   // Secondary items (shown in "More" drawer)

@@ -37,7 +37,18 @@ export async function POST(req: Request) {
       nama: employee.nama,
     });
 
-    return NextResponse.json({ success: true, redirectUrl: '/overview' });
+    const role = (employee.role || '').toUpperCase();
+    const posisi = (employee.posisi || '').toUpperCase();
+    let redirectUrl = '/overview';
+    if (role === 'STAFF MARKETING' || role === 'STAFF_MARKETING' || role.includes('MARKETING') || posisi.includes('MARKETING')) {
+      redirectUrl = '/marketing';
+    } else if (role === 'STAFF PRODUKSI' || role === 'STAFF_PRODUKSI' || role.includes('PRODUKSI') || posisi.includes('PRODUKSI')) {
+      redirectUrl = '/produksi';
+    } else if (role.includes('MITRA') || posisi.includes('MITRA')) {
+      redirectUrl = '/outlet';
+    }
+
+    return NextResponse.json({ success: true, redirectUrl });
   } catch (error) {
     console.error('OTP verify error:', error);
     return NextResponse.json({ error: 'Gagal verifikasi OTP' }, { status: 500 });

@@ -34,9 +34,9 @@ export function Sidebar({ user }: { user: { id: string; role: string; nama: stri
   const navSections = [
     {
       title: "Dashboard",
-      visible: true,
+      visible: isOwnerOrAdmin,
       items: [
-        { name: "Overview", href: "/overview", icon: Gauge, visible: true },
+        { name: "Overview", href: "/overview", icon: Gauge, visible: isOwnerOrAdmin },
       ]
     },
     {
@@ -76,10 +76,20 @@ export function Sidebar({ user }: { user: { id: string; role: string; nama: stri
     router.refresh();
   };
 
+  const homeHref = isOwnerOrAdmin 
+    ? '/overview' 
+    : role === 'MARKETING' || role.includes('MARKETING')
+    ? '/marketing'
+    : role === 'PRODUKSI' || role.includes('PRODUKSI')
+    ? '/produksi'
+    : role === 'MITRA' || role.includes('MITRA')
+    ? '/outlet'
+    : '/overview';
+
   return (
     <div className="sidebar flex flex-col h-full bg-white border-r">
       <div className="sb-logo px-4 py-5 border-b border-slate-100 flex items-center justify-center">
-        <Link href="/overview" className="flex items-center justify-center group no-underline" title="CalioFish Dashboard">
+        <Link href={homeHref} className="flex items-center justify-center group no-underline" title="CalioFish Dashboard">
           <div className="p-1.5 bg-white rounded-2xl border border-slate-200/80 shadow-xs group-hover:scale-105 transition-transform duration-200 flex items-center justify-center">
             <img 
               src="/logo.png" 

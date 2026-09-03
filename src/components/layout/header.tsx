@@ -10,6 +10,18 @@ interface HeaderProps {
 export function Header({ user }: HeaderProps) {
   const pathname = usePathname();
   
+  const role = (user?.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+  const homeHref = isOwnerOrAdmin 
+    ? '/overview' 
+    : role === 'MARKETING' || role.includes('MARKETING')
+    ? '/marketing'
+    : role === 'PRODUKSI' || role.includes('PRODUKSI')
+    ? '/produksi'
+    : role === 'MITRA' || role.includes('MITRA')
+    ? '/outlet'
+    : '/overview';
+
   // Format pathname to display as Title
   const paths = pathname.split('/').filter(Boolean);
   const title = paths.length > 0 ? paths[paths.length - 1] : "Dashboard";
@@ -20,7 +32,7 @@ export function Header({ user }: HeaderProps) {
       <div className="topbar-left">
         {/* Mobile brand - visible only on mobile */}
         <div className="mobile-brand">
-          <Link href="/overview" className="flex items-center no-underline" title="CalioFish Dashboard">
+          <Link href={homeHref} className="flex items-center no-underline" title="CalioFish Dashboard">
             <div className="p-0.5 bg-white rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-center">
               <img 
                 src="/logo.png" 

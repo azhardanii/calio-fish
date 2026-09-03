@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getOnlineTarget } from '@/lib/settings';
 import { serializeDeep } from '@/lib/serialize';
+import { verifySession } from '@/lib/auth';
 
 function toNum(val: any): number {
   if (val === null || val === undefined) return 0;
@@ -9,6 +10,20 @@ function toNum(val: any): number {
 }
 
 export async function GET(req: NextRequest) {
+  const session = await verifySession();
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const role = (session.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+  if (!isOwnerOrAdmin) {
+    return NextResponse.json(
+      { error: 'Akses ditolak: Halaman Overview hanya dapat diakses oleh Owner dan Admin.' },
+      { status: 403 }
+    );
+  }
+
   const { searchParams } = req.nextUrl;
   const fromParam = searchParams.get('from');
   const toParam = searchParams.get('to');
