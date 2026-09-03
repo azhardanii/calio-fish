@@ -19,24 +19,27 @@ export async function proxy(req: NextRequest) {
       algorithms: ['HS256'],
     });
 
-    const role = payload.role as string;
+    const role = (payload.role as string || '').toUpperCase();
     
     // Role-based route protection
     // Owner / Admin can access all
-    // Produksi can only access /produksi and /overview
-    // Marketing can only access /marketing and /overview
-    // Mitra can only access /outlet, /pengiriman, /overview
+    // Produksi can access /produksi, /overview, and /chats
+    // Marketing can access /marketing, /overview, and /chats
+    // Mitra can access /outlet, /pengiriman, /overview, and /chats
     
     const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+    const isProduksi = isOwnerOrAdmin || role === 'PRODUKSI' || role.includes('PRODUKSI');
+    const isMarketing = isOwnerOrAdmin || role === 'MARKETING' || role.includes('MARKETING');
+    const isMitra = isOwnerOrAdmin || role === 'MITRA' || role.includes('MITRA');
     
     if (!isOwnerOrAdmin) {
-      if (role === 'PRODUKSI' && !pathname.startsWith('/produksi') && pathname !== '/overview') {
+      if (isProduksi && !pathname.startsWith('/produksi') && pathname !== '/overview' && pathname !== '/chats') {
         return NextResponse.redirect(new URL('/overview', req.url));
       }
-      if (role === 'MARKETING' && !pathname.startsWith('/marketing') && pathname !== '/overview') {
+      if (isMarketing && !pathname.startsWith('/marketing') && pathname !== '/overview' && pathname !== '/chats') {
         return NextResponse.redirect(new URL('/overview', req.url));
       }
-      if (role === 'MITRA' && !pathname.startsWith('/outlet') && !pathname.startsWith('/pengiriman') && pathname !== '/overview') {
+      if (isMitra && !pathname.startsWith('/outlet') && !pathname.startsWith('/pengiriman') && pathname !== '/overview' && pathname !== '/chats') {
         return NextResponse.redirect(new URL('/overview', req.url));
       }
     }

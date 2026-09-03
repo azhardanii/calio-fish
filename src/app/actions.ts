@@ -7,7 +7,8 @@ import { revalidatePath } from 'next/cache';
 export async function createKaryawan(data: any) {
   if (data.posisi) {
     let newRole = data.posisi.toUpperCase();
-    if (newRole === 'STAFF PRODUKSI') newRole = 'PRODUKSI';
+    if (newRole === 'STAFF PRODUKSI' || newRole.includes('PRODUKSI')) newRole = 'PRODUKSI';
+    else if (newRole === 'STAFF MARKETING' || newRole.includes('MARKETING')) newRole = 'MARKETING';
     data.role = newRole;
   }
   await prisma.employee.create({ data });
@@ -16,7 +17,8 @@ export async function createKaryawan(data: any) {
 export async function updateKaryawan(id: string, data: any) {
   if (data.posisi) {
     let newRole = data.posisi.toUpperCase();
-    if (newRole === 'STAFF PRODUKSI') newRole = 'PRODUKSI';
+    if (newRole === 'STAFF PRODUKSI' || newRole.includes('PRODUKSI')) newRole = 'PRODUKSI';
+    else if (newRole === 'STAFF MARKETING' || newRole.includes('MARKETING')) newRole = 'MARKETING';
     data.role = newRole;
   }
   await prisma.employee.update({ where: { id }, data });

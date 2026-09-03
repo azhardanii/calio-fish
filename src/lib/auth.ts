@@ -35,16 +35,29 @@ export async function verifySession() {
       algorithms: ['HS256'],
     });
 
-    let role = payload.role as string;
+    let role = (payload.role as string || '').toUpperCase();
     
     // Fetch fresh role from DB to ensure security and fix stale token issues
     if (payload.id) {
       const dbUser = await prisma.employee.findUnique({
         where: { id: payload.id as string },
-        select: { role: true }
+        select: { role: true, posisi: true }
       });
       if (dbUser) {
-        role = dbUser.role;
+        let r = (dbUser.role || '').toUpperCase();
+        const p = (dbUser.posisi || '').toUpperCase();
+        if (r === 'STAFF PRODUKSI' || r === 'STAFF_PRODUKSI' || r.includes('PRODUKSI') || p.includes('PRODUKSI')) {
+          r = 'PRODUKSI';
+        } else if (r === 'STAFF MARKETING' || r === 'STAFF_MARKETING' || r.includes('MARKETING') || p.includes('MARKETING')) {
+          r = 'MARKETING';
+        } else if (r.includes('MITRA') || p.includes('MITRA')) {
+          r = 'MITRA';
+        } else if (r.includes('ADMIN') || p.includes('ADMIN')) {
+          r = 'ADMIN';
+        } else if (r.includes('OWNER') || p.includes('OWNER')) {
+          r = 'OWNER';
+        }
+        role = r || (dbUser.role || '').toUpperCase() || 'STAFF';
       }
     }
 

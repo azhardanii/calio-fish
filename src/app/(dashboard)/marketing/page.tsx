@@ -350,7 +350,7 @@ export default function MarketingPage() {
   return (
     <div className="space-y-6">
       {/* FILTER TOOLBAR */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
+      <div className="marketing-filter-toolbar">
         <div>
           <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: 'var(--text)' }}>Marketing & Penjualan</h2>
           <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 4 }}>
@@ -358,14 +358,11 @@ export default function MarketingPage() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <div className="marketing-filter-actions">
           <DateRangePicker date={dateRange} setDate={setDateRange} />
           <button
             onClick={handleApplyFilter}
-            style={{
-              padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
-              background: 'var(--ocean-500)', color: 'white', height: 36
-            }}
+            className="overview-filter-btn"
           >
             Tampilkan
           </button>

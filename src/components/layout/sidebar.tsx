@@ -24,7 +24,11 @@ export function Sidebar({ user }: { user: { id: string; role: string; nama: stri
   const pathname = usePathname();
   const router = useRouter();
 
-  const isOwnerOrAdmin = user.role === 'OWNER' || user.role === 'ADMIN';
+  const role = (user.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+  const isProduksi = isOwnerOrAdmin || role === 'PRODUKSI' || role.includes('PRODUKSI');
+  const isMarketing = isOwnerOrAdmin || role === 'MARKETING' || role.includes('MARKETING');
+  const isMitra = isOwnerOrAdmin || role === 'MITRA' || role.includes('MITRA');
 
   const navSections = [
     {
@@ -36,21 +40,21 @@ export function Sidebar({ user }: { user: { id: string; role: string; nama: stri
     },
     {
       title: "Reporting",
-      visible: isOwnerOrAdmin || user.role === 'MARKETING' || user.role === 'PRODUKSI',
+      visible: isMarketing || isProduksi,
       items: [
-        { name: "Marketing", href: "/marketing", icon: TrendingUp, visible: isOwnerOrAdmin || user.role === 'MARKETING' },
-        { name: "Produksi", href: "/produksi", icon: Factory, visible: isOwnerOrAdmin || user.role === 'PRODUKSI' },
+        { name: "Marketing", href: "/marketing", icon: TrendingUp, visible: isMarketing },
+        { name: "Produksi", href: "/produksi", icon: Factory, visible: isProduksi },
       ]
     },
     {
       title: "Tim & Gudang",
-      visible: isOwnerOrAdmin || user.role === 'MITRA' || user.role === 'MARKETING',
+      visible: isOwnerOrAdmin || isMitra || isMarketing,
       items: [
         { name: "Karyawan", href: "/karyawan", icon: Users, visible: isOwnerOrAdmin },
-        { name: "Database Outlet", href: "/outlet", icon: MapPin, visible: isOwnerOrAdmin || user.role === 'MITRA' || user.role === 'MARKETING' },
+        { name: "Database Outlet", href: "/outlet", icon: MapPin, visible: isOwnerOrAdmin || isMitra || isMarketing },
         { name: "Database Produk", href: "/produk", icon: PackageCheck, visible: isOwnerOrAdmin },
         { name: "Warehouse", href: "/warehouse", icon: WarehouseIcon, visible: isOwnerOrAdmin },
-        { name: "Log Pengiriman", href: "/pengiriman", icon: Package, visible: isOwnerOrAdmin || user.role === 'MITRA' },
+        { name: "Log Pengiriman", href: "/pengiriman", icon: Package, visible: isOwnerOrAdmin || isMitra },
         { name: "Affiliator", href: "/affiliator", icon: Network, visible: isOwnerOrAdmin },
       ]
     },

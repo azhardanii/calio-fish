@@ -2,7 +2,11 @@
 import { Bell, Moon } from "lucide-react";
 import { usePathname } from "next/navigation";
 
-export function Header() {
+interface HeaderProps {
+  user?: { id: string; role: string; nama: string };
+}
+
+export function Header({ user }: HeaderProps) {
   const pathname = usePathname();
   
   // Format pathname to display as Title
@@ -13,7 +17,13 @@ export function Header() {
   return (
     <div className="topbar">
       <div className="topbar-left">
-        <div>
+        {/* Mobile brand - visible only on mobile */}
+        <div className="mobile-brand">
+          <div className="mobile-brand-icon">🐟</div>
+          <div className="mobile-brand-text">Calio<span>Fish</span></div>
+        </div>
+        {/* Desktop title */}
+        <div className="topbar-title-group">
           <div className="page-title">{formattedTitle}</div>
           <div className="page-crumb">CalioFish / {formattedTitle}</div>
         </div>

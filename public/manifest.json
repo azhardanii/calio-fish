@@ -1,0 +1,25 @@
+{
+  "name": "CalioFish Dashboard",
+  "short_name": "CalioFish",
+  "description": "Sistem Operasional & Manajemen CalioFish",
+  "start_url": "/overview",
+  "display": "standalone",
+  "background_color": "#EEF4FB",
+  "theme_color": "#0A1E3D",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

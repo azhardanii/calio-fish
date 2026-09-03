@@ -14,10 +14,10 @@ export function ChatFloatingButton() {
   return (
     <Link
       href="/chats"
-      className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg transition-transform hover:scale-105 z-50 flex items-center justify-center"
+      className="chat-fab"
       title="Calio Chat"
     >
-      <MessageCircle size={28} />
+      <MessageCircle size={24} />
     </Link>
   );
 }

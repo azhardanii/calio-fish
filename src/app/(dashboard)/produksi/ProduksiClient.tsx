@@ -191,7 +191,7 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, ex
   return (
     <div className="space-y-6">
       {/* ── FILTER TOOLBAR ── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
+      <div className="marketing-filter-toolbar">
         <div>
           <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: 'var(--text)' }}>Produksi</h2>
           <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 4 }}>
@@ -199,9 +199,9 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, ex
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="marketing-filter-actions">
           <select 
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shrink-0 outline-none focus:border-blue-500 cursor-pointer h-9"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shrink-0 outline-none focus:border-blue-500 cursor-pointer h-9 w-full sm:w-auto"
             value={filterKegiatan}
             onChange={(e) => setFilterKegiatan(e.target.value)}
           >
@@ -215,12 +215,7 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, ex
 
           <button
             onClick={() => setAppliedDateRange(dateRange)}
-            style={{
-              padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
-              background: 'var(--ocean-500)',
-              color: 'white',
-              height: 36
-            }}
+            className="overview-filter-btn"
           >
             Tampilkan
           </button>
