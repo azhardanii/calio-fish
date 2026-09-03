@@ -13,6 +13,7 @@ export function EmployeeManager({ employees, currentUser }: { employees: any[], 
   const [outletSearch, setOutletSearch] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Fetch all outlets for assignment
   const { data: outletsData } = useSWR<any[]>('/api/data/outlets');
@@ -109,12 +110,20 @@ export function EmployeeManager({ employees, currentUser }: { employees: any[], 
   };
 
   const handleDelete = async (id: string) => {
+    if (deletingId) return;
     if (confirm('Yakin ingin menghapus karyawan ini? Seluruh outlet yang dihandle oleh karyawan ini akan dialihkan ke status tanpa pengelola.')) {
-      await deleteKaryawan(id);
-      await Promise.all([
-        mutate('/api/data/employees'),
-        mutate('/api/data/outlets')
-      ]);
+      setDeletingId(id);
+      try {
+        await deleteKaryawan(id);
+        await Promise.all([
+          mutate('/api/data/employees'),
+          mutate('/api/data/outlets')
+        ]);
+      } catch (err: any) {
+        alert(err.message || 'Gagal menghapus karyawan');
+      } finally {
+        setDeletingId(null);
+      }
     }
   };
 
@@ -191,7 +200,13 @@ export function EmployeeManager({ employees, currentUser }: { employees: any[], 
                     {currentUser?.role === 'OWNER' ? (
                       <>
                         <button onClick={() => openModal(e)} className="text-blue-600 hover:text-blue-800 font-medium text-sm cursor-pointer">Edit</button>
-                        <button onClick={() => handleDelete(e.id)} className="text-red-600 hover:text-red-800 font-medium text-sm cursor-pointer">Hapus</button>
+                        <button 
+                          disabled={deletingId === e.id} 
+                          onClick={() => handleDelete(e.id)} 
+                          className="text-red-600 hover:text-red-800 font-medium text-sm cursor-pointer disabled:opacity-50"
+                        >
+                          {deletingId === e.id ? 'Menghapus...' : 'Hapus'}
+                        </button>
                       </>
                     ) : (
                       <span className="text-gray-400 text-sm italic">Akses Terbatas</span>

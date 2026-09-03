@@ -22,7 +22,10 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const [wilayahFilter, setWilayahFilter] = useState<string>('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isTxSubmitting, setIsTxSubmitting] = useState(false);
+  const [isSavingStock, setIsSavingStock] = useState(false);
+  const [isSavingPrice, setIsSavingPrice] = useState(false);
 
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [txType, setTxType] = useState<'PIUTANG' | 'PELUNASAN'>('PIUTANG');
@@ -98,12 +101,25 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Yakin ingin menghapus outlet ini?')) {
-      await deleteOutlet(id);
-      mutate('/api/data/outlets');
-      return true;
+    if (isDeleting) return false;
+    if (!confirm('Yakin ingin menghapus outlet ini? Riwayat transaksi dan stok outlet ini akan terhapus.')) {
+      return false;
     }
-    return false;
+
+    setIsDeleting(true);
+    try {
+      await deleteOutlet(id);
+      await Promise.all([
+        mutate('/api/data/outlets'),
+        mutate('/api/data/employees')
+      ]);
+      return true;
+    } catch (err: any) {
+      alert(err.message || 'Gagal menghapus outlet');
+      return false;
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const openTxModal = (type: 'PIUTANG' | 'PELUNASAN') => {
@@ -116,54 +132,61 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
 
   const handleTxSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedOutlet || !txAmount) return;
+    if (!selectedOutlet || !txAmount || isTxSubmitting) return;
     
-    if (txType === 'PIUTANG') {
-      await addPiutang(selectedOutlet.id, Number(txAmount), txDesc, txDate);
+    setIsTxSubmitting(true);
+    try {
+      if (txType === 'PIUTANG') {
+        await addPiutang(selectedOutlet.id, Number(txAmount), txDesc, txDate);
+        
+        const newTagihan = Number(selectedOutlet.tagihan) + Number(txAmount);
+        const newSisa = newTagihan - Number(selectedOutlet.payment);
+        
+        setSelectedOutlet({
+          ...selectedOutlet,
+          tagihan: newTagihan,
+          sisa_tagihan: newSisa,
+          transactions: [
+            {
+              id: 'temp-' + Date.now(),
+              date: new Date(txDate).toISOString(),
+              type: 'PIUTANG',
+              amount: Number(txAmount),
+              description: txDesc
+            },
+            ...(selectedOutlet.transactions || [])
+          ]
+        });
+        
+      } else {
+        await addPelunasan(selectedOutlet.id, Number(txAmount), txDesc, txDate);
+        
+        const newPayment = Number(selectedOutlet.payment) + Number(txAmount);
+        const newSisa = Number(selectedOutlet.tagihan) - newPayment;
+        
+        setSelectedOutlet({
+          ...selectedOutlet,
+          payment: newPayment,
+          sisa_tagihan: newSisa,
+          transactions: [
+            {
+              id: 'temp-' + Date.now(),
+              date: new Date(txDate).toISOString(),
+              type: 'PELUNASAN',
+              amount: Number(txAmount),
+              description: txDesc
+            },
+            ...(selectedOutlet.transactions || [])
+          ]
+        });
+      }
       
-      const newTagihan = Number(selectedOutlet.tagihan) + Number(txAmount);
-      const newSisa = newTagihan - Number(selectedOutlet.payment);
-      
-      setSelectedOutlet({
-        ...selectedOutlet,
-        tagihan: newTagihan,
-        sisa_tagihan: newSisa,
-        transactions: [
-          {
-            id: 'temp-' + Date.now(),
-            date: new Date(txDate).toISOString(),
-            type: 'PIUTANG',
-            amount: Number(txAmount),
-            description: txDesc
-          },
-          ...(selectedOutlet.transactions || [])
-        ]
-      });
-      
-    } else {
-      await addPelunasan(selectedOutlet.id, Number(txAmount), txDesc, txDate);
-      
-      const newPayment = Number(selectedOutlet.payment) + Number(txAmount);
-      const newSisa = Number(selectedOutlet.tagihan) - newPayment;
-      
-      setSelectedOutlet({
-        ...selectedOutlet,
-        payment: newPayment,
-        sisa_tagihan: newSisa,
-        transactions: [
-          {
-            id: 'temp-' + Date.now(),
-            date: new Date(txDate).toISOString(),
-            type: 'PELUNASAN',
-            amount: Number(txAmount),
-            description: txDesc
-          },
-          ...(selectedOutlet.transactions || [])
-        ]
-      });
+      setIsTxModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || 'Gagal menyimpan transaksi');
+    } finally {
+      setIsTxSubmitting(false);
     }
-    
-    setIsTxModalOpen(false);
   };
 
   return (
@@ -252,11 +275,24 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                   Edit Data
                 </button>
                 {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN') && (
-                  <button onClick={async () => {
-                    const deleted = await handleDelete(selectedOutlet.id);
-                    if (deleted) closeDetailModal();
-                  }} className="px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-sm font-medium transition-colors">
-                    Hapus
+                  <button 
+                    disabled={isDeleting}
+                    onClick={async () => {
+                      const deleted = await handleDelete(selectedOutlet.id);
+                      if (deleted) closeDetailModal();
+                    }} 
+                    className={`px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                      isDeleting ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+                    }`}
+                  >
+                    {isDeleting ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+                        <span>Menghapus...</span>
+                      </>
+                    ) : (
+                      <span>Hapus</span>
+                    )}
                   </button>
                 )}
                 <button onClick={closeDetailModal} className="text-gray-400 hover:text-gray-800 ml-1 text-2xl font-light">&times;</button>
@@ -318,15 +354,35 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                                   <input type="text" className="border rounded px-2 py-1 text-sm flex-1" placeholder="Catatan..." value={stockNote} onChange={e => setStockNote(e.target.value)} />
                                 </div>
                                 <div className="flex gap-2 pt-1">
-                                  <button onClick={async () => {
-                                    await adjustOutletStock(stock.id, newStockQty, stockNote);
-                                    const updated = { ...selectedOutlet };
-                                    const sIdx = updated.stocks.findIndex((s: any) => s.id === stock.id);
-                                    if(sIdx > -1) updated.stocks[sIdx].quantity = newStockQty;
-                                    setSelectedOutlet(updated);
-                                    setEditingStockId(null);
-                                  }} className="text-xs bg-blue-600 text-white px-2 py-1 rounded font-medium">Simpan Stok</button>
-                                  <button onClick={() => setEditingStockId(null)} className="text-xs text-gray-500">Batal</button>
+                                  <button 
+                                    disabled={isSavingStock}
+                                    onClick={async () => {
+                                      setIsSavingStock(true);
+                                      try {
+                                        await adjustOutletStock(stock.id, newStockQty, stockNote);
+                                        const updated = { ...selectedOutlet };
+                                        const sIdx = updated.stocks.findIndex((s: any) => s.id === stock.id);
+                                        if(sIdx > -1) updated.stocks[sIdx].quantity = newStockQty;
+                                        setSelectedOutlet(updated);
+                                        setEditingStockId(null);
+                                      } catch (err: any) {
+                                        alert(err.message || 'Gagal mengubah stok');
+                                      } finally {
+                                        setIsSavingStock(false);
+                                      }
+                                    }} 
+                                    className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded font-medium flex items-center gap-1 disabled:opacity-60 cursor-pointer"
+                                  >
+                                    {isSavingStock ? (
+                                      <>
+                                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        <span>Menyimpan...</span>
+                                      </>
+                                    ) : (
+                                      <span>Simpan Stok</span>
+                                    )}
+                                  </button>
+                                  <button disabled={isSavingStock} onClick={() => setEditingStockId(null)} className="text-xs text-gray-500 hover:text-gray-700">Batal</button>
                                 </div>
                               </div>
                             ) : (
@@ -344,15 +400,35 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                             {editingPriceId === stock.id ? (
                               <div className="flex items-center gap-2 bg-slate-50 p-2 rounded border">
                                 <input type="number" className="border rounded px-2 py-1 text-sm w-full" value={newPrice} onChange={e => setNewPrice(Number(e.target.value))} />
-                                <button onClick={async () => {
-                                  await updateOutletProductPrice(stock.id, newPrice);
-                                  const updated = { ...selectedOutlet };
-                                  const sIdx = updated.stocks.findIndex((s: any) => s.id === stock.id);
-                                  if(sIdx > -1) updated.stocks[sIdx].harga_beli = newPrice;
-                                  setSelectedOutlet(updated);
-                                  setEditingPriceId(null);
-                                }} className="text-xs bg-blue-600 text-white px-2 py-1 rounded font-medium">Simpan</button>
-                                <button onClick={() => setEditingPriceId(null)} className="text-xs text-gray-500">Batal</button>
+                                <button 
+                                  disabled={isSavingPrice}
+                                  onClick={async () => {
+                                    setIsSavingPrice(true);
+                                    try {
+                                      await updateOutletProductPrice(stock.id, newPrice);
+                                      const updated = { ...selectedOutlet };
+                                      const sIdx = updated.stocks.findIndex((s: any) => s.id === stock.id);
+                                      if(sIdx > -1) updated.stocks[sIdx].harga_beli = newPrice;
+                                      setSelectedOutlet(updated);
+                                      setEditingPriceId(null);
+                                    } catch (err: any) {
+                                      alert(err.message || 'Gagal mengubah harga');
+                                    } finally {
+                                      setIsSavingPrice(false);
+                                    }
+                                  }} 
+                                  className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded font-medium flex items-center gap-1 disabled:opacity-60 cursor-pointer"
+                                >
+                                  {isSavingPrice ? (
+                                    <>
+                                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                      <span>Menyimpan...</span>
+                                    </>
+                                  ) : (
+                                    <span>Simpan</span>
+                                  )}
+                                </button>
+                                <button disabled={isSavingPrice} onClick={() => setEditingPriceId(null)} className="text-xs text-gray-500 hover:text-gray-700">Batal</button>
                               </div>
                             ) : (
                               <div className="flex items-center justify-between">
@@ -525,9 +601,22 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                 <textarea className="w-full border rounded-lg p-2.5 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-400 outline-none transition-all" value={txDesc} onChange={e => setTxDesc(e.target.value)} placeholder="Catatan transaksi..." rows={3} />
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setIsTxModalOpen(false)} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg font-medium transition-colors">Batal</button>
-                <button type="submit" className={`px-4 py-2 text-white rounded-lg font-medium transition-colors ${txType === 'PIUTANG' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}>
-                  Simpan Data
+                <button type="button" onClick={() => setIsTxModalOpen(false)} disabled={isTxSubmitting} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg font-medium transition-colors disabled:opacity-50">Batal</button>
+                <button 
+                  type="submit" 
+                  disabled={isTxSubmitting} 
+                  className={`px-4 py-2 text-white rounded-lg font-medium transition-all flex items-center gap-2 ${
+                    txType === 'PIUTANG' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
+                  } ${isTxSubmitting ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  {isTxSubmitting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <span>Simpan Data</span>
+                  )}
                 </button>
               </div>
             </form>
