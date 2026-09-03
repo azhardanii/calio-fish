@@ -8,10 +8,45 @@ import { DateRangePicker } from '@/components/ui/date-range-picker';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
+import { 
+  Building2, 
+  Store, 
+  ShoppingBag, 
+  Users, 
+  Truck, 
+  Calendar, 
+  AlertTriangle, 
+  CheckCircle, 
+  Info, 
+  ArrowUpRight, 
+  Sparkles,
+  DollarSign,
+  Wallet,
+  Receipt,
+  Boxes
+} from 'lucide-react';
+import Link from 'next/link';
 
-type Channel = { name: string; mtd: number; target: number };
-type FeedItem = { type: string; title: string; sub: string; time: string; color: string };
-type ProductStock = { name: string; stok: number };
+type Channel = { 
+  name: string; 
+  mtd: number; 
+  target: number; 
+  icon?: string; 
+  pct?: number; 
+};
+
+type FeedItem = { 
+  type: string; 
+  title: string; 
+  sub: string; 
+  time: string; 
+  color: string; 
+};
+
+type ProductStock = { 
+  name: string; 
+  stok: number; 
+};
 
 interface OverviewData {
   filterState: { from: string; to: string; filterLabel: string };
@@ -21,7 +56,30 @@ interface OverviewData {
   totalGap: number;
   totalPersentase: number;
   channels: Channel[];
-  chartData: { date: string; displayDate: string; offline: number; online: number }[];
+  financials?: {
+    totalOmset: number;
+    totalKasMasuk: number;
+    totalSisaTagihan: number;
+    kasPelunasanOutlet: number;
+    kasBooth: number;
+    kasPersonalBuyer: number;
+    kasEcommerce: number;
+  };
+  boothSummary?: {
+    activeBoothCount: number;
+    totalBoothCount: number;
+    boothOmset: number;
+    boothStok: number;
+  };
+  chartData: { 
+    date: string; 
+    displayDate: string; 
+    offline: number; 
+    online: number; 
+    booth?: number; 
+    personal?: number; 
+    total?: number; 
+  }[];
   totalOutlets: number;
   totalSisaTagihan: number;
   totalEmployees: number;
@@ -29,7 +87,18 @@ interface OverviewData {
   attendanceTodayCount: number;
   lowStockProducts: ProductStock[];
   allProducts: ProductStock[];
+  stockDistribution: {
+    factoryStok: number;
+    storageStok: number;
+    boothStok?: number;
+    outletStok: number;
+    totalStokFisikEkosistem?: number;
+    totalKerugian: number;
+    warehouses?: Array<{ id: string; name: string; type: string; stock: number }>;
+  };
   recentFeed: FeedItem[];
+  totalShipments: number;
+  totalItemsSent: number;
 }
 
 function formatRp(val: number): string {
@@ -46,53 +115,70 @@ function formatRpFull(val: number): string {
 }
 
 // Custom tooltip for chart
-function ChartTooltip({ active, payload, label, data }: any) {
+function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload || !payload.length) return null;
   const item = payload[0].payload;
   return (
-    <div style={{
-      background: 'var(--surface)', border: '1px solid var(--border)',
-      borderRadius: 10, padding: '10px 14px', fontSize: 12,
-      boxShadow: '0 4px 20px rgba(10,30,61,0.1)'
-    }}>
-      <div style={{ fontWeight: 600, marginBottom: 6, color: 'var(--text)' }}>
+    <div className="bg-white border border-gray-200 rounded-xl p-3 text-xs shadow-xl min-w-[160px]">
+      <div className="font-bold mb-2 text-gray-900 border-b pb-1">
         {item.displayDate || label}
       </div>
       {payload.map((p: any, i: number) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color }} />
-          <span style={{ color: 'var(--muted)' }}>{p.name}:</span>
-          <span style={{ fontWeight: 600 }}>{formatRpFull(p.value)}</span>
+        <div key={i} className="flex items-center justify-between gap-3 mb-1">
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full" style={{ background: p.color }} />
+            <span className="text-gray-500">{p.name}:</span>
+          </div>
+          <span className="font-bold text-gray-800">{formatRpFull(p.value)}</span>
         </div>
       ))}
+      <div className="border-t pt-1 mt-1 flex justify-between font-black text-gray-900">
+        <span>Total:</span>
+        <span>{formatRpFull(item.total || payload.reduce((s: number, x: any) => s + (x.value || 0), 0))}</span>
+      </div>
     </div>
   );
 }
 
-export default function OverviewClient({ data, isValidating }: { data: OverviewData, isValidating?: boolean }) {
+export default function OverviewClient({ data }: { data: OverviewData; isValidating?: boolean }) {
   const router = useRouter();
   const {
     filterState,
-    highlightOmset = { title: 'Omset', value: 0, note: '', isUp: false },
-    totalOmset, totalTarget, totalGap, totalPersentase,
-    channels, chartData, totalOutlets, totalSisaTagihan,
-    totalEmployees, hadirToday, attendanceTodayCount,
-    lowStockProducts, allProducts, recentFeed,
-  } = data as any;
+    highlightOmset = { title: 'Omset Hari Ini', value: 0, note: '', isUp: false },
+    totalOmset = 0,
+    totalTarget = 0,
+    totalGap = 0,
+    totalPersentase = 0,
+    channels = [],
+    financials,
+    boothSummary,
+    chartData = [],
+    totalOutlets = 0,
+    totalSisaTagihan = 0,
+    totalEmployees = 0,
+    hadirToday = 0,
+    attendanceTodayCount = 0,
+    lowStockProducts = [],
+    allProducts = [],
+    stockDistribution,
+    recentFeed = [],
+    totalShipments = 0,
+    totalItemsSent = 0,
+  } = data;
 
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
     if (filterState.from && filterState.to) {
       return {
         from: new Date(filterState.from),
         to: new Date(filterState.to)
-      }
+      };
     }
     if (filterState.filterLabel !== 'Lifetime (Keseluruhan Waktu)') {
       const today = new Date();
       return {
         from: new Date(today.getFullYear(), today.getMonth(), 1),
         to: new Date(today.getFullYear(), today.getMonth() + 1, 0)
-      }
+      };
     }
     return undefined;
   });
@@ -124,355 +210,518 @@ export default function OverviewClient({ data, isValidating }: { data: OverviewD
     router.push(`/overview?from=${fromStr}&to=${toStr}`);
   };
 
+  const totalKasMasuk = financials?.totalKasMasuk ?? (totalOmset - totalSisaTagihan);
+
   return (
-    <div style={{ position: 'relative' }}>
+    <div className="space-y-5 sm:space-y-6">
 
       {/* ── FILTER TOOLBAR ── */}
-      <div className="overview-filter-toolbar">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-gray-200/80 shadow-xs">
         <div>
-          <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: 'var(--text)' }}>Overview</h2>
-          <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 4 }}>
-            Menampilkan data untuk: <b>{filterState.filterLabel}</b>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-gray-900">Dashboard Overview</h1>
+            <span className="text-xs bg-blue-50 text-blue-700 font-bold px-2.5 py-0.5 rounded-full border border-blue-200">
+              Live Data
+            </span>
           </div>
+          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+            Monitoring omset menyeluruh, perputaran kas, stok fisik, dan operasional: <b className="text-gray-700">{filterState.filterLabel}</b>
+          </p>
         </div>
 
-        <div className="overview-filter-actions">
+        <div className="flex items-center gap-2 flex-wrap">
           <DateRangePicker date={dateRange} setDate={setDateRange} />
           <button
             onClick={handleApplyFilter}
-            className="overview-filter-btn"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all cursor-pointer whitespace-nowrap active:scale-95"
           >
             Tampilkan
           </button>
         </div>
       </div>
 
-      {/* ── STAT CARDS ── */}
-      <div className="grid-4" style={{ marginBottom: 18 }}>
-        <div className="stat-card">
-          <div className="stat-icon si-blue">💰</div>
-          <div>
-            <div className="stat-val">{formatRp(highlightOmset.value)}</div>
-            <div className="stat-lbl">{highlightOmset.title}</div>
-            <div className={`stat-delta ${highlightOmset.isUp ? 'delta-up' : 'delta-nt'}`}>
-              {highlightOmset.note}
+      {/* ── TOP STAT CARDS (RESPONSIVE GRID) ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+        {/* 1. Omset Hari Ini */}
+        <div className="bg-white rounded-xl sm:rounded-2xl p-3.5 sm:p-4 border border-gray-200/90 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-1 mb-1">
+            <span className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider truncate">
+              {highlightOmset.title}
+            </span>
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0">
+              💰
             </div>
+          </div>
+          <div className="text-base sm:text-2xl font-black text-gray-900 whitespace-nowrap truncate">
+            {formatRp(highlightOmset.value)}
+          </div>
+          <div className="text-[10px] sm:text-xs font-semibold text-emerald-600 mt-1 flex items-center gap-1 truncate">
+            <span>{highlightOmset.note || 'Semua kanal aktif'}</span>
           </div>
         </div>
 
-        <div className="stat-card">
-          <div className="stat-icon si-cyan">📊</div>
-          <div>
-            <div className="stat-val">{formatRp(totalOmset)}</div>
-            <div className="stat-lbl">Total Omset</div>
-            <div className="stat-delta delta-nt">
-              Berdasarkan filter aktif
+        {/* 2. Total Omset Seluruh Jalur */}
+        <div className="bg-white rounded-xl sm:rounded-2xl p-3.5 sm:p-4 border border-gray-200/90 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-1 mb-1">
+            <span className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider truncate">
+              Total Omset Penjualan
+            </span>
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm shrink-0">
+              📈
             </div>
+          </div>
+          <div className="text-base sm:text-2xl font-black text-indigo-900 whitespace-nowrap truncate">
+            {formatRp(totalOmset)}
+          </div>
+          <div className="text-[10px] sm:text-xs text-indigo-600 font-bold mt-1 truncate">
+            {totalPersentase}% dari target {formatRp(totalTarget)}
           </div>
         </div>
 
-        <div className="stat-card">
-          <div className="stat-icon si-sea">🎯</div>
-          <div>
-            <div className="stat-val">{totalPersentase}%</div>
-            <div className="stat-lbl">Progress Target</div>
-            <div className={`stat-delta ${totalPersentase >= 100 ? 'delta-up' : totalPersentase >= 70 ? 'delta-nt' : 'delta-dn'}`}>
-              {totalPersentase >= 100 ? '🎉 Target Tercapai!' : `Target: ${formatRp(totalTarget)}`}
+        {/* 3. Total Kas Masuk (Dana Cair) */}
+        <div className="bg-white rounded-xl sm:rounded-2xl p-3.5 sm:p-4 border border-gray-200/90 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-1 mb-1">
+            <span className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider truncate">
+              Total Kas Terkumpul
+            </span>
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-sm shrink-0">
+              💵
             </div>
+          </div>
+          <div className="text-base sm:text-2xl font-black text-emerald-700 whitespace-nowrap truncate">
+            {formatRp(totalKasMasuk)}
+          </div>
+          <div className="text-[10px] sm:text-xs text-gray-500 mt-1 truncate">
+            Dana riil masuk kas perusahaan
           </div>
         </div>
 
-        <div className="stat-card">
-          <div className={`stat-icon ${totalGap >= 0 ? 'si-sea' : 'si-red'}`}>
-            {totalGap >= 0 ? '✅' : '⚠️'}
-          </div>
-          <div>
-            <div className="stat-val" style={{ color: totalGap >= 0 ? 'var(--seafoam)' : 'var(--coral)' }}>
-              {formatRp(Math.abs(totalGap))}
+        {/* 4. Event & Open Booth Summary */}
+        <div className="bg-white rounded-xl sm:rounded-2xl p-3.5 sm:p-4 border border-gray-200/90 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-1 mb-1">
+            <span className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider truncate">
+              Event &amp; Open Booth
+            </span>
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-sm shrink-0">
+              🎪
             </div>
-            <div className="stat-lbl">{totalGap >= 0 ? 'Surplus dari Target' : 'Kurang dari Target'}</div>
-            <div className={`stat-delta ${totalGap >= 0 ? 'delta-up' : 'delta-dn'}`}>
-              {totalGap >= 0 ? '↑ Ahead of target' : '↓ Gap yang harus dikejar'}
+          </div>
+          <div className="text-base sm:text-2xl font-black text-purple-900 whitespace-nowrap truncate">
+            {formatRp(boothSummary?.boothOmset || 0)}
+          </div>
+          <div className="text-[10px] sm:text-xs text-purple-700 font-bold mt-1 flex items-center gap-1 truncate">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
+            <span>{boothSummary?.activeBoothCount || 0} Booth Aktif Berjalan</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── FINANCIAL FLOW CLARIFICATION BANNER ── */}
+      <div className="bg-gradient-to-br from-slate-900 to-blue-950 text-white rounded-2xl p-4 sm:p-6 shadow-md border border-slate-800">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-white/10">
+          <div>
+            <div className="flex items-center gap-2 text-blue-300 font-bold text-xs uppercase tracking-wider">
+              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Ringkasan Ekosistem Finansial Calio Fish</span>
+            </div>
+            <div className="text-lg sm:text-xl font-black mt-1">
+              Hubungan Omset, Kas Masuk, &amp; Piutang Outlet
+            </div>
+            <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+              Penjualan <b>Booth</b> dan <b>Personal Buyer</b> langsung menghasilkan <b>Kas Tunai/Transfer</b> tanpa piutang. Sedangkan pengiriman ke <b>Outlet Mitra</b> menerapkan tempo konsinyasi sehingga menjadi <b>Piutang Tagihan</b> sampai outlet melakukan pelunasan.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link 
+              href="/marketing" 
+              className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+            >
+              <span>Halaman Marketing</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </Link>
+            <Link 
+              href="/booth" 
+              className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+            >
+              <span>Modul Booth</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        </div>
+
+        {/* 3 Metric Pillars */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4">
+          <div className="bg-white/5 border border-white/10 rounded-xl p-3 sm:p-4">
+            <div className="text-[11px] text-blue-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
+              <Receipt className="w-3.5 h-3.5 text-blue-400" />
+              <span>TOTAL OMSET KESELURUHAN</span>
+            </div>
+            <div className="text-xl sm:text-2xl font-black text-white mt-1">{formatRp(totalOmset)}</div>
+            <div className="text-[11px] text-slate-400 mt-1">
+              B2B ({formatRp(channels.find(c => c.name.includes('B2B'))?.mtd || 0)}) + Online ({formatRp((channels.find(c => c.name.includes('Shopee'))?.mtd || 0) + (channels.find(c => c.name.includes('TikTok'))?.mtd || 0))}) + Booth &amp; Personal
+            </div>
+          </div>
+
+          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 sm:p-4">
+            <div className="text-[11px] text-emerald-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
+              <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+              <span>KAS MASUK BERSIH (REALISASI)</span>
+            </div>
+            <div className="text-xl sm:text-2xl font-black text-emerald-300 mt-1">{formatRp(totalKasMasuk)}</div>
+            <div className="text-[11px] text-emerald-200/80 mt-1">
+              Pelunasan Outlet + Kas Penjualan Booth + Personal Buyer + E-Commerce
+            </div>
+          </div>
+
+          <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 sm:p-4">
+            <div className="text-[11px] text-rose-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+              <span>SISA PIUTANG OUTLET MITRA</span>
+            </div>
+            <div className="text-xl sm:text-2xl font-black text-rose-300 mt-1">{formatRp(totalSisaTagihan)}</div>
+            <div className="text-[11px] text-rose-200/80 mt-1">
+              Tagihan konsinyasi {totalOutlets} outlet mitra aktif yang belum lunas
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── ROW 2: CHART + PROGRESS ── */}
-      <div className="grid-2" style={{ marginBottom: 18 }}>
-        {/* Omset Chart */}
-        <div className="card">
-          <div className="card-header">
+      {/* ── ROW 2: CHART + PROGRESS TARGET ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Omset Chart (2 Cols on lg) */}
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 p-4 sm:p-5 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b border-gray-100">
             <div>
-              <div className="card-title">📈 Tren Omset</div>
-              <div className="card-sub">Perbandingan omset offline vs online ({filterState.filterLabel})</div>
+              <div className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                <span>📈 Tren Omset Seluruh Kanal Penjualan</span>
+              </div>
+              <div className="text-xs text-gray-500 mt-0.5">
+                Akumulasi harian penjualan B2B, E-Commerce, Event Booth, &amp; Personal Buyer ({filterState.filterLabel})
+              </div>
             </div>
           </div>
-          <div className="card-body" style={{ height: 280, width: '100%', minHeight: 280 }}>
+
+          <div className="h-[260px] sm:h-[300px] w-full min-h-[260px]">
             {isMounted && chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="colorOffline" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--ocean-400)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="var(--ocean-400)" stopOpacity={0} />
+                    <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="colorBooth" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="colorOnline" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--cyan-400)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="var(--cyan-400)" stopOpacity={0} />
+                      <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                   <XAxis
-                    dataKey="displayDate" tick={{ fontSize: 10, fill: 'var(--hint)' }}
+                    dataKey="displayDate" 
+                    tick={{ fontSize: 10, fill: '#94a3b8' }}
+                    axisLine={{ stroke: '#e2e8f0' }}
+                    tickLine={false}
                   />
-                  <YAxis tick={{ fontSize: 10, fill: 'var(--hint)' }} tickFormatter={(v) => formatRp(v)} />
+                  <YAxis 
+                    tick={{ fontSize: 10, fill: '#94a3b8' }} 
+                    tickFormatter={(v) => formatRp(v)} 
+                    axisLine={false}
+                    tickLine={false}
+                  />
                   <Tooltip content={<ChartTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: 11, color: 'var(--muted)' }} />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
                   <Area
-                    type="monotone" dataKey="offline" name="Offline" stackId="1"
-                    stroke="var(--ocean-400)" fill="url(#colorOffline)" strokeWidth={2}
+                    type="monotone" dataKey="offline" name="B2B Outlet"
+                    stroke="#3b82f6" fill="url(#colorTotal)" strokeWidth={2}
                   />
                   <Area
-                    type="monotone" dataKey="online" name="Online" stackId="1"
-                    stroke="var(--cyan-400)" fill="url(#colorOnline)" strokeWidth={2}
+                    type="monotone" dataKey="online" name="E-Commerce"
+                    stroke="#06b6d4" fill="url(#colorOnline)" strokeWidth={2}
+                  />
+                  <Area
+                    type="monotone" dataKey="booth" name="Event Booth"
+                    stroke="#10b981" fill="url(#colorBooth)" strokeWidth={2}
+                  />
+                  <Area
+                    type="monotone" dataKey="personal" name="Personal Buyer"
+                    stroke="#8b5cf6" fill="none" strokeWidth={1.5} strokeDasharray="3 3"
                   />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--hint)', fontSize: 13 }}>
-                Belum ada data omset
+              <div className="flex items-center justify-center h-full text-gray-400 text-xs italic">
+                Belum ada data penjualan tercatat pada rentang filter ini
               </div>
             )}
           </div>
         </div>
 
-        {/* Target Progress */}
-        <div className="card">
-          <div className="card-header">
-            <div>
-              <div className="card-title">🎯 Progress Target</div>
-              <div className="card-sub">Performa per channel ({filterState.filterLabel})</div>
+        {/* Channels Breakdown & Target Progress (1 Col on lg) */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-5 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-3">
+              <div>
+                <div className="text-base font-bold text-gray-900 flex items-center gap-1.5">
+                  <Store className="w-4 h-4 text-blue-600" />
+                  <span>Jalur Distribusi &amp; Omset</span>
+                </div>
+                <div className="text-xs text-gray-400">Kontribusi per sales channel</div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {channels.map((ch: Channel, i: number) => {
+                const pct = totalOmset > 0 ? Math.round((ch.mtd / totalOmset) * 100) : 0;
+                return (
+                  <div key={i} className="p-2.5 bg-gray-50/70 border border-gray-100 rounded-xl">
+                    <div className="flex items-center justify-between text-xs mb-1.5">
+                      <span className="font-bold text-gray-800 flex items-center gap-1.5 truncate">
+                        <span>{ch.icon || '📦'}</span>
+                        <span className="truncate">{ch.name}</span>
+                      </span>
+                      <span className="font-black text-gray-900 whitespace-nowrap ml-2">
+                        {formatRp(ch.mtd)}
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
+                      <div 
+                        className="bg-blue-600 h-full rounded-full transition-all" 
+                        style={{ width: `${Math.min(pct, 100)}%` }} 
+                      />
+                    </div>
+                    <div className="flex justify-between items-center text-[10px] text-gray-400 mt-1">
+                      <span>Porsi: <b>{pct}%</b> dari total omset</span>
+                      {ch.target > 0 && <span>Target: {formatRp(ch.target)}</span>}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-          <div className="card-body">
-            {channels.map((ch: Channel, i: number) => {
-              const pct = ch.target > 0 ? Math.min((ch.mtd / ch.target) * 100, 100) : 0;
-              const pctDisplay = ch.target > 0 ? ((ch.mtd / ch.target) * 100).toFixed(1) : '0';
-              return (
-                <div className="pbar-wrap" key={i}>
-                  <div className="pbar-top">
-                    <span className="pbar-label">{ch.name}</span>
-                    <span className="pbar-val">{pctDisplay}%</span>
-                  </div>
-                  <div className="pbar" style={{ height: 8, marginBottom: 4 }}>
-                    <div className="pbar-fill" style={{
-                      width: `${pct}%`,
-                      background: pct >= 100
-                        ? 'linear-gradient(90deg, var(--seafoam), #34D399)'
-                        : pct >= 60
-                          ? 'linear-gradient(90deg, var(--ocean-400), var(--cyan-400))'
-                          : 'linear-gradient(90deg, var(--sand), #FBBF24)',
-                    }} />
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--hint)' }}>
-                    <span>{formatRp(ch.mtd)} tercapai</span>
-                    <span>Target: {formatRp(ch.target)}</span>
-                  </div>
-                </div>
-              );
-            })}
 
-            {/* Separator */}
-            <div style={{ borderTop: '1px solid var(--border)', margin: '16px 0 12px' }} />
-
-            {/* Total */}
-            <div className="pbar-wrap">
-              <div className="pbar-top">
-                <span className="pbar-label" style={{ fontWeight: 700 }}>Total Semua Channel</span>
-                <span className="pbar-val" style={{ fontWeight: 700 }}>{totalPersentase}%</span>
-              </div>
-              <div className="pbar" style={{ height: 10 }}>
-                <div className="pbar-fill" style={{
-                  width: `${Math.min(totalPersentase, 100)}%`,
-                  background: totalPersentase >= 100
-                    ? 'linear-gradient(90deg, var(--seafoam), #34D399)'
-                    : 'linear-gradient(90deg, var(--ocean-500), var(--cyan-400))',
-                }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--hint)', marginTop: 4 }}>
-                <span>{formatRp(totalOmset)} dari {formatRp(totalTarget)}</span>
-                <span>Gap: <b style={{ color: totalGap >= 0 ? 'var(--seafoam)' : 'var(--coral)' }}>
-                  {totalGap >= 0 ? '+' : ''}{formatRp(totalGap)}
-                </b></span>
-              </div>
+          {/* Target Progress Summary */}
+          <div className="mt-4 pt-3 border-t border-gray-100">
+            <div className="flex justify-between items-center text-xs font-bold text-gray-800 mb-1">
+              <span>Pencapaian Target Gabungan</span>
+              <span className="text-blue-600 font-black">{totalPersentase}%</span>
+            </div>
+            <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
+              <div 
+                className={`h-full rounded-full transition-all ${
+                  totalPersentase >= 100 ? 'bg-emerald-500' : totalPersentase >= 60 ? 'bg-blue-600' : 'bg-amber-500'
+                }`}
+                style={{ width: `${Math.min(totalPersentase, 100)}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-[11px] text-gray-500 mt-1.5">
+              <span>{formatRp(totalOmset)} tercapai</span>
+              <span className={totalGap >= 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold'}>
+                {totalGap >= 0 ? `+${formatRp(totalGap)} Ahead` : `Gap: ${formatRp(Math.abs(totalGap))}`}
+              </span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── ROW 3: MINI STATS + STOCK + FEED ── */}
-      <div className="overview-row3-grid">
+      {/* ── ROW 3: STOCK ECOSYSTEM + OPERATIONAL STATUS + RECENT ACTIVITY ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        
+        {/* 1. SEBARAN STOK FISIK SELURUH EKOSISTEM */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-5 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-3">
+              <div>
+                <div className="text-base font-bold text-gray-900 flex items-center gap-1.5">
+                  <Boxes className="w-4 h-4 text-emerald-600" />
+                  <span>Sebaran Stok Fisik</span>
+                </div>
+                <div className="text-xs text-gray-400">Total stok produk di seluruh ekosistem</div>
+              </div>
+              <Link href="/warehouse" className="text-xs font-bold text-blue-600 hover:underline">
+                Kelola Gudang &rarr;
+              </Link>
+            </div>
 
-        {/* Mini stat cards */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">📋 Status Hari Ini</div>
+            {/* 4 Titik Lokasi Stok */}
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div className="bg-blue-50/70 border border-blue-200/80 rounded-xl p-2.5">
+                <div className="text-[10px] font-bold text-blue-700 uppercase tracking-wider truncate">🏭 Pabrik (Factory)</div>
+                <div className="text-base font-black text-blue-950 mt-0.5">{stockDistribution?.factoryStok || 0} pcs</div>
+              </div>
+
+              <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-2.5">
+                <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider truncate">📦 Gudang Cabang</div>
+                <div className="text-base font-black text-emerald-950 mt-0.5">{stockDistribution?.storageStok || 0} pcs</div>
+              </div>
+
+              <div className="bg-purple-50/70 border border-purple-200/80 rounded-xl p-2.5">
+                <div className="text-[10px] font-bold text-purple-700 uppercase tracking-wider truncate">🎪 Booth Aktif</div>
+                <div className="text-base font-black text-purple-950 mt-0.5">{stockDistribution?.boothStok || 0} pcs</div>
+              </div>
+
+              <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-2.5">
+                <div className="text-[10px] font-bold text-amber-700 uppercase tracking-wider truncate">🏪 Outlet Mitra</div>
+                <div className="text-base font-black text-amber-950 mt-0.5">{stockDistribution?.outletStok || 0} pcs</div>
+              </div>
+            </div>
+
+            {/* Total Fisik Banner */}
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-2.5 mb-3 flex items-center justify-between text-xs">
+              <span className="font-bold text-gray-600">Total Fisik di Seluruh Fasilitas:</span>
+              <span className="font-black text-gray-900 bg-white px-2 py-0.5 rounded-md border border-gray-200">
+                {stockDistribution?.totalStokFisikEkosistem || ((stockDistribution?.factoryStok || 0) + (stockDistribution?.storageStok || 0) + (stockDistribution?.boothStok || 0) + (stockDistribution?.outletStok || 0))} pcs
+              </span>
+            </div>
+
+            {/* Produk Stok Tipis */}
+            {lowStockProducts.length > 0 && (
+              <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 mb-3 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span><b>{lowStockProducts.length} produk</b> stoknya di bawah 50 pcs (segera jadwalkan produksi).</span>
+              </div>
+            )}
+
+            {/* List SKU Bar */}
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1 no-scrollbar">
+              {allProducts.map((p: ProductStock, idx: number) => {
+                const maxStok = Math.max(...allProducts.map((x: ProductStock) => x.stok), 1);
+                const pct = (p.stok / maxStok) * 100;
+                const isLow = p.stok <= 50;
+
+                return (
+                  <div key={idx} className="flex items-center gap-2 text-xs">
+                    <span className={`w-24 truncate font-bold ${isLow ? 'text-rose-600' : 'text-gray-700'}`}>
+                      {p.name}
+                    </span>
+                    <div className="flex-1 bg-gray-100 h-2 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full ${isLow ? 'bg-rose-500' : 'bg-blue-600'}`}
+                        style={{ width: `${Math.max(pct, 5)}%` }}
+                      />
+                    </div>
+                    <span className={`font-mono font-black w-14 text-right ${isLow ? 'text-rose-600' : 'text-gray-900'}`}>
+                      {p.stok} pcs
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <div className="card-body">
-            {/* Outlets */}
-            <div className="kpi-block">
-              <div className="kpi-label">🏪 Outlet Terdaftar</div>
-              <div className="kpi-value" style={{ fontSize: 28 }}>{totalOutlets}</div>
-              {totalSisaTagihan > 0 && (
-                <div className="kpi-note" style={{ color: 'var(--coral)' }}>
-                  ⚠️ Total sisa tagihan: {formatRp(totalSisaTagihan)}
+        </div>
+
+        {/* 2. OPERATIONAL STATUS TODAY */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-5 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-3">
+              <div>
+                <div className="text-base font-bold text-gray-900 flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-blue-600" />
+                  <span>Status Operasional</span>
+                </div>
+                <div className="text-xs text-gray-400">Kehadiran, mitra, &amp; pergerakan logistik</div>
+              </div>
+            </div>
+
+            <div className="space-y-3.5">
+              {/* Mitra Outlet */}
+              <div className="p-3 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-gray-500 font-bold uppercase tracking-wider flex items-center gap-1">
+                    <Store className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Outlet Mitra B2B</span>
+                  </div>
+                  <div className="text-xl font-black text-gray-900 mt-0.5">{totalOutlets} Toko</div>
+                  <div className="text-[11px] text-gray-500 mt-0.5">Dikelola tim marketing &amp; pusat</div>
+                </div>
+                <Link href="/outlet" className="px-3 py-1.5 bg-blue-50 text-blue-700 font-bold text-xs rounded-lg hover:bg-blue-100 transition">
+                  Lihat Outlet
+                </Link>
+              </div>
+
+              {/* Presensi Karyawan */}
+              <div className="p-3 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-gray-500 font-bold uppercase tracking-wider flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Presensi Hari Ini</span>
+                  </div>
+                  <div className="text-xl font-black text-gray-900 mt-0.5">
+                    {hadirToday} <span className="text-xs font-normal text-gray-400">/ {totalEmployees} Karyawan</span>
+                  </div>
+                  <div className="text-[11px] text-gray-500 mt-0.5">
+                    {attendanceTodayCount === 0 ? 'Belum ada presensi masuk' : `${attendanceTodayCount} orang lapor presensi`}
+                  </div>
+                </div>
+                <Link href="/karyawan" className="px-3 py-1.5 bg-emerald-50 text-emerald-700 font-bold text-xs rounded-lg hover:bg-emerald-100 transition">
+                  Kehadiran
+                </Link>
+              </div>
+
+              {/* Logistik & Pengiriman */}
+              <div className="p-3 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-gray-500 font-bold uppercase tracking-wider flex items-center gap-1">
+                    <Truck className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Logistik Pengiriman</span>
+                  </div>
+                  <div className="text-xl font-black text-gray-900 mt-0.5">{totalShipments} Resi</div>
+                  <div className="text-[11px] text-indigo-700 font-bold mt-0.5">
+                    {totalItemsSent.toLocaleString('id-ID')} pcs barang terkirim
+                  </div>
+                </div>
+                <Link href="/pengiriman" className="px-3 py-1.5 bg-indigo-50 text-indigo-700 font-bold text-xs rounded-lg hover:bg-indigo-100 transition">
+                  Log Logistik
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 3. RECENT ACTIVITY FEED */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-5 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-3">
+              <div>
+                <div className="text-base font-bold text-gray-900 flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4 text-amber-500" />
+                  <span>Aktivitas Sistem Terbaru</span>
+                </div>
+                <div className="text-xs text-gray-400">Log transaksi, booth, &amp; produksi</div>
+              </div>
+            </div>
+
+            <div className="space-y-2 max-h-80 overflow-y-auto pr-1 no-scrollbar">
+              {recentFeed.length > 0 ? (
+                recentFeed.map((item: FeedItem, idx: number) => (
+                  <div key={idx} className="flex items-center gap-3 p-2.5 rounded-xl bg-gray-50/70 hover:bg-gray-100 border border-gray-100 transition">
+                    <div className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center font-bold text-sm shrink-0">
+                      {item.type}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-gray-800 text-xs truncate">{item.title}</div>
+                      <div className="text-[11px] text-gray-500 truncate">{item.sub}</div>
+                    </div>
+                    <div className="text-[10px] text-gray-400 font-mono whitespace-nowrap">
+                      {item.time}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-gray-400 italic text-xs text-center py-6">
+                  Belum ada aktivitas tercatat
                 </div>
               )}
             </div>
-
-            {/* Attendance */}
-            <div className="kpi-block">
-              <div className="kpi-label">👥 Kehadiran Hari Ini</div>
-              <div className="kpi-value" style={{ fontSize: 28 }}>
-                {hadirToday}<span style={{ fontSize: 14, color: 'var(--muted)' }}> / {totalEmployees}</span>
-              </div>
-              <div className="kpi-note">
-                {attendanceTodayCount === 0
-                  ? 'Belum ada yang absen hari ini'
-                  : `${attendanceTodayCount} karyawan sudah lapor presensi`}
-              </div>
-            </div>
-
-            {/* Pengiriman */}
-            <div className="kpi-block">
-              <div className="kpi-label">🚚 Logistik & Pengiriman</div>
-              <div className="kpi-value" style={{ fontSize: 28 }}>
-                {(data as any).totalShipments || 0}
-                <span style={{ fontSize: 14, color: 'var(--muted)', fontWeight: 500, marginLeft: 6 }}>
-                  Perjalanan
-                </span>
-              </div>
-              <div className="kpi-note" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                <span style={{
-                  background: 'var(--ocean-100)',
-                  color: 'var(--ocean-700)',
-                  padding: '2px 8px',
-                  borderRadius: 6,
-                  fontWeight: 700,
-                  fontSize: 12
-                }}>
-                  {(data as any).totalItemsSent?.toLocaleString('id-ID') || 0} pcs
-                </span>
-                <span style={{ color: 'var(--muted)' }}>Total produk terkirim</span>
-              </div>
-            </div>
           </div>
         </div>
 
-        {/* Stock visualization */}
-        <div className="card">
-          <div className="card-header">
-            <div>
-              <div className="card-title">📦 Sebaran Stok Produk</div>
-              <div className="card-sub">
-                {lowStockProducts.length > 0
-                  ? <span style={{ color: 'var(--coral)' }}>⚠️ {lowStockProducts.length} produk stok rendah di Gudang</span>
-                  : 'Populasi produk di Warehouse & Outlet'}
-              </div>
-            </div>
-          </div>
-          <div className="card-body">
-            {(data as any).stockDistribution && (
-              <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: 10 }}>
-                  <div style={{ fontSize: 11, color: '#3b82f6', fontWeight: 600 }}>Pabrik (Banyuwangi)</div>
-                  <div style={{ fontSize: 16, color: '#1d4ed8', fontWeight: 700 }}>{(data as any).stockDistribution.factoryStok} pcs</div>
-                </div>
-                <div style={{ flex: 1, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 10 }}>
-                  <div style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>Cabang (Malang)</div>
-                  <div style={{ fontSize: 16, color: '#15803d', fontWeight: 700 }}>{(data as any).stockDistribution.storageStok} pcs</div>
-                </div>
-                <div style={{ flex: 1, background: '#fdf4ff', border: '1px solid #fbcfe8', borderRadius: 8, padding: 10 }}>
-                  <div style={{ fontSize: 11, color: '#d946ef', fontWeight: 600 }}>Semua Outlet</div>
-                  <div style={{ fontSize: 16, color: '#a21caf', fontWeight: 700 }}>{(data as any).stockDistribution.outletStok} pcs</div>
-                </div>
-              </div>
-            )}
-
-            {(data as any).stockDistribution?.totalKerugian > 0 && (
-              <div style={{ marginBottom: 16, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 10 }}>
-                <div style={{ fontSize: 11, color: '#dc2626', fontWeight: 600 }}>⚠️ Estimasi Kerugian (Retur)</div>
-                <div style={{ fontSize: 16, color: '#991b1b', fontWeight: 700 }}>{formatRp((data as any).stockDistribution.totalKerugian)}</div>
-              </div>
-            )}
-
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)', marginBottom: 8, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>
-              Total Stok Aktif (Sistem)
-            </div>
-
-            {allProducts.map((p: ProductStock, i: number) => {
-              const maxStok = Math.max(...allProducts.map((x: ProductStock) => x.stok), 1);
-              const pct = (p.stok / maxStok) * 100;
-              const isLow = p.stok <= 50;
-              return (
-                <div className="wh-row" key={i} style={{ padding: '6px 0' }}>
-                  <span className="wh-name" style={{ fontSize: 11, color: isLow ? 'var(--coral)' : 'var(--text)' }}>
-                    {p.name}
-                  </span>
-                  <div className="wh-bar-wrap">
-                    <div className="wh-bar">
-                      <div
-                        className={`wh-bar-fill ${isLow ? 'fill-low' : pct > 60 ? 'fill-full' : 'fill-mid'}`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                  <span style={{
-                    fontSize: 11, fontWeight: 600, fontFamily: 'var(--mono)',
-                    color: isLow ? 'var(--coral)' : 'var(--muted)', minWidth: 40, textAlign: 'right',
-                  }}>
-                    {p.stok}
-                  </span>
-                </div>
-              );
-            })}
-            {allProducts.length === 0 && (
-              <div style={{ color: 'var(--hint)', fontSize: 12, textAlign: 'center', padding: 20 }}>
-                Belum ada produk terdaftar
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Activity Feed */}
-        <div className="card">
-          <div className="card-header">
-            <div>
-              <div className="card-title">🔔 Aktivitas Terbaru</div>
-              <div className="card-sub">Log otomatis dari semua modul</div>
-            </div>
-          </div>
-          <div className="card-body">
-            {recentFeed.length > 0 ? (
-              recentFeed.map((item: FeedItem, i: number) => (
-                <div className="feed-item" key={i}>
-                  <div className={`feed-icon ${item.color}`}>{item.type}</div>
-                  <div className="feed-text">
-                    <div className="feed-title">{item.title}</div>
-                    <div className="feed-sub">{item.sub}</div>
-                  </div>
-                  <div className="feed-time">{item.time}</div>
-                </div>
-              ))
-            ) : (
-              <div style={{ color: 'var(--hint)', fontSize: 12, textAlign: 'center', padding: 20 }}>
-                Belum ada aktivitas tercatat
-              </div>
-            )}
-          </div>
-        </div>
       </div>
+
     </div>
   );
 }
