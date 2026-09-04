@@ -188,7 +188,7 @@ export function BottomNav({ user }: BottomNavProps) {
     { name: "Marketing", href: "/marketing", icon: TrendingUp, visible: isMarketing && !primaryItems.some(p => p.href === "/marketing") },
     { name: "Event & Booth", href: "/booth", icon: Store, visible: (isMarketing || isOwnerOrAdmin) && !primaryItems.some(p => p.href === "/booth") },
     { name: "Database Produk", href: "/produk", icon: PackageCheck, visible: isOwnerOrAdmin },
-    { name: "Warehouse", href: "/warehouse", icon: WarehouseIcon, visible: (isOwnerOrAdmin || isProduksi) && !primaryItems.some(p => p.href === "/warehouse") },
+    { name: "Warehouse", href: "/warehouse", icon: WarehouseIcon, visible: (isOwnerOrAdmin || isProduksi || isMarketing) && !primaryItems.some(p => p.href === "/warehouse") },
     { name: "Karyawan", href: "/karyawan", icon: Users, visible: isOwnerOrAdmin },
     { name: "Database Outlet", href: "/outlet", icon: MapPin, visible: (isOwnerOrAdmin || isMitra || isMarketing) && !primaryItems.some(p => p.href === "/outlet") },
     { name: "Log Pengiriman", href: "/pengiriman", icon: Package, visible: (isOwnerOrAdmin || isMitra) && !primaryItems.some(p => p.href === "/pengiriman") },

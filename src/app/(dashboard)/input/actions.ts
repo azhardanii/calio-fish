@@ -54,6 +54,9 @@ export async function submitWarehouseInput(input: WarehouseInput) {
       for (const item of input.items) {
         const product = await tx.product.findUnique({ where: { id: item.productId } });
         if (!product) throw new Error(`Product ${item.productId} not found`);
+        if (product.stok < item.qty) {
+          throw new Error(`Stok tidak mencukupi untuk ${product.name} (Tersedia: ${product.stok} pcs, Diminta: ${item.qty} pcs).`);
+        }
         
         const newBalance = product.stok - item.qty;
         

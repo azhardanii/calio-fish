@@ -387,6 +387,30 @@ export async function POST(req: Request) {
             const srcName = data.source_name || 'Banyuwangi';
             const w = await tx.warehouse.findFirst({ where: { name: { contains: srcName, mode: 'insensitive' } }});
             if (w) {
+              const insufficientItems: string[] = [];
+              for (const item of items) {
+                if (item.product_key && item.qty > 0) {
+                  const product = await tx.product.findUnique({ where: { sku: item.product_key } });
+                  if (!product) {
+                    insufficientItems.push(`• *${item.product_key}* (SKU tidak ditemukan di database)`);
+                    continue;
+                  }
+                  const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: product.id } }});
+                  const availableQty = ws ? ws.quantity : 0;
+                  if (availableQty < item.qty) {
+                    insufficientItems.push(`• *${product.name}* (Tersedia: ${availableQty} pcs, Diminta: ${item.qty} pcs)`);
+                  }
+                }
+              }
+
+              if (insufficientItems.length > 0) {
+                throw new Error(
+                  `BATAL:Stok di gudang *${w.name}* tidak mencukupi untuk pesanan online:\n` +
+                  insufficientItems.join('\n') +
+                  `\n\nPencatatan penjualan online dibatalkan agar tidak terjadi selisih stok fisik.`
+                );
+              }
+
               for (const item of items) {
                 if (item.product_key && item.qty > 0) {
                   const product = await tx.product.findUnique({ where: { sku: item.product_key } });
@@ -489,6 +513,30 @@ export async function POST(req: Request) {
               const srcName = entry.source_name || 'Banyuwangi';
               const w = await tx.warehouse.findFirst({ where: { name: { contains: srcName, mode: 'insensitive' } }});
               if (w) {
+                const insufficientItems: string[] = [];
+                for (const item of items) {
+                  if (item.product_key && item.qty > 0) {
+                    const product = await tx.product.findUnique({ where: { sku: item.product_key } });
+                    if (!product) {
+                      insufficientItems.push(`• *${item.product_key}* (SKU tidak ditemukan di database)`);
+                      continue;
+                    }
+                    const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: product.id } }});
+                    const availableQty = ws ? ws.quantity : 0;
+                    if (availableQty < item.qty) {
+                      insufficientItems.push(`• *${product.name}* (Tersedia: ${availableQty} pcs, Diminta: ${item.qty} pcs)`);
+                    }
+                  }
+                }
+
+                if (insufficientItems.length > 0) {
+                  throw new Error(
+                    `BATAL:Stok di gudang *${w.name}* tidak mencukupi untuk pesanan online (${entry.platform}):\n` +
+                    insufficientItems.join('\n') +
+                    `\n\nPencatatan penjualan online dibatalkan agar tidak terjadi selisih stok fisik.`
+                  );
+                }
+
                 for (const item of items) {
                   if (item.product_key && item.qty > 0) {
                     const product = await tx.product.findUnique({ where: { sku: item.product_key } });
@@ -573,6 +621,7 @@ export async function POST(req: Request) {
             
             // 1. Resolve Source
             let sourceId = null;
+            let resolvedSourceName = srcName;
             if (srcType === 'WAREHOUSE') {
               const ws = await tx.warehouse.findMany({ where: { name: { contains: srcName, mode: 'insensitive' } }});
               if (ws.length > 1) {
@@ -582,7 +631,10 @@ export async function POST(req: Request) {
               if (ws.length === 0) {
                 throw new Error(`AMBIGUOUS:Tidak dapat menemukan Gudang/Warehouse Asal dengan nama '${srcName}'. Pastikan nama sesuai dengan database.`);
               }
-              if (ws.length === 1) sourceId = ws[0].id;
+              if (ws.length === 1) {
+                sourceId = ws[0].id;
+                resolvedSourceName = ws[0].name;
+              }
             } else if (srcType === 'OUTLET') {
               const os = await tx.outlet.findMany({ where: { nama: { contains: srcName, mode: 'insensitive' }, OR: [{ status: 'Aktif' }, { status: 'Active' }, { status: null }] }});
               if (os.length > 1) {
@@ -592,7 +644,10 @@ export async function POST(req: Request) {
               if (os.length === 0) {
                 throw new Error(`AMBIGUOUS:Tidak dapat menemukan Outlet Asal dengan nama '${srcName}'. Pastikan nama outlet sudah benar dan aktif.`);
               }
-              if (os.length === 1) sourceId = os[0].id;
+              if (os.length === 1) {
+                sourceId = os[0].id;
+                resolvedSourceName = os[0].nama;
+              }
             } else if (srcType === 'BOOTH') {
               const bs = await tx.eventBooth.findMany({ where: { nama: { contains: srcName, mode: 'insensitive' }, status: 'AKTIF' }});
               if (bs.length > 1) {
@@ -602,7 +657,10 @@ export async function POST(req: Request) {
               if (bs.length === 0) {
                 throw new Error(`AMBIGUOUS:Tidak dapat menemukan Booth Asal yang aktif dengan nama '${srcName}'.`);
               }
-              if (bs.length === 1) sourceId = bs[0].id;
+              if (bs.length === 1) {
+                sourceId = bs[0].id;
+                resolvedSourceName = bs[0].nama;
+              }
             }
 
             // 2. Resolve Destination
@@ -651,8 +709,59 @@ export async function POST(req: Request) {
               }
               if (bs.length === 1) { destId = bs[0].id; boothId = bs[0].id; }
             }
+
+            // 3. Pre-validate Stock Availability at Source (BATALKAN jika stok tidak cukup)
+            const insufficientItems: string[] = [];
+            for (const item of items) {
+              if (item.product_key && item.qty > 0) {
+                const product = await tx.product.findUnique({ where: { sku: item.product_key } });
+                if (!product) {
+                  insufficientItems.push(`• *${item.product_key}* (SKU produk tidak ditemukan di database)`);
+                  continue;
+                }
+
+                if (srcType === 'WAREHOUSE' && sourceId) {
+                  const ws = await tx.warehouseStock.findUnique({
+                    where: { warehouse_id_product_id: { warehouse_id: sourceId, product_id: product.id } }
+                  });
+                  const availableQty = ws ? ws.quantity : 0;
+                  if (availableQty < item.qty) {
+                    insufficientItems.push(`• *${product.name}* (Tersedia: ${availableQty} pcs, Diminta: ${item.qty} pcs)`);
+                  }
+                } else if (srcType === 'OUTLET' && sourceId) {
+                  const os = await tx.outletStock.findUnique({
+                    where: { outlet_id_product_id: { outlet_id: sourceId, product_id: product.id } }
+                  });
+                  const availableQty = os ? os.quantity : 0;
+                  if (availableQty < item.qty) {
+                    insufficientItems.push(`• *${product.name}* (Tersedia di outlet: ${availableQty} pcs, Diminta: ${item.qty} pcs)`);
+                  }
+                } else if (srcType === 'BOOTH' && sourceId) {
+                  const bs = await tx.boothStock.findUnique({
+                    where: { booth_id_product_id: { booth_id: sourceId, product_id: product.id } }
+                  });
+                  const availableQty = bs ? bs.quantity : 0;
+                  if (availableQty < item.qty) {
+                    insufficientItems.push(`• *${product.name}* (Tersedia di booth: ${availableQty} pcs, Diminta: ${item.qty} pcs)`);
+                  }
+                }
+              }
+            }
+
+            if (insufficientItems.length > 0) {
+              const srcLabel = srcType === 'WAREHOUSE' 
+                ? `gudang *${resolvedSourceName}*` 
+                : srcType === 'OUTLET' 
+                ? `outlet *${resolvedSourceName}*` 
+                : `booth *${resolvedSourceName}*`;
+              throw new Error(
+                `BATAL:Stok di ${srcLabel} tidak mencukupi atau habis:\n` +
+                insufficientItems.join('\n') +
+                `\n\nPengiriman dibatalkan secara otomatis agar tidak terjadi selisih stok fisik.`
+              );
+            }
             
-            // 3. Create Shipment Record
+            // 4. Create Shipment Record
             const shipment = await tx.outboundShipment.create({
               data: {
                 date: parsedData.date ? new Date(parsedData.date) : new Date(),
@@ -685,7 +794,7 @@ export async function POST(req: Request) {
               });
             }
 
-            // 4. Process Items and Stocks
+            // 5. Process Items and Stocks
             let totalBilling = 0;
             for (const item of items) {
                if (item.product_key && item.qty > 0) {
@@ -700,15 +809,6 @@ export async function POST(req: Request) {
                      const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: sourceId, product_id: product.id } }});
                      if (ws) {
                        await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity - item.qty }});
-                     } else {
-                       await tx.warehouseStock.create({
-                         data: {
-                           warehouse_id: sourceId,
-                           product_id: product.id,
-                           quantity: -item.qty,
-                           returned_qty: 0
-                         }
-                       });
                      }
                    } else if (srcType === 'OUTLET' && sourceId) {
                      const os = await tx.outletStock.findUnique({ where: { outlet_id_product_id: { outlet_id: sourceId, product_id: product.id } }});
@@ -1004,6 +1104,8 @@ export async function POST(req: Request) {
       console.error('Database insertion error:', dbError);
       if (dbError?.message && dbError.message.startsWith('AMBIGUOUS:')) {
         replyMsg = `⚠️ Laporan dibatalkan.\n\n${dbError.message.replace('AMBIGUOUS:', '')}`;
+      } else if (dbError?.message && dbError.message.startsWith('BATAL:')) {
+        replyMsg = `❌ *PENGIRIMAN DIBATALKAN*\n\n${dbError.message.replace('BATAL:', '')}`;
       } else {
         replyMsg = `❌ Gagal mencatat laporan ${parsedData.report_type} ke database.`;
       }
