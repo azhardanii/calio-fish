@@ -241,7 +241,7 @@ export async function POST(req: Request) {
                }
             }
           }
-        });
+        }, { maxWait: 10000, timeout: 60000 });
         
         replyMsg = `✅ *${activities.length} Kegiatan Produksi* tanggal ${parsedData.date} dicatat!`;
         if (totalStokAdded > 0) {
@@ -336,7 +336,7 @@ export async function POST(req: Request) {
               }
             }
           }
-        });
+        }, { maxWait: 10000, timeout: 60000 });
         const tDate = new Date(parsedData.date);
         const startOfMonth = new Date(tDate.getFullYear(), tDate.getMonth(), 1);
         const endOfMonth = new Date(tDate.getFullYear(), tDate.getMonth() + 1, 0, 23, 59, 59, 999);
@@ -443,7 +443,7 @@ export async function POST(req: Request) {
 
             }
           }
-        });
+        }, { maxWait: 10000, timeout: 60000 });
         const tDate = new Date(parsedData.date);
         const startOfMonth = new Date(tDate.getFullYear(), tDate.getMonth(), 1);
         const endOfMonth = new Date(tDate.getFullYear(), tDate.getMonth() + 1, 0, 23, 59, 59, 999);
@@ -520,7 +520,7 @@ export async function POST(req: Request) {
               }
             }
           }
-        });
+        }, { maxWait: 10000, timeout: 60000 });
         replyMsg = `✅ *Marketing Online Multi-Platform* ${parsedData.date} berhasil dicatat!`;
 
       } else if (parsedData.report_type === 'JADWAL_KOL') {
@@ -800,10 +800,7 @@ export async function POST(req: Request) {
                }
              }
           }
-        }, {
-          maxWait: 5000,
-          timeout: 20000
-        });
+        }, { maxWait: 10000, timeout: 60000 });
         
         replyMsg = `✅ *${totalShipments} Rute Logistik* tanggal ${parsedData.date} berhasil diproses dan dicatat!`;
 
@@ -979,7 +976,7 @@ export async function POST(req: Request) {
               kas_masuk: { increment: finalOmset },
             }
           });
-        });
+        }, { maxWait: 10000, timeout: 60000 });
 
         replyMsg = `✅ *Laporan Penjualan Booth* ${booth.nama} berhasil dicatat!\nTotal Omset: Rp ${omset.toLocaleString('id-ID')}\nMetode: ${bayarMethod}`;
       }
