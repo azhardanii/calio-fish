@@ -880,19 +880,19 @@ function MarketingMyDashboard({ data, mutate }: { data: any; mutate: () => void 
         <div style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 8 }}>
             <span style={{ fontWeight: 600, color: '#475569' }}>Pencapaian Target</span>
-            <span style={{ fontWeight: 800, fontSize: 18, color: p.pencapaian >= 100 ? '#15803d' : p.pencapaian >= 50 ? '#ca8a04' : '#dc2626' }}>
-              {p.pencapaian.toFixed(1)}%
+            <span style={{ fontWeight: 800, fontSize: 18, color: (p.pencapaian || 0) >= 100 ? '#15803d' : (p.pencapaian || 0) >= 50 ? '#ca8a04' : '#dc2626' }}>
+              {(p.pencapaian || 0).toFixed(1)}%
             </span>
           </div>
-          <ProgressBar value={p.pencapaian} color={p.pencapaian >= 100 ? '#22c55e' : p.pencapaian >= 50 ? '#eab308' : '#ef4444'} />
+          <ProgressBar value={p.pencapaian || 0} color={(p.pencapaian || 0) >= 100 ? '#22c55e' : (p.pencapaian || 0) >= 50 ? '#eab308' : '#ef4444'} />
         </div>
 
         {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
           <KpiMini icon="🎯" label="TARGET OMSET" value={p.target_omset > 0 ? formatRp(p.target_omset) : 'Belum diset'} color="#2563eb" />
-          <KpiMini icon="💰" label="OMSET MARKETING" value={formatRp(p.total_omset_this_month)} color="#7c3aed" sub="Outlet + Personal" />
-          <KpiMini icon="🏪" label="BILLING OUTLET" value={formatRp(p.total_billing_this_month)} color="#0891b2" />
-          <KpiMini icon="👤" label="PERSONAL BUYER" value={formatRp(p.personal_buyer_this_month)} color="#d97706" />
+          <KpiMini icon="💰" label="OMSET MARKETING" value={formatRp(p.total_omset_this_month || 0)} color="#7c3aed" sub="Outlet + Personal" />
+          <KpiMini icon="🏪" label="BILLING OUTLET" value={formatRp(p.total_billing_this_month || 0)} color="#0891b2" />
+          <KpiMini icon="👤" label="PERSONAL BUYER" value={formatRp(p.personal_buyer_this_month || 0)} color="#d97706" />
           <KpiMini icon="🎪" label="BOOTH (CASHFLOW)" value={formatRp(p.booth_sales_this_month || 0)} color="#059669" sub="Cashflow Perusahaan" />
         </div>
       </div>
@@ -900,15 +900,15 @@ function MarketingMyDashboard({ data, mutate }: { data: any; mutate: () => void 
       {/* Outlet Summary */}
       <div>
         <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>🏪</span> Outlet Saya ({p.outlets.length})
+          <span>🏪</span> Outlet Saya ({(p.outlets || []).length})
         </div>
-        {p.outlets.length === 0 ? (
+        {(!p.outlets || p.outlets.length === 0) ? (
           <div style={{ textAlign: 'center', padding: '30px', background: '#f8fafc', borderRadius: 14, color: '#94a3b8', fontSize: 13 }}>
             Belum ada outlet yang ditugaskan kepada Anda.
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
-            {p.outlets.map((o: any) => (
+            {(p.outlets || []).map((o: any) => (
               <div key={o.id} style={{
                 background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '14px 18px',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', gap: 8

@@ -11,6 +11,9 @@ export async function proxy(req: NextRequest) {
   const session = req.cookies.get('session')?.value;
 
   if (!session) {
+    if (pathname.startsWith('/api')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
@@ -20,33 +23,61 @@ export async function proxy(req: NextRequest) {
     });
 
     const role = (payload.role as string || '').toUpperCase();
+    const posisi = (payload.posisi as string || '').toUpperCase();
     
     // Role-based route protection
     // Owner / Admin can access all
-    // Produksi can access /produksi, /overview, and /chats
-    // Marketing can access /marketing, /overview, and /chats
-    // Mitra can access /outlet, /pengiriman, /overview, and /chats
+    // Produksi can access /produksi, /warehouse, and /chats
+    // Marketing can access /marketing, /booth, /outlet, and /chats
+    // Mitra can access /outlet, /pengiriman, and /chats
     
-    const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
-    const isProduksi = isOwnerOrAdmin || role === 'PRODUKSI' || role.includes('PRODUKSI');
-    const isMarketing = isOwnerOrAdmin || role === 'MARKETING' || role.includes('MARKETING');
-    const isMitra = isOwnerOrAdmin || role === 'MITRA' || role.includes('MITRA');
+    const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN' || role.includes('OWNER') || role.includes('ADMIN') || posisi.includes('OWNER') || posisi.includes('ADMIN');
+    const isProduksi = isOwnerOrAdmin || role === 'PRODUKSI' || role.includes('PRODUKSI') || posisi.includes('PRODUKSI');
+    const isMarketing = isOwnerOrAdmin || role === 'MARKETING' || role.includes('MARKETING') || posisi.includes('MARKETING');
+    const isMitra = isOwnerOrAdmin || role === 'MITRA' || role.includes('MITRA') || posisi.includes('MITRA');
+
+    // 1. Authenticated API requests: pass through with user headers (never redirect API calls to HTML pages!)
+    if (pathname.startsWith('/api')) {
+      const requestHeaders = new Headers(req.headers);
+      requestHeaders.set('x-user-id', payload.id as string);
+      requestHeaders.set('x-user-role', (payload.role as string) || role);
+      requestHeaders.set('x-user-nama', payload.nama as string);
+
+      return NextResponse.next({
+        request: {
+          headers: requestHeaders,
+        },
+      });
+    }
     
+    // 2. Page route authorization
     if (!isOwnerOrAdmin) {
-      if (isProduksi && !pathname.startsWith('/produksi') && pathname !== '/overview' && pathname !== '/chats') {
-        return NextResponse.redirect(new URL('/overview', req.url));
+      // Overview is strictly Owner / Admin only
+      if (pathname === '/overview') {
+        const defaultHome = isMarketing ? '/marketing' : isProduksi ? '/produksi' : isMitra ? '/outlet' : '/login';
+        return NextResponse.redirect(new URL(defaultHome, req.url));
       }
-      if (isMarketing && !pathname.startsWith('/marketing') && pathname !== '/overview' && pathname !== '/chats') {
-        return NextResponse.redirect(new URL('/overview', req.url));
-      }
-      if (isMitra && !pathname.startsWith('/outlet') && !pathname.startsWith('/pengiriman') && pathname !== '/overview' && pathname !== '/chats') {
-        return NextResponse.redirect(new URL('/overview', req.url));
+
+      const isMarketingPath = pathname.startsWith('/marketing') || pathname.startsWith('/booth') || pathname.startsWith('/outlet');
+      const isProduksiPath = pathname.startsWith('/produksi') || pathname.startsWith('/warehouse');
+      const isMitraPath = pathname.startsWith('/outlet') || pathname.startsWith('/pengiriman');
+      const isCommonPath = pathname.startsWith('/chats');
+
+      const isAllowed = 
+        isCommonPath ||
+        (isMarketing && isMarketingPath) ||
+        (isProduksi && isProduksiPath) ||
+        (isMitra && isMitraPath);
+
+      if (!isAllowed) {
+        const fallback = isMarketing ? '/marketing' : isProduksi ? '/produksi' : isMitra ? '/outlet' : '/login';
+        return NextResponse.redirect(new URL(fallback, req.url));
       }
     }
 
     const requestHeaders = new Headers(req.headers);
     requestHeaders.set('x-user-id', payload.id as string);
-    requestHeaders.set('x-user-role', payload.role as string);
+    requestHeaders.set('x-user-role', (payload.role as string) || role);
     requestHeaders.set('x-user-nama', payload.nama as string);
 
     return NextResponse.next({
@@ -55,10 +86,13 @@ export async function proxy(req: NextRequest) {
       },
     });
   } catch (error) {
+    if (pathname.startsWith('/api')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     return NextResponse.redirect(new URL('/login', req.url));
   }
 }
 
 export const config = {
-  matcher: ['/((?!api/auth|api/webhook|login|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  matcher: ['/((?!api|login|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
 };
