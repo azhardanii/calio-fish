@@ -2,6 +2,9 @@
 
 import React, { useState, useMemo } from 'react';
 import useSWR from 'swr';
+import { DateRange } from "react-day-picker";
+import { format } from "date-fns";
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { formatCurrency } from '@/lib/utils';
 import {
   createEventBooth,
@@ -1122,10 +1125,61 @@ KETERANGAN: Sisa booth pameran selesai`}
 // MAIN BOOTH MANAGER COMPONENT
 // ═══════════════════════════════════════════════════════════
 export function BoothManager() {
-  const { data, isLoading, error, mutate } = useSWR('/api/data/booths');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+    const today = new Date();
+    return {
+      from: new Date(today.getFullYear(), today.getMonth(), 1),
+      to: new Date(today.getFullYear(), today.getMonth() + 1, 0)
+    };
+  });
+  const [appliedDateRange, setAppliedDateRange] = useState<DateRange | undefined>(dateRange);
+
+  const apiUrl = useMemo(() => {
+    if (appliedDateRange?.from && appliedDateRange?.to) {
+      const fromStr = format(appliedDateRange.from, 'yyyy-MM-dd');
+      const toStr = format(appliedDateRange.to, 'yyyy-MM-dd');
+      return `/api/data/booths?startDate=${fromStr}&endDate=${toStr}`;
+    }
+    return '/api/data/booths';
+  }, [appliedDateRange]);
+
+  const { data, isLoading, error, mutate } = useSWR(apiUrl);
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedBooth, setSelectedBooth] = useState<any>(null);
+
+  const filterLabel = useMemo(() => {
+    if (!appliedDateRange?.from) return 'Lifetime (Semua Waktu)';
+    
+    const fromDate = appliedDateRange.from;
+    const toDate = appliedDateRange.to || fromDate;
+    
+    const isFullMonth = 
+      fromDate.getDate() === 1 && 
+      toDate.getDate() === new Date(toDate.getFullYear(), toDate.getMonth() + 1, 0).getDate() &&
+      fromDate.getMonth() === toDate.getMonth() &&
+      fromDate.getFullYear() === toDate.getFullYear();
+
+    if (isFullMonth) {
+      return fromDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+    }
+    
+    const fromStr = fromDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    
+    const today = new Date();
+    const isToday = fromDate.getDate() === today.getDate() && 
+                    fromDate.getMonth() === today.getMonth() &&
+                    fromDate.getFullYear() === today.getFullYear();
+
+    const isSameDay = fromDate.getTime() === toDate.getTime();
+
+    if (isSameDay) {
+      return isToday ? 'Hari Ini' : fromStr;
+    }
+    
+    const toStr = toDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    return `${fromStr} - ${toStr}`;
+  }, [appliedDateRange]);
 
   if (isLoading && !data) {
     return (
@@ -1165,25 +1219,37 @@ export function BoothManager() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+      {/* ── FILTER TOOLBAR ── */}
+      <div className="marketing-filter-toolbar">
         <div>
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#0f172a' }}>🎪 Event &amp; Open Booth Pameran</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
-            Kelola operasional pameran, bazar, bundling SKU khusus, kasir penjualan, dan pengembalian sisa stok ke gudang.
-          </p>
+          <div style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+            Menampilkan data untuk: <b>{filterLabel}</b>
+          </div>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          style={{
-            padding: '10px 20px', borderRadius: 12, border: 'none',
-            background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff',
-            fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(37,99,235,0.3)',
-            display: 'flex', alignItems: 'center', gap: 6
-          }}
-        >
-          ➕ Buka Booth Baru
-        </button>
+
+        <div className="marketing-filter-actions">
+          <DateRangePicker date={dateRange} setDate={setDateRange} />
+
+          <button
+            onClick={() => setAppliedDateRange(dateRange)}
+            className="overview-filter-btn"
+          >
+            Tampilkan
+          </button>
+
+          <button
+            onClick={() => setShowCreateModal(true)}
+            style={{
+              padding: '8px 18px', borderRadius: 10, border: 'none',
+              background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff',
+              fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(37,99,235,0.25)',
+              display: 'flex', alignItems: 'center', gap: 6, height: 36
+            }}
+          >
+            ➕ Buka Booth Baru
+          </button>
+        </div>
       </div>
 
       {/* Global Banner KPIs */}

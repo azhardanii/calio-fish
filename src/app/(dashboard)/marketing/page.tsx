@@ -2,6 +2,9 @@
 
 import React, { useState, useMemo } from 'react';
 import useSWR from 'swr';
+import { DateRange } from "react-day-picker";
+import { format } from "date-fns";
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Tabs } from '@/components/ui/tabs';
 import { formatCurrency } from '@/lib/utils';
 import { setMarketingTarget, createPersonalBuyerTransaction, deletePersonalBuyerTransaction } from '@/app/actions';
@@ -266,7 +269,7 @@ function KpiMini({ icon, label, value, color, sub }: { icon: string; label: stri
 // ═══════════════════════════════════════════════════════════
 // ADMIN/OWNER: PERFORMANCE DASHBOARD TAB
 // ═══════════════════════════════════════════════════════════
-function PerformanceDashboard({ data, mutate }: { data: any; mutate: () => void }) {
+function PerformanceDashboard({ data, mutate, filterLabel }: { data: any; mutate: () => void; filterLabel?: string }) {
   const [targetModal, setTargetModal] = useState<any>(null);
   const performance: any[] = data?.marketingPerformance || [];
   const currentMonth = data?.currentMonth || new Date().getMonth() + 1;
@@ -293,7 +296,7 @@ function PerformanceDashboard({ data, mutate }: { data: any; mutate: () => void 
 
       {/* Per-User Performance Cards */}
       <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-        <span>👥</span> Performa Tim Marketing — {MONTH_NAMES[currentMonth - 1]} {currentYear}
+        <span>👥</span> Performa Tim Marketing — {filterLabel || `${MONTH_NAMES[currentMonth - 1]} ${currentYear}`}
       </div>
 
       {performance.length === 0 ? (
@@ -830,7 +833,7 @@ function EventBoothTab({ data }: { data: any }) {
 // ═══════════════════════════════════════════════════════════
 // MARKETING USER: MY DASHBOARD (Isolated)
 // ═══════════════════════════════════════════════════════════
-function MarketingMyDashboard({ data, mutate }: { data: any; mutate: () => void }) {
+function MarketingMyDashboard({ data, mutate, filterLabel }: { data: any; mutate: () => void; filterLabel?: string }) {
   const p = data?.myPerformance;
   const currentMonth = data?.currentMonth || new Date().getMonth() + 1;
   const currentYear = data?.currentYear || new Date().getFullYear();
@@ -871,7 +874,7 @@ function MarketingMyDashboard({ data, mutate }: { data: any; mutate: () => void 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a' }}>📊 Dashboard Saya</h2>
-            <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{MONTH_NAMES[currentMonth - 1]} {currentYear}</div>
+            <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{filterLabel || `${MONTH_NAMES[currentMonth - 1]} ${currentYear}`}</div>
           </div>
           <StatusBadge status={p.status} />
         </div>
@@ -1061,9 +1064,60 @@ function MarketingMyDashboard({ data, mutate }: { data: any; mutate: () => void 
 // MAIN MARKETING PAGE
 // ═══════════════════════════════════════════════════════════
 export default function MarketingPage() {
-  const { data, isLoading, error, mutate } = useSWR('/api/data/marketing');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+    const today = new Date();
+    return {
+      from: new Date(today.getFullYear(), today.getMonth(), 1),
+      to: new Date(today.getFullYear(), today.getMonth() + 1, 0)
+    };
+  });
+  const [appliedDateRange, setAppliedDateRange] = useState<DateRange | undefined>(dateRange);
+
+  const apiUrl = useMemo(() => {
+    if (appliedDateRange?.from && appliedDateRange?.to) {
+      const fromStr = format(appliedDateRange.from, 'yyyy-MM-dd');
+      const toStr = format(appliedDateRange.to, 'yyyy-MM-dd');
+      return `/api/data/marketing?startDate=${fromStr}&endDate=${toStr}`;
+    }
+    return '/api/data/marketing';
+  }, [appliedDateRange]);
+
+  const { data, isLoading, error, mutate } = useSWR(apiUrl);
   const [isMounted, setIsMounted] = React.useState(false);
   React.useEffect(() => setIsMounted(true), []);
+
+  const filterLabel = useMemo(() => {
+    if (!appliedDateRange?.from) return 'Lifetime (Semua Waktu)';
+    
+    const fromDate = appliedDateRange.from;
+    const toDate = appliedDateRange.to || fromDate;
+    
+    const isFullMonth = 
+      fromDate.getDate() === 1 && 
+      toDate.getDate() === new Date(toDate.getFullYear(), toDate.getMonth() + 1, 0).getDate() &&
+      fromDate.getMonth() === toDate.getMonth() &&
+      fromDate.getFullYear() === toDate.getFullYear();
+
+    if (isFullMonth) {
+      return fromDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+    }
+    
+    const fromStr = fromDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    
+    const today = new Date();
+    const isToday = fromDate.getDate() === today.getDate() && 
+                    fromDate.getMonth() === today.getMonth() &&
+                    fromDate.getFullYear() === today.getFullYear();
+
+    const isSameDay = fromDate.getTime() === toDate.getTime();
+
+    if (isSameDay) {
+      return isToday ? 'Hari Ini' : fromStr;
+    }
+    
+    const toStr = toDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    return `${fromStr} - ${toStr}`;
+  }, [appliedDateRange]);
 
   if (!isMounted) return null;
 
@@ -1090,8 +1144,28 @@ export default function MarketingPage() {
 
   const userRole = (data?.userRole || '').toUpperCase();
   const isOwnerOrAdmin = userRole === 'OWNER' || userRole === 'ADMIN';
-  const currentMonth = data?.currentMonth || new Date().getMonth() + 1;
-  const currentYear = data?.currentYear || new Date().getFullYear();
+
+  const filterToolbar = (
+    <div className="marketing-filter-toolbar">
+      <div>
+        <h2 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#0f172a' }}>Marketing &amp; Penjualan</h2>
+        <div style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+          Menampilkan data untuk: <b>{filterLabel}</b>
+        </div>
+      </div>
+
+      <div className="marketing-filter-actions">
+        <DateRangePicker date={dateRange} setDate={setDateRange} />
+
+        <button
+          onClick={() => setAppliedDateRange(dateRange)}
+          className="overview-filter-btn"
+        >
+          Tampilkan
+        </button>
+      </div>
+    </div>
+  );
 
   // ─── ADMIN/OWNER VIEW ──────────────────────
   if (isOwnerOrAdmin) {
@@ -1099,7 +1173,7 @@ export default function MarketingPage() {
       {
         id: 'performance',
         label: '📊 Performance Marketing',
-        content: <PerformanceDashboard data={data} mutate={mutate} />,
+        content: <PerformanceDashboard data={data} mutate={mutate} filterLabel={filterLabel} />,
       },
       {
         id: 'booth',
@@ -1120,14 +1194,7 @@ export default function MarketingPage() {
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {/* Page Header */}
-        <div>
-          <h2 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#0f172a' }}>Marketing & Penjualan</h2>
-          <div style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
-            Menampilkan data untuk: <b>{MONTH_NAMES[currentMonth - 1]} {currentYear}</b>
-          </div>
-        </div>
-
+        {filterToolbar}
         <Tabs tabs={tabs} />
       </div>
     );
@@ -1136,7 +1203,8 @@ export default function MarketingPage() {
   // ─── MARKETING USER VIEW ──────────────────────
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <MarketingMyDashboard data={data} mutate={mutate} />
+      {filterToolbar}
+      <MarketingMyDashboard data={data} mutate={mutate} filterLabel={filterLabel} />
     </div>
   );
 }

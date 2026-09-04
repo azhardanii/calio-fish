@@ -4,7 +4,7 @@ import { serializeDeep } from '@/lib/serialize';
 import { getOnlineTarget } from '@/lib/settings';
 import { verifySession } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const user = await verifySession();
     if (!user) {
@@ -15,9 +15,29 @@ export async function GET() {
     const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
     const isMarketing = role === 'MARKETING' || role.includes('MARKETING');
 
+    const { searchParams } = new URL(req.url);
+    const startDateParam = searchParams.get('startDate');
+    const endDateParam = searchParams.get('endDate');
+
     const now = new Date();
-    const currentMonth = now.getMonth() + 1; // 1-12
-    const currentYear = now.getFullYear();
+    let periodStart: Date;
+    let periodEnd: Date;
+    let currentMonth: number;
+    let currentYear: number;
+
+    if (startDateParam && endDateParam) {
+      periodStart = new Date(startDateParam);
+      periodStart.setHours(0, 0, 0, 0);
+      periodEnd = new Date(endDateParam);
+      periodEnd.setHours(23, 59, 59, 999);
+      currentMonth = periodStart.getMonth() + 1;
+      currentYear = periodStart.getFullYear();
+    } else {
+      currentMonth = now.getMonth() + 1; // 1-12
+      currentYear = now.getFullYear();
+      periodStart = new Date(currentYear, currentMonth - 1, 1, 0, 0, 0, 0);
+      periodEnd = new Date(currentYear, currentMonth, 0, 23, 59, 59, 999);
+    }
 
     // Fetch marketing employees with their outlets, targets, personal buyer txns
     const marketingEmployees = await prisma.employee.findMany({
@@ -57,10 +77,7 @@ export async function GET() {
       const target = emp.marketing_targets?.[0];
       const targetOmset = target ? Number(target.target_omset || 0) : 0;
 
-      // Calculate outlet-based omset this month from OutletTransactions
-      const monthStart = new Date(currentYear, currentMonth - 1, 1);
-      const monthEnd = new Date(currentYear, currentMonth, 0, 23, 59, 59, 999);
-
+      // Calculate outlet-based omset in period from OutletTransactions
       let totalBillingThisMonth = 0;
       let totalPaymentThisMonth = 0;
       let totalOutstandingAll = 0;
@@ -75,7 +92,7 @@ export async function GET() {
         (outlet.transactions || []).forEach(tx => {
           if (!tx.date) return;
           const txDate = new Date(tx.date);
-          if (txDate >= monthStart && txDate <= monthEnd) {
+          if (txDate >= periodStart && txDate <= periodEnd) {
             if (tx.type === 'PIUTANG' || tx.type === 'BILLING' || tx.type === 'TAGIHAN') {
               totalBillingThisMonth += Number(tx.amount || 0);
             } else if (tx.type === 'PELUNASAN' || tx.type === 'PAYMENT') {
@@ -85,22 +102,22 @@ export async function GET() {
         });
       });
 
-      // Personal buyer omset this month
+      // Personal buyer omset in period
       const personalBuyerThisMonth = (emp.personal_buyer_transactions || [])
         .filter(t => {
           if (!t.date) return false;
           const d = new Date(t.date);
-          return d >= monthStart && d <= monthEnd;
+          return d >= periodStart && d <= periodEnd;
         })
         .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
-      // Booth sales this month (where this marketing employee is PIC) -> Langsung masuk ke cashflow perusahaan
+      // Booth sales in period (where this marketing employee is PIC) -> Langsung masuk ke cashflow perusahaan
       const boothSalesThisMonth = (emp.managed_booths || []).reduce((sum, b) => {
         const bMonthSales = (b.sales || [])
           .filter(s => {
             if (!s.date) return false;
             const d = new Date(s.date);
-            return d >= monthStart && d <= monthEnd;
+            return d >= periodStart && d <= periodEnd;
           })
           .reduce((sSum, s) => sSum + Number(s.total_price || 0), 0);
         return sum + bMonthSales;
@@ -150,16 +167,22 @@ export async function GET() {
         total_outstanding_all: totalOutstandingAll,
         outlet_count: (emp.managed_outlets || []).length,
         booth_count: (emp.managed_booths || []).length,
-        personal_buyer_transactions: (emp.personal_buyer_transactions || []).map(t => ({
-          id: t.id,
-          buyer_name: t.buyer_name,
-          product_name: (t as any).product_name || null,
-          quantity: (t as any).quantity || 1,
-          price_per_unit: (t as any).price_per_unit ? Number((t as any).price_per_unit) : null,
-          amount: Number(t.amount || 0),
-          description: t.description,
-          date: t.date,
-        })),
+        personal_buyer_transactions: (emp.personal_buyer_transactions || [])
+          .filter(t => {
+            if (!t.date) return false;
+            const d = new Date(t.date);
+            return d >= periodStart && d <= periodEnd;
+          })
+          .map(t => ({
+            id: t.id,
+            buyer_name: t.buyer_name,
+            product_name: (t as any).product_name || null,
+            quantity: (t as any).quantity || 1,
+            price_per_unit: (t as any).price_per_unit ? Number((t as any).price_per_unit) : null,
+            amount: Number(t.amount || 0),
+            description: t.description,
+            date: t.date,
+          })),
         managed_booths: (emp.managed_booths || []).map(b => ({
           id: b.id,
           nama: b.nama,
@@ -181,6 +204,8 @@ export async function GET() {
     const response: any = {
       currentMonth,
       currentYear,
+      startDate: periodStart.toISOString(),
+      endDate: periodEnd.toISOString(),
       userRole: role,
       userId: user.id,
       products: products || [],
@@ -189,22 +214,50 @@ export async function GET() {
     if (isOwnerOrAdmin) {
       // Admin/Owner sees all marketing performance + legacy reports + event booths
       const [offlineReports, onlineReports, globalShopeeTarget, globalTiktokTarget, totalOutlets, eventBooths] = await Promise.all([
-        prisma.marketingOffline.findMany({ orderBy: { date: 'desc' }, include: { employee: true } }),
-        prisma.marketingOnline.findMany({ orderBy: { date: 'desc' }, include: { employee: true } }),
+        prisma.marketingOffline.findMany({
+          where: { date: { gte: periodStart, lte: periodEnd } },
+          orderBy: { date: 'desc' },
+          include: { employee: true }
+        }),
+        prisma.marketingOnline.findMany({
+          where: { date: { gte: periodStart, lte: periodEnd } },
+          orderBy: { date: 'desc' },
+          include: { employee: true }
+        }),
         getOnlineTarget('shopee'),
         getOnlineTarget('tiktok'),
         prisma.outlet.count(),
         prisma.eventBooth.findMany({
+          where: {
+            OR: [
+              { status: 'AKTIF' },
+              { tanggal_mulai: { lte: periodEnd }, tanggal_selesai: { gte: periodStart } },
+              { sales: { some: { date: { gte: periodStart, lte: periodEnd } } } }
+            ]
+          },
           orderBy: [{ status: 'asc' }, { tanggal_mulai: 'desc' }],
           include: {
             pic: { select: { id: true, nama: true, role: true } },
-            sales: { orderBy: { date: 'desc' } },
+            sales: {
+              where: { date: { gte: periodStart, lte: periodEnd } },
+              orderBy: { date: 'desc' }
+            },
           }
         })
       ]);
 
-      const totalBoothSalesAll = (eventBooths || []).reduce((sum, b) => sum + Number(b.total_penjualan || 0), 0);
-      const totalBoothKasAll = (eventBooths || []).reduce((sum, b) => sum + Number(b.kas_masuk || 0), 0);
+      const totalBoothSalesAll = (eventBooths || []).reduce((sum, b) => {
+        const bSales = (b.sales && b.sales.length > 0)
+          ? b.sales.reduce((sSum: number, s: any) => sSum + Number(s.total_price || 0), 0)
+          : (!startDateParam ? Number(b.total_penjualan || 0) : 0);
+        return sum + bSales;
+      }, 0);
+      const totalBoothKasAll = (eventBooths || []).reduce((sum, b) => {
+        const bKas = (b.sales && b.sales.length > 0)
+          ? b.sales.filter((s: any) => s.metode_pembayaran !== 'HUTANG').reduce((sSum: number, s: any) => sSum + Number(s.total_price || 0), 0)
+          : (!startDateParam ? Number(b.kas_masuk || 0) : 0);
+        return sum + bKas;
+      }, 0);
       const activeBoothCount = (eventBooths || []).filter(b => b.status === 'AKTIF').length;
 
       const globalMarketingTarget = marketingPerformance.reduce((sum, p) => sum + p.target_omset, 0);
@@ -216,18 +269,26 @@ export async function GET() {
       response.globalShopeeTarget = globalShopeeTarget;
       response.globalTiktokTarget = globalTiktokTarget;
       response.totalOutlets = totalOutlets;
-      response.eventBooths = (eventBooths || []).map(b => ({
-        id: b.id,
-        nama: b.nama,
-        lokasi: b.lokasi,
-        tanggal_mulai: b.tanggal_mulai,
-        tanggal_selesai: b.tanggal_selesai,
-        status: b.status,
-        pic: b.pic,
-        total_penjualan: Number(b.total_penjualan || 0),
-        kas_masuk: Number(b.kas_masuk || 0),
-        sales_count: (b.sales || []).length,
-      }));
+      response.eventBooths = (eventBooths || []).map(b => {
+        const bSales = (b.sales && b.sales.length > 0)
+          ? b.sales.reduce((sSum: number, s: any) => sSum + Number(s.total_price || 0), 0)
+          : (!startDateParam ? Number(b.total_penjualan || 0) : 0);
+        const bKas = (b.sales && b.sales.length > 0)
+          ? b.sales.filter((s: any) => s.metode_pembayaran !== 'HUTANG').reduce((sSum: number, s: any) => sSum + Number(s.total_price || 0), 0)
+          : (!startDateParam ? Number(b.kas_masuk || 0) : 0);
+        return {
+          id: b.id,
+          nama: b.nama,
+          lokasi: b.lokasi,
+          tanggal_mulai: b.tanggal_mulai,
+          tanggal_selesai: b.tanggal_selesai,
+          status: b.status,
+          pic: b.pic,
+          total_penjualan: bSales,
+          kas_masuk: bKas,
+          sales_count: (b.sales || []).length,
+        };
+      });
       response.totalBoothSalesAll = totalBoothSalesAll;
       response.totalBoothKasAll = totalBoothKasAll;
       response.activeBoothCount = activeBoothCount;
