@@ -1,8 +1,9 @@
 import { GoogleGenAI } from '@google/genai';
+import { prisma } from '@/lib/prisma';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const SYSTEM_PROMPT = `You are a data extraction assistant for Calio Fish operations.
+const getSystemPrompt = (productMappingStr: string) => `You are a data extraction assistant for Calio Fish operations.
 Your job is to parse unstructured WhatsApp messages in Indonesian into a structured JSON object.
 Identify the report type and extract relevant information according to the new operational schema.
 
@@ -59,7 +60,7 @@ data: [
 - If sending items from a warehouse to an event/booth: use kategori_logistik="PENGIRIMAN_BOOTH", destination_type="BOOTH".
 - If returning unsold good items from a booth/event to a warehouse: use kategori_logistik="PENGEMBALIAN_BOOTH", source_type="BOOTH", destination_type="WAREHOUSE". (This is DIFFERENT from "RETUR" which is for damaged/spoiled items).
 **IF source or destination is omitted or vague (e.g., just "kirim ke outlet A" without stating FROM WHERE), set is_ambiguous = true and ask: "Harap sebutkan dari mana barang dikirim (misal: dari Banyuwangi ke Outlet A)."**
-Map product names EXACTLY to these SKUs: "FS Ori" -> FS-ORI-100, "FS SM" -> FS-SM-100, "FS Soto" -> FS-SOTO-100, "FS Rendang" -> FS-RENDANG-100, "Abon" -> AB-TNA-90. Use these SKUs for product_key in ANY report type.
+Map product names EXACTLY to these SKUs: ${productMappingStr}. Use these SKUs for product_key in ANY report type. It is CRITICAL to look at the weight/gram/size in the message and map it to the corresponding SKU correctly.
 
 5. MARKETING_OFFLINE
 For physical store or B2B/B2C sales. If items sold are mentioned, include them to deduct stock.
@@ -88,9 +89,12 @@ data: { "booth_name": "string", "omset_harian": number, "metode_pembayaran": "TU
 
 export async function parseWhatsAppReport(text: string) {
   try {
+    const products = await prisma.product.findMany({ select: { sku: true, short_name: true, name: true } });
+    const productMappingStr = products.map(p => `"${p.short_name}" atau "${p.name}" -> ${p.sku}`).join(', ');
+
     const cleanedText = text.replace(/^[\/!#]?(lapor|laporkan)\s*/i, '').trim();
     const currentDate = new Date().toLocaleDateString('en-CA');
-    const fullPrompt = SYSTEM_PROMPT + '\n\nCURRENT_DATE: ' + currentDate + '\n\nMessage:\n' + cleanedText;
+    const fullPrompt = getSystemPrompt(productMappingStr) + '\n\nCURRENT_DATE: ' + currentDate + '\n\nMessage:\n' + cleanedText;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.1-flash-lite',
