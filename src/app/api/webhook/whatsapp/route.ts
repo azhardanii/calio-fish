@@ -698,7 +698,18 @@ export async function POST(req: Request) {
                    // Decrement Source Stock
                    if (srcType === 'WAREHOUSE' && sourceId) {
                      const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: sourceId, product_id: product.id } }});
-                     if (ws) await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity - item.qty }});
+                     if (ws) {
+                       await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity - item.qty }});
+                     } else {
+                       await tx.warehouseStock.create({
+                         data: {
+                           warehouse_id: sourceId,
+                           product_id: product.id,
+                           quantity: -item.qty,
+                           returned_qty: 0
+                         }
+                       });
+                     }
                    } else if (srcType === 'OUTLET' && sourceId) {
                      const os = await tx.outletStock.findUnique({ where: { outlet_id_product_id: { outlet_id: sourceId, product_id: product.id } }});
                      if (os) await tx.outletStock.update({ where: { id: os.id }, data: { quantity: os.quantity - item.qty }});
@@ -717,6 +728,15 @@ export async function POST(req: Request) {
                        } else {
                          await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity + item.qty }});
                        }
+                     } else {
+                       await tx.warehouseStock.create({
+                         data: {
+                           warehouse_id: destId,
+                           product_id: product.id,
+                           quantity: kategori === 'RETUR' ? 0 : item.qty,
+                           returned_qty: kategori === 'RETUR' ? item.qty : 0
+                         }
+                       });
                      }
                    } else if (destType === 'OUTLET' && destId) {
                      const os = await tx.outletStock.findUnique({ where: { outlet_id_product_id: { outlet_id: destId, product_id: product.id } }});
