@@ -2,6 +2,9 @@
 
 import React, { useState, useMemo } from 'react';
 import useSWR from 'swr';
+import { DateRange } from "react-day-picker";
+import { format } from "date-fns";
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { 
   Users, 
   Store, 
@@ -11,14 +14,39 @@ import {
   Search, 
   CheckCircle2, 
   AlertCircle,
-  Sparkles,
   Calendar,
-  X
+  X,
+  UserCheck,
+  HeartPulse,
+  FileText,
+  ChevronRight,
+  BarChart3,
+  Filter,
+  RotateCcw
 } from 'lucide-react';
 import { EmployeeManager } from './EmployeeManager';
 
 export default function KaryawanPage() {
-  const { data, isLoading } = useSWR('/api/data/employees');
+  // Date range filter state for attendance period (default to current month)
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+    const today = new Date();
+    return {
+      from: new Date(today.getFullYear(), today.getMonth(), 1),
+      to: new Date(today.getFullYear(), today.getMonth() + 1, 0)
+    };
+  });
+  const [appliedDateRange, setAppliedDateRange] = useState<DateRange | undefined>(dateRange);
+
+  const apiUrl = useMemo(() => {
+    if (appliedDateRange?.from && appliedDateRange?.to) {
+      const fromStr = format(appliedDateRange.from, 'yyyy-MM-dd');
+      const toStr = format(appliedDateRange.to, 'yyyy-MM-dd');
+      return `/api/data/employees?startDate=${fromStr}&endDate=${toStr}`;
+    }
+    return '/api/data/employees';
+  }, [appliedDateRange]);
+
+  const { data, isLoading } = useSWR(apiUrl);
   const { data: currentUser, isLoading: isUserLoading } = useSWR('/api/auth/me');
   
   // Default to 'karyawan' tab so employee database is immediately visible!
@@ -26,7 +54,31 @@ export default function KaryawanPage() {
   
   // Presensi search & filter states
   const [presensiSearch, setPresensiSearch] = useState('');
+  const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState('ALL');
   const [presensiStatusFilter, setPresensiStatusFilter] = useState('ALL');
+
+  const filterLabel = useMemo(() => {
+    if (!appliedDateRange?.from) return 'Semua Waktu';
+    const fromDate = appliedDateRange.from;
+    const toDate = appliedDateRange.to || fromDate;
+    
+    const isFullMonth = 
+      fromDate.getDate() === 1 && 
+      toDate.getDate() === new Date(toDate.getFullYear(), toDate.getMonth() + 1, 0).getDate() &&
+      fromDate.getMonth() === toDate.getMonth() &&
+      fromDate.getFullYear() === toDate.getFullYear();
+
+    if (isFullMonth) {
+      return fromDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+    }
+    
+    const fromStr = fromDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    const isSameDay = fromDate.getTime() === toDate.getTime();
+    if (isSameDay) return fromStr;
+    
+    const toStr = toDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    return `${fromStr} - ${toStr}`;
+  }, [appliedDateRange]);
 
   if ((isLoading && !data) || (isUserLoading && !currentUser)) {
     return (
@@ -41,9 +93,10 @@ export default function KaryawanPage() {
   }
 
   const employees = data?.employees || [];
-  const attendances = data?.attendances || [];
+  const attendances: any[] = data?.attendances || [];
+  const todayAttendances: any[] = data?.todayAttendances || [];
 
-  // Summary KPI Calculations
+  // Summary KPI Calculations for Top Header
   const totalEmployees = employees.length;
   const activeEmployees = employees.filter((e: any) => e.status_aktif).length;
   const marketingCount = employees.filter((e: any) => 
@@ -53,25 +106,105 @@ export default function KaryawanPage() {
     (e.role || '').toUpperCase().includes('PRODUKSI') || (e.posisi || '').toUpperCase().includes('PRODUKSI')
   ).length;
 
-  const todayStr = new Date().toDateString();
-  const todayAttendances = attendances.filter((a: any) => new Date(a.waktu).toDateString() === todayStr);
   const hadirTodayCount = todayAttendances.filter((a: any) => (a.status_kehadiran || '').toUpperCase() === 'HADIR').length;
 
-  // Filtered attendances
-  const filteredAttendances = attendances.filter((a: any) => {
-    if (presensiSearch.trim()) {
-      const q = presensiSearch.toLowerCase();
-      const matchName = (a.employee?.nama || '').toLowerCase().includes(q);
-      const matchReason = (a.alasan || '').toLowerCase().includes(q);
-      if (!matchName && !matchReason) return false;
-    }
+  // ─── PER-EMPLOYEE ATTENDANCE RECAP CALCULATION ───
+  // Computes Hadir, Izin, and Sakit count for each employee in the active period
+  const employeeRecapList = useMemo(() => {
+    const map: Record<string, { hadir: number; izin: number; sakit: number; total: number }> = {};
+    
+    employees.forEach((emp: any) => {
+      map[emp.id] = { hadir: 0, izin: 0, sakit: 0, total: 0 };
+    });
 
-    if (presensiStatusFilter !== 'ALL') {
-      if ((a.status_kehadiran || '').toUpperCase() !== presensiStatusFilter) return false;
-    }
+    attendances.forEach((a: any) => {
+      const empId = a.employee_id;
+      if (!map[empId]) {
+        map[empId] = { hadir: 0, izin: 0, sakit: 0, total: 0 };
+      }
+      const st = (a.status_kehadiran || '').toUpperCase();
+      if (st === 'HADIR') map[empId].hadir++;
+      else if (st === 'IZIN') map[empId].izin++;
+      else if (st === 'SAKIT') map[empId].sakit++;
+      map[empId].total++;
+    });
 
-    return true;
-  });
+    return employees.map((emp: any) => {
+      const stats = map[emp.id] || { hadir: 0, izin: 0, sakit: 0, total: 0 };
+      const presenceRate = stats.total > 0 ? ((stats.hadir / stats.total) * 100).toFixed(0) : '-';
+      return {
+        ...emp,
+        stats,
+        presenceRate
+      };
+    });
+  }, [employees, attendances]);
+
+  // Filtered recap list (by search or selected employee)
+  const filteredRecapList = useMemo(() => {
+    return employeeRecapList.filter((emp: any) => {
+      if (selectedEmployeeFilter !== 'ALL' && emp.id !== selectedEmployeeFilter) {
+        return false;
+      }
+      if (presensiSearch.trim()) {
+        const q = presensiSearch.toLowerCase();
+        const matchName = (emp.nama || '').toLowerCase().includes(q);
+        const matchPos = (emp.posisi || emp.role || '').toLowerCase().includes(q);
+        if (!matchName && !matchPos) return false;
+      }
+      return true;
+    });
+  }, [employeeRecapList, selectedEmployeeFilter, presensiSearch]);
+
+  // ─── PERIOD KPI STATS (FOR CURRENT FILTER SELECTION) ───
+  const periodStats = useMemo(() => {
+    const relevantAttendances = selectedEmployeeFilter === 'ALL'
+      ? attendances
+      : attendances.filter((a: any) => a.employee_id === selectedEmployeeFilter);
+
+    const hadir = relevantAttendances.filter((a: any) => (a.status_kehadiran || '').toUpperCase() === 'HADIR').length;
+    const izin = relevantAttendances.filter((a: any) => (a.status_kehadiran || '').toUpperCase() === 'IZIN').length;
+    const sakit = relevantAttendances.filter((a: any) => (a.status_kehadiran || '').toUpperCase() === 'SAKIT').length;
+    const total = relevantAttendances.length;
+
+    return { hadir, izin, sakit, total };
+  }, [attendances, selectedEmployeeFilter]);
+
+  // ─── FILTERED DETAILED ATTENDANCE LOGS ───
+  const filteredAttendances = useMemo(() => {
+    return attendances.filter((a: any) => {
+      if (selectedEmployeeFilter !== 'ALL' && a.employee_id !== selectedEmployeeFilter) {
+        return false;
+      }
+
+      if (presensiStatusFilter !== 'ALL') {
+        if ((a.status_kehadiran || '').toUpperCase() !== presensiStatusFilter) return false;
+      }
+
+      if (presensiSearch.trim()) {
+        const q = presensiSearch.toLowerCase();
+        const matchName = (a.employee?.nama || '').toLowerCase().includes(q);
+        const matchReason = (a.alasan || '').toLowerCase().includes(q);
+        const matchPos = (a.employee?.posisi || a.employee?.role || '').toLowerCase().includes(q);
+        if (!matchName && !matchReason && !matchPos) return false;
+      }
+
+      return true;
+    });
+  }, [attendances, selectedEmployeeFilter, presensiStatusFilter, presensiSearch]);
+
+  const selectedEmployeeObj = useMemo(() => {
+    if (selectedEmployeeFilter === 'ALL') return null;
+    return employees.find((e: any) => e.id === selectedEmployeeFilter);
+  }, [employees, selectedEmployeeFilter]);
+
+  const hasActiveFilter = selectedEmployeeFilter !== 'ALL' || presensiStatusFilter !== 'ALL' || presensiSearch.trim() !== '';
+
+  const handleResetFilters = () => {
+    setSelectedEmployeeFilter('ALL');
+    setPresensiStatusFilter('ALL');
+    setPresensiSearch('');
+  };
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -89,7 +222,7 @@ export default function KaryawanPage() {
         </div>
       </div>
 
-      {/* ── TOP KPI SUMMARY CARDS ── */}
+      {/* ── TOP KPI SUMMARY CARDS (OVERVIEW PERUSAHAAN) ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         {/* Card 1: Total Karyawan */}
         <div className="bg-white rounded-2xl p-4 border border-gray-200/90 shadow-xs flex flex-col justify-between">
@@ -160,12 +293,12 @@ export default function KaryawanPage() {
             {hadirTodayCount} <span className="text-xs font-semibold text-gray-400">Hadir</span>
           </div>
           <div className="text-[11px] text-gray-500 font-medium mt-1 truncate">
-            {todayAttendances.length} Laporan Presensi Masuk
+            {todayAttendances.length} Laporan Presensi Masuk Hari Ini
           </div>
         </div>
       </div>
 
-      {/* ── NAVIGATION PILL TOGGLE (DATABASE KARYAWAN ACTIVE BY DEFAULT) ── */}
+      {/* ── NAVIGATION PILL TOGGLE ── */}
       <div className="flex items-center gap-2 p-1.5 bg-gray-100/90 border border-gray-200/80 rounded-2xl w-fit max-w-full">
         <button
           onClick={() => setActiveTab('karyawan')}
@@ -202,7 +335,7 @@ export default function KaryawanPage() {
         </button>
       </div>
 
-      {/* ── TAB CONTENT 1: DATABASE KARYAWAN (DEFAULT DIRECT ACCESS) ── */}
+      {/* ── TAB CONTENT 1: DATABASE KARYAWAN ── */}
       {activeTab === 'karyawan' && (
         <div className="animate-in fade-in duration-200">
           <EmployeeManager employees={employees} currentUser={currentUser} />
@@ -211,14 +344,38 @@ export default function KaryawanPage() {
 
       {/* ── TAB CONTENT 2: RIWAYAT PRESENSI WA ── */}
       {activeTab === 'presensi' && (
-        <div className="space-y-4 animate-in fade-in duration-200">
-          {/* Presensi Filter Toolbar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-gray-200/90 shadow-xs">
-            <div className="relative flex-1 min-w-[200px]">
+        <div className="space-y-5 animate-in fade-in duration-200">
+          {/* ── 1. DATE RANGE TOOLBAR (MATCHING PRODUKSI & MARKETING) ── */}
+          <div className="marketing-filter-toolbar">
+            <div>
+              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a' }}>
+                📅 Filter Periode Presensi
+              </h2>
+              <div style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+                Menampilkan data presensi untuk: <b>{filterLabel}</b>
+              </div>
+            </div>
+
+            <div className="marketing-filter-actions">
+              <DateRangePicker date={dateRange} setDate={setDateRange} />
+
+              <button
+                onClick={() => setAppliedDateRange(dateRange)}
+                className="overview-filter-btn"
+              >
+                Tampilkan
+              </button>
+            </div>
+          </div>
+
+          {/* ── 2. FILTER CONTROLS (NAMA KARYAWAN, STATUS, & SEARCH) ── */}
+          <div className="bg-white p-4 rounded-2xl border border-gray-200/90 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+            {/* Search Box */}
+            <div className="relative flex-1 min-w-[220px]">
               <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
-                placeholder="Cari nama karyawan atau keterangan..."
+                placeholder="Cari nama karyawan atau keterangan presensi..."
                 value={presensiSearch}
                 onChange={(e) => setPresensiSearch(e.target.value)}
                 className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-gray-50/80 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
@@ -226,28 +383,304 @@ export default function KaryawanPage() {
               {presensiSearch && (
                 <button
                   onClick={() => setPresensiSearch('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1 cursor-pointer"
+                  title="Hapus pencarian"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
 
-            <select
-              value={presensiStatusFilter}
-              onChange={(e) => setPresensiStatusFilter(e.target.value)}
-              className="px-3 py-2 text-xs sm:text-sm bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value="ALL">Semua Status Presensi</option>
-              <option value="HADIR">Hadir</option>
-              <option value="IZIN">Izin</option>
-              <option value="SAKIT">Sakit</option>
-            </select>
+            {/* Dropdown Filter: Nama Karyawan */}
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              <div className="relative min-w-[180px] sm:min-w-[210px]">
+                <select
+                  value={selectedEmployeeFilter}
+                  onChange={(e) => setSelectedEmployeeFilter(e.target.value)}
+                  className="w-full px-3 py-2 text-xs sm:text-sm bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="ALL">👤 Semua Karyawan ({employees.length})</option>
+                  {employees.map((emp: any) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.nama} ({emp.posisi || emp.role || 'Staff'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Dropdown Filter: Status Presensi */}
+              <div className="relative min-w-[140px] sm:min-w-[160px]">
+                <select
+                  value={presensiStatusFilter}
+                  onChange={(e) => setPresensiStatusFilter(e.target.value)}
+                  className="w-full px-3 py-2 text-xs sm:text-sm bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="ALL">Semua Status</option>
+                  <option value="HADIR">🟢 Hadir</option>
+                  <option value="IZIN">🟡 Izin</option>
+                  <option value="SAKIT">🔴 Sakit</option>
+                </select>
+              </div>
+
+              {/* Reset Filter Button */}
+              {hasActiveFilter && (
+                <button
+                  onClick={handleResetFilters}
+                  className="px-3 py-2 text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition flex items-center gap-1 cursor-pointer shrink-0"
+                  title="Reset semua filter"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset</span>
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Desktop Table View */}
-          <div className="hidden md:block bg-white rounded-2xl border border-gray-200/90 shadow-xs overflow-hidden">
+          {/* ── 3. PERIOD TOTAL KPI SUMMARY CARDS (TOTAL HADIR, SAKIT, & IZIN) ── */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+            {/* Card 1: Total Hadir */}
+            <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 rounded-2xl p-4 border border-emerald-200/80 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between gap-1 mb-1">
+                <span className="text-[10px] sm:text-xs font-bold text-emerald-800 uppercase tracking-wider truncate">
+                  Total Hadir
+                </span>
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                  <UserCheck className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-xl sm:text-3xl font-black text-emerald-800 mt-0.5">
+                {periodStats.hadir} <span className="text-xs font-semibold text-emerald-600">Hari</span>
+              </div>
+              <div className="text-[11px] text-emerald-700 font-medium mt-1 truncate">
+                {selectedEmployeeObj ? `Presensi ${selectedEmployeeObj.nama}` : 'Akumulasi seluruh karyawan'}
+              </div>
+            </div>
+
+            {/* Card 2: Total Izin */}
+            <div className="bg-gradient-to-br from-amber-500/10 to-amber-600/5 rounded-2xl p-4 border border-amber-200/80 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between gap-1 mb-1">
+                <span className="text-[10px] sm:text-xs font-bold text-amber-800 uppercase tracking-wider truncate">
+                  Total Izin
+                </span>
+                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                  <FileText className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-xl sm:text-3xl font-black text-amber-800 mt-0.5">
+                {periodStats.izin} <span className="text-xs font-semibold text-amber-600">Hari</span>
+              </div>
+              <div className="text-[11px] text-amber-700 font-medium mt-1 truncate">
+                {selectedEmployeeObj ? `Izin ${selectedEmployeeObj.nama}` : 'Keperluan izin/cuti tim'}
+              </div>
+            </div>
+
+            {/* Card 3: Total Sakit */}
+            <div className="bg-gradient-to-br from-rose-500/10 to-rose-600/5 rounded-2xl p-4 border border-rose-200/80 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between gap-1 mb-1">
+                <span className="text-[10px] sm:text-xs font-bold text-rose-800 uppercase tracking-wider truncate">
+                  Total Sakit
+                </span>
+                <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                  <HeartPulse className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-xl sm:text-3xl font-black text-rose-800 mt-0.5">
+                {periodStats.sakit} <span className="text-xs font-semibold text-rose-600">Hari</span>
+              </div>
+              <div className="text-[11px] text-rose-700 font-medium mt-1 truncate">
+                {selectedEmployeeObj ? `Sakit ${selectedEmployeeObj.nama}` : 'Laporan keluhan/surat dokter'}
+              </div>
+            </div>
+
+            {/* Card 4: Total Log Presensi */}
+            <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 rounded-2xl p-4 border border-blue-200/80 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between gap-1 mb-1">
+                <span className="text-[10px] sm:text-xs font-bold text-blue-800 uppercase tracking-wider truncate">
+                  Total Presensi
+                </span>
+                <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                  <CalendarCheck className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-xl sm:text-3xl font-black text-blue-800 mt-0.5">
+                {periodStats.total} <span className="text-xs font-semibold text-blue-600">Laporan</span>
+              </div>
+              <div className="text-[11px] text-blue-700 font-medium mt-1 truncate">
+                Periode: {filterLabel}
+              </div>
+            </div>
+          </div>
+
+          {/* ── 4. REKAP KEHADIRAN PER KARYAWAN (DATA PER KARYAWAN) ── */}
+          <div className="bg-white rounded-2xl border border-gray-200/90 shadow-xs overflow-hidden">
+            <div className="p-4 border-b border-gray-100 bg-gray-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                  <BarChart3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm sm:text-base text-gray-900">
+                    📊 Rekap Kehadiran Per Karyawan
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    Rincian total hari masuk (hadir), izin, dan sakit setiap karyawan untuk periode <b>{filterLabel}</b>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-xs font-bold text-gray-500 bg-white border border-gray-200 px-3 py-1.5 rounded-xl self-start sm:self-auto shadow-2xs">
+                Total: {filteredRecapList.length} Karyawan
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs sm:text-sm border-collapse min-w-[620px]">
+                <thead>
+                  <tr className="bg-gray-50/90 border-b border-gray-200 text-gray-600 font-bold uppercase tracking-wider text-[11px]">
+                    <th className="py-3 px-4">NAMA KARYAWAN</th>
+                    <th className="py-3 px-4 text-center">🟢 HADIR</th>
+                    <th className="py-3 px-4 text-center">🟡 IZIN</th>
+                    <th className="py-3 px-4 text-center">🔴 SAKIT</th>
+                    <th className="py-3 px-4 text-center">TOTAL PRESENSI</th>
+                    <th className="py-3 px-4 text-center">TINGKAT HADIR</th>
+                    <th className="py-3 px-4 text-center">AKSI</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredRecapList.map((emp: any) => {
+                    const isSelected = selectedEmployeeFilter === emp.id;
+                    const st = emp.stats;
+
+                    return (
+                      <tr 
+                        key={emp.id} 
+                        className={`transition-colors ${
+                          isSelected ? 'bg-blue-50/60' : 'hover:bg-gray-50/60'
+                        }`}
+                      >
+                        {/* Employee Name */}
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 text-slate-700 font-bold flex items-center justify-center text-xs shrink-0">
+                              {emp.nama.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <div className="font-bold text-gray-900 flex items-center gap-1.5">
+                                <span>{emp.nama}</span>
+                                {isSelected && (
+                                  <span className="text-[10px] bg-blue-600 text-white font-bold px-1.5 py-0.2 rounded-md">
+                                    Aktif
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-gray-400">
+                                {emp.posisi || emp.role || 'Staff'}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Hadir */}
+                        <td className="py-3.5 px-4 text-center">
+                          <span className="inline-flex items-center justify-center font-extrabold px-2.5 py-0.5 rounded-full text-xs bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            {st.hadir} Hari
+                          </span>
+                        </td>
+
+                        {/* Izin */}
+                        <td className="py-3.5 px-4 text-center">
+                          <span className={`inline-flex items-center justify-center font-bold px-2.5 py-0.5 rounded-full text-xs ${
+                            st.izin > 0 
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200 font-extrabold' 
+                              : 'bg-gray-50 text-gray-400 border border-gray-100'
+                          }`}>
+                            {st.izin} Hari
+                          </span>
+                        </td>
+
+                        {/* Sakit */}
+                        <td className="py-3.5 px-4 text-center">
+                          <span className={`inline-flex items-center justify-center font-bold px-2.5 py-0.5 rounded-full text-xs ${
+                            st.sakit > 0 
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200 font-extrabold' 
+                              : 'bg-gray-50 text-gray-400 border border-gray-100'
+                          }`}>
+                            {st.sakit} Hari
+                          </span>
+                        </td>
+
+                        {/* Total */}
+                        <td className="py-3.5 px-4 text-center font-extrabold text-gray-900">
+                          {st.total} Hari
+                        </td>
+
+                        {/* Presence Rate */}
+                        <td className="py-3.5 px-4 text-center">
+                          <span className={`font-bold text-xs ${
+                            emp.presenceRate === '-' 
+                              ? 'text-gray-400' 
+                              : Number(emp.presenceRate) >= 80 
+                              ? 'text-emerald-700' 
+                              : 'text-amber-700'
+                          }`}>
+                            {emp.presenceRate !== '-' ? `${emp.presenceRate}%` : '-'}
+                          </span>
+                        </td>
+
+                        {/* Action: Quick Filter */}
+                        <td className="py-3.5 px-4 text-center">
+                          {isSelected ? (
+                            <button
+                              onClick={() => setSelectedEmployeeFilter('ALL')}
+                              className="px-2.5 py-1 text-xs font-bold text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg transition cursor-pointer"
+                            >
+                              Batal Filter
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setSelectedEmployeeFilter(emp.id)}
+                              className="px-2.5 py-1 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition cursor-pointer"
+                            >
+                              Lihat Log
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {filteredRecapList.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="text-center py-8 text-gray-400">
+                        Tidak ada data karyawan yang sesuai dengan pencarian.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* ── 5. TABEL DETAIL LOG RIWAYAT PRESENSI WA ── */}
+          <div className="bg-white rounded-2xl border border-gray-200/90 shadow-xs overflow-hidden">
+            <div className="p-4 border-b border-gray-100 bg-gray-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm sm:text-base text-gray-900">
+                    🕒 Log Rinci Riwayat Presensi WA
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    Daftar presensi harian yang terkirim dari WhatsApp bot ({filteredAttendances.length} catatan log).
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left text-xs sm:text-sm border-collapse">
                 <thead>
                   <tr className="bg-gray-50/80 border-b border-gray-200 text-gray-500 font-bold uppercase tracking-wider text-[11px]">
@@ -303,66 +736,68 @@ export default function KaryawanPage() {
                     <tr>
                       <td colSpan={4} className="text-center py-12 text-gray-400">
                         <Clock className="w-10 h-10 mx-auto mb-2 text-gray-300" />
-                        <div className="font-semibold text-gray-600">Belum ada riwayat presensi</div>
-                        <div className="text-xs text-gray-400 mt-1">Presensi dikirimkan oleh karyawan melalui bot WhatsApp Calio Fish</div>
+                        <div className="font-semibold text-gray-600">Belum ada riwayat presensi yang sesuai filter</div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          {hasActiveFilter ? 'Coba ubah filter atau rentang tanggal yang dipilih.' : 'Presensi dikirimkan oleh karyawan melalui bot WhatsApp Calio Fish'}
+                        </div>
                       </td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
-          </div>
 
-          {/* Mobile Card View (Zero Overlap) */}
-          <div className="block md:hidden space-y-3">
-            {filteredAttendances.map((a: any) => {
-              const status = (a.status_kehadiran || '').toUpperCase();
-              const isHadir = status === 'HADIR';
-              const isIzin = status === 'IZIN';
+            {/* Mobile Card View (Zero Overlap) */}
+            <div className="block md:hidden p-3.5 space-y-3">
+              {filteredAttendances.map((a: any) => {
+                const status = (a.status_kehadiran || '').toUpperCase();
+                const isHadir = status === 'HADIR';
+                const isIzin = status === 'IZIN';
 
-              return (
-                <div key={a.id} className="bg-white rounded-2xl border border-gray-200/90 p-3.5 shadow-xs space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="font-bold text-gray-900 text-sm">{a.employee?.nama || 'Karyawan'}</div>
-                      <div className="text-[11px] text-gray-400">{a.employee?.posisi || a.employee?.role || ''}</div>
+                return (
+                  <div key={a.id} className="bg-gray-50/70 rounded-2xl border border-gray-200/90 p-3.5 shadow-xs space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="font-bold text-gray-900 text-sm">{a.employee?.nama || 'Karyawan'}</div>
+                        <div className="text-[11px] text-gray-400">{a.employee?.posisi || a.employee?.role || ''}</div>
+                      </div>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold shrink-0 ${
+                        isHadir 
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                          : isIzin 
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                          : 'bg-rose-50 text-rose-700 border border-rose-200'
+                      }`}>
+                        {status}
+                      </span>
                     </div>
-                    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold shrink-0 ${
-                      isHadir 
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                        : isIzin 
-                        ? 'bg-amber-50 text-amber-700 border border-amber-200' 
-                        : 'bg-rose-50 text-rose-700 border border-rose-200'
-                    }`}>
-                      {status}
-                    </span>
-                  </div>
 
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500 font-mono">
-                    <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                    <span>{new Date(a.waktu).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                    <span>•</span>
-                    <Clock className="w-3.5 h-3.5 text-gray-400" />
-                    <span>{new Date(a.waktu).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</span>
-                  </div>
-
-                  {a.alasan && (
-                    <div className="bg-gray-50 p-2 rounded-xl text-xs text-gray-600">
-                      <span className="font-semibold text-gray-500">Alasan: </span>
-                      <span>{a.alasan}</span>
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500 font-mono">
+                      <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                      <span>{new Date(a.waktu).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                      <span>•</span>
+                      <Clock className="w-3.5 h-3.5 text-gray-400" />
+                      <span>{new Date(a.waktu).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</span>
                     </div>
-                  )}
+
+                    {a.alasan && (
+                      <div className="bg-white p-2 rounded-xl text-xs text-gray-600 border border-gray-100">
+                        <span className="font-semibold text-gray-500">Alasan: </span>
+                        <span>{a.alasan}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {filteredAttendances.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-gray-200 p-8 text-center text-gray-400">
+                  <Clock className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+                  <div className="font-semibold text-gray-600 text-sm">Belum ada riwayat presensi</div>
+                  <div className="text-xs text-gray-400 mt-1">Presensi dikirimkan oleh karyawan melalui bot WhatsApp Calio Fish</div>
                 </div>
-              );
-            })}
-
-            {filteredAttendances.length === 0 && (
-              <div className="bg-white rounded-2xl border border-gray-200/90 p-8 text-center text-gray-400">
-                <Clock className="w-10 h-10 mx-auto mb-2 text-gray-300" />
-                <div className="font-semibold text-gray-600 text-sm">Belum ada riwayat presensi</div>
-                <div className="text-xs text-gray-400 mt-1">Presensi dikirimkan oleh karyawan melalui bot WhatsApp Calio Fish</div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
