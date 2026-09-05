@@ -31,6 +31,7 @@ interface EmployeeManagerProps {
 }
 
 export function EmployeeManager({ employees, currentUser }: EmployeeManagerProps) {
+  const allEmployees = Array.isArray(employees) ? employees : [];
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState<any>({});
   const [selectedOutlets, setSelectedOutlets] = useState<string[]>([]);
@@ -57,7 +58,9 @@ export function EmployeeManager({ employees, currentUser }: EmployeeManagerProps
     if (employee) {
       setFormData(employee);
       setIsEditing(true);
-      const initialOutlets = employee.managed_outlets ? employee.managed_outlets.map((o: any) => o.id) : [];
+      const initialOutlets = Array.isArray(employee.managed_outlets) 
+        ? employee.managed_outlets.map((o: any) => o?.id).filter(Boolean) 
+        : [];
       setSelectedOutlets(initialOutlets);
     } else {
       setFormData({ status_aktif: true, posisi: '' });
@@ -96,6 +99,7 @@ export function EmployeeManager({ employees, currentUser }: EmployeeManagerProps
   };
 
   const filteredOutletsModal = allOutlets.filter(o => {
+    if (!o) return false;
     if (!outletSearch.trim()) return true;
     const query = outletSearch.toLowerCase();
     return (
@@ -163,14 +167,15 @@ export function EmployeeManager({ employees, currentUser }: EmployeeManagerProps
 
   // Filter employees
   const filteredEmployees = useMemo(() => {
-    return employees.filter(emp => {
+    return allEmployees.filter(emp => {
+      if (!emp) return false;
       // Search
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchName = (emp.nama || '').toLowerCase().includes(q);
         const matchRole = (emp.role || emp.posisi || '').toLowerCase().includes(q);
         const matchPhone = (emp.no_hp || '').toLowerCase().includes(q);
-        const matchOutlet = (emp.managed_outlets || []).some((o: any) => (o.nama || '').toLowerCase().includes(q));
+        const matchOutlet = (Array.isArray(emp.managed_outlets) ? emp.managed_outlets : []).some((o: any) => (o?.nama || '').toLowerCase().includes(q));
         if (!matchName && !matchRole && !matchPhone && !matchOutlet) return false;
       }
 
@@ -191,7 +196,7 @@ export function EmployeeManager({ employees, currentUser }: EmployeeManagerProps
 
       return true;
     });
-  }, [employees, searchQuery, roleFilter, statusFilter]);
+  }, [allEmployees, searchQuery, roleFilter, statusFilter]);
 
   // Pagination
   const totalPages = Math.ceil(filteredEmployees.length / pageSize) || 1;
@@ -339,12 +344,13 @@ export function EmployeeManager({ employees, currentUser }: EmployeeManagerProps
             </thead>
             <tbody className="divide-y divide-gray-100">
               {paginatedEmployees.map((e) => {
+                if (!e) return null;
                 const eIsMarketing = (e.role || '').toUpperCase().includes('MARKETING') || (e.posisi || '').toUpperCase().includes('MARKETING');
-                const handledOutlets = e.managed_outlets || [];
+                const handledOutlets = Array.isArray(e.managed_outlets) ? e.managed_outlets : [];
                 const waNumber = (e.no_hp || '').replace(/\D/g, '');
 
                 return (
-                  <tr key={e.id} className="hover:bg-blue-50/30 transition-colors">
+                  <tr key={e.id || Math.random()} className="hover:bg-blue-50/30 transition-colors">
                     {/* Karyawan Name & Avatar */}
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-3">
@@ -352,9 +358,9 @@ export function EmployeeManager({ employees, currentUser }: EmployeeManagerProps
                           {e.nama ? e.nama.substring(0, 2).toUpperCase() : 'CF'}
                         </div>
                         <div>
-                          <div className="font-bold text-gray-900 leading-tight">{e.nama}</div>
+                          <div className="font-bold text-gray-900 leading-tight">{e.nama || 'Karyawan'}</div>
                           <div className="text-[11px] text-gray-400 mt-0.5 font-mono">
-                            {e.id.substring(0, 8)}...
+                            {e.id ? e.id.substring(0, 8) : ''}...
                           </div>
                         </div>
                       </div>
@@ -374,8 +380,8 @@ export function EmployeeManager({ employees, currentUser }: EmployeeManagerProps
                               <Store className="w-3 h-3 text-blue-600" />
                               <span>{handledOutlets.length} Outlet</span>
                             </span>
-                            <div className="text-[11px] text-gray-500 line-clamp-1 max-w-xs" title={handledOutlets.map((o: any) => o.nama).join(', ')}>
-                              {handledOutlets.map((o: any) => o.nama).slice(0, 2).join(', ')}
+                            <div className="text-[11px] text-gray-500 line-clamp-1 max-w-xs" title={handledOutlets.map((o: any) => o?.nama || '').filter(Boolean).join(', ')}>
+                              {handledOutlets.map((o: any) => o?.nama || '').filter(Boolean).slice(0, 2).join(', ')}
                               {handledOutlets.length > 2 ? ` +${handledOutlets.length - 2} lainnya` : ''}
                             </div>
                           </div>
@@ -464,13 +470,14 @@ export function EmployeeManager({ employees, currentUser }: EmployeeManagerProps
       {/* ── 2. MOBILE VIEW: RESPONSIVE CARDS (strictly visible on < md) ── */}
       <div className="block md:hidden space-y-3">
         {paginatedEmployees.map((e) => {
+          if (!e) return null;
           const eIsMarketing = (e.role || '').toUpperCase().includes('MARKETING') || (e.posisi || '').toUpperCase().includes('MARKETING');
-          const handledOutlets = e.managed_outlets || [];
+          const handledOutlets = Array.isArray(e.managed_outlets) ? e.managed_outlets : [];
           const waNumber = (e.no_hp || '').replace(/\D/g, '');
 
           return (
             <div 
-              key={e.id} 
+              key={e.id || Math.random()} 
               className="bg-white rounded-2xl border border-gray-200/90 p-4 shadow-xs space-y-3"
             >
               {/* Header: Avatar, Name, Role, & Status */}
@@ -480,7 +487,7 @@ export function EmployeeManager({ employees, currentUser }: EmployeeManagerProps
                     {e.nama ? e.nama.substring(0, 2).toUpperCase() : 'CF'}
                   </div>
                   <div className="min-w-0">
-                    <div className="font-bold text-gray-900 text-sm truncate">{e.nama}</div>
+                    <div className="font-bold text-gray-900 text-sm truncate">{e.nama || 'Karyawan'}</div>
                     <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                       {getRoleBadge(e.role || e.posisi)}
                     </div>
@@ -505,7 +512,7 @@ export function EmployeeManager({ employees, currentUser }: EmployeeManagerProps
                   </div>
                   {handledOutlets.length > 0 ? (
                     <p className="text-[11px] text-blue-800/80 line-clamp-2 leading-relaxed">
-                      {handledOutlets.map((o: any) => o.nama).join(', ')}
+                      {handledOutlets.map((o: any) => o?.nama || '').filter(Boolean).join(', ')}
                     </p>
                   ) : (
                     <p className="text-[11px] text-amber-700 italic">Belum ada outlet ditugaskan</p>
@@ -729,7 +736,7 @@ export function EmployeeManager({ employees, currentUser }: EmployeeManagerProps
                               )}
                               {isHandledByOther && (
                                 <p className="text-[10px] text-amber-700 font-medium mt-0.5">
-                                  ⚠️ Pengelola saat ini: {currentHandler.nama}
+                                  ⚠️ Pengelola saat ini: {currentHandler?.nama || 'Karyawan lain'}
                                 </p>
                               )}
                             </div>

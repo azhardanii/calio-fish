@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import useSWR from 'swr';
 import { DateRange } from "react-day-picker";
 import { format } from "date-fns";
@@ -26,7 +26,35 @@ import {
 } from 'lucide-react';
 import { EmployeeManager } from './EmployeeManager';
 
+// Safe date formatting helpers to prevent any invalid time value or hydration mismatch
+function safeFormatDate(val: any): string {
+  if (!val) return '-';
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return '-';
+    return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch {
+    return '-';
+  }
+}
+
+function safeFormatTime(val: any): string {
+  if (!val) return '-';
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return '-';
+    return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+  } catch {
+    return '-';
+  }
+}
+
 export default function KaryawanPage() {
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   // Date range filter state for attendance period (default to current month)
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
     const today = new Date();
@@ -39,10 +67,15 @@ export default function KaryawanPage() {
 
   const apiUrl = useMemo(() => {
     if (appliedDateRange?.from) {
-      const fromStr = format(appliedDateRange.from, 'yyyy-MM-dd');
-      const toDate = appliedDateRange.to || appliedDateRange.from;
-      const toStr = format(toDate, 'yyyy-MM-dd');
-      return `/api/data/employees?startDate=${fromStr}&endDate=${toStr}`;
+      try {
+        const fromStr = format(appliedDateRange.from, 'yyyy-MM-dd');
+        const toDate = appliedDateRange.to || appliedDateRange.from;
+        const toStr = format(toDate, 'yyyy-MM-dd');
+        return `/api/data/employees?startDate=${fromStr}&endDate=${toStr}`;
+      } catch (e) {
+        console.warn('Error formatting date range URL:', e);
+        return '/api/data/employees';
+      }
     }
     return '/api/data/employees';
   }, [appliedDateRange]);
@@ -60,28 +93,33 @@ export default function KaryawanPage() {
 
   const filterLabel = useMemo(() => {
     if (!appliedDateRange?.from) return 'Semua Waktu';
-    const fromDate = appliedDateRange.from;
-    const toDate = appliedDateRange.to || fromDate;
-    
-    const isFullMonth = 
-      fromDate.getDate() === 1 && 
-      toDate.getDate() === new Date(toDate.getFullYear(), toDate.getMonth() + 1, 0).getDate() &&
-      fromDate.getMonth() === toDate.getMonth() &&
-      fromDate.getFullYear() === toDate.getFullYear();
+    try {
+      const fromDate = appliedDateRange.from;
+      const toDate = appliedDateRange.to || fromDate;
+      
+      const isFullMonth = 
+        fromDate.getDate() === 1 && 
+        toDate.getDate() === new Date(toDate.getFullYear(), toDate.getMonth() + 1, 0).getDate() &&
+        fromDate.getMonth() === toDate.getMonth() &&
+        fromDate.getFullYear() === toDate.getFullYear();
 
-    if (isFullMonth) {
-      return fromDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+      if (isFullMonth) {
+        return fromDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+      }
+      
+      const fromStr = fromDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+      const isSameDay = fromDate.getTime() === toDate.getTime();
+      if (isSameDay) return fromStr;
+      
+      const toStr = toDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+      return `${fromStr} - ${toStr}`;
+    } catch {
+      return 'Bulan Ini';
     }
-    
-    const fromStr = fromDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-    const isSameDay = fromDate.getTime() === toDate.getTime();
-    if (isSameDay) return fromStr;
-    
-    const toStr = toDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-    return `${fromStr} - ${toStr}`;
   }, [appliedDateRange]);
 
-  if (isLoading && !data) {
+  // Loading spinner during SSR / initial mount to prevent hydration crashes
+  if (!isMounted || (isLoading && !data)) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '50vh' }}>
         <div style={{ textAlign: 'center' }}>
@@ -109,21 +147,21 @@ export default function KaryawanPage() {
     );
   }
 
-  const employees = data?.employees || [];
-  const attendances: any[] = data?.attendances || [];
-  const todayAttendances: any[] = data?.todayAttendances || [];
+  const employees: any[] = Array.isArray(data?.employees) ? data.employees : [];
+  const attendances: any[] = Array.isArray(data?.attendances) ? data.attendances : [];
+  const todayAttendances: any[] = Array.isArray(data?.todayAttendances) ? data.todayAttendances : [];
 
   // Summary KPI Calculations for Top Header
   const totalEmployees = employees.length;
-  const activeEmployees = employees.filter((e: any) => e.status_aktif).length;
+  const activeEmployees = employees.filter((e: any) => e?.status_aktif).length;
   const marketingCount = employees.filter((e: any) => 
-    (e.role || '').toUpperCase().includes('MARKETING') || (e.posisi || '').toUpperCase().includes('MARKETING')
+    (e?.role || '').toUpperCase().includes('MARKETING') || (e?.posisi || '').toUpperCase().includes('MARKETING')
   ).length;
   const produksiCount = employees.filter((e: any) => 
-    (e.role || '').toUpperCase().includes('PRODUKSI') || (e.posisi || '').toUpperCase().includes('PRODUKSI')
+    (e?.role || '').toUpperCase().includes('PRODUKSI') || (e?.posisi || '').toUpperCase().includes('PRODUKSI')
   ).length;
 
-  const hadirTodayCount = todayAttendances.filter((a: any) => (a.status_kehadiran || '').toUpperCase() === 'HADIR').length;
+  const hadirTodayCount = todayAttendances.filter((a: any) => (a?.status_kehadiran || '').toUpperCase() === 'HADIR').length;
 
   // ─── PER-EMPLOYEE ATTENDANCE RECAP CALCULATION ───
   // Computes Hadir, Izin, and Sakit count for each employee in the active period
@@ -131,15 +169,18 @@ export default function KaryawanPage() {
     const map: Record<string, { hadir: number; izin: number; sakit: number; total: number }> = {};
     
     employees.forEach((emp: any) => {
-      map[emp.id] = { hadir: 0, izin: 0, sakit: 0, total: 0 };
+      if (emp?.id) {
+        map[emp.id] = { hadir: 0, izin: 0, sakit: 0, total: 0 };
+      }
     });
 
     attendances.forEach((a: any) => {
-      const empId = a.employee_id;
+      const empId = a?.employee_id;
+      if (!empId) return;
       if (!map[empId]) {
         map[empId] = { hadir: 0, izin: 0, sakit: 0, total: 0 };
       }
-      const st = (a.status_kehadiran || '').toUpperCase();
+      const st = (a?.status_kehadiran || '').toUpperCase();
       if (st === 'HADIR') map[empId].hadir++;
       else if (st === 'IZIN') map[empId].izin++;
       else if (st === 'SAKIT') map[empId].sakit++;
@@ -147,7 +188,8 @@ export default function KaryawanPage() {
     });
 
     return employees.map((emp: any) => {
-      const stats = map[emp.id] || { hadir: 0, izin: 0, sakit: 0, total: 0 };
+      const empId = emp?.id || '';
+      const stats = map[empId] || { hadir: 0, izin: 0, sakit: 0, total: 0 };
       const presenceRate = stats.total > 0 ? ((stats.hadir / stats.total) * 100).toFixed(0) : '-';
       return {
         ...emp,
@@ -160,6 +202,7 @@ export default function KaryawanPage() {
   // Filtered recap list (by search or selected employee)
   const filteredRecapList = useMemo(() => {
     return employeeRecapList.filter((emp: any) => {
+      if (!emp) return false;
       if (selectedEmployeeFilter !== 'ALL' && emp.id !== selectedEmployeeFilter) {
         return false;
       }
@@ -177,11 +220,11 @@ export default function KaryawanPage() {
   const periodStats = useMemo(() => {
     const relevantAttendances = selectedEmployeeFilter === 'ALL'
       ? attendances
-      : attendances.filter((a: any) => a.employee_id === selectedEmployeeFilter);
+      : attendances.filter((a: any) => a?.employee_id === selectedEmployeeFilter);
 
-    const hadir = relevantAttendances.filter((a: any) => (a.status_kehadiran || '').toUpperCase() === 'HADIR').length;
-    const izin = relevantAttendances.filter((a: any) => (a.status_kehadiran || '').toUpperCase() === 'IZIN').length;
-    const sakit = relevantAttendances.filter((a: any) => (a.status_kehadiran || '').toUpperCase() === 'SAKIT').length;
+    const hadir = relevantAttendances.filter((a: any) => (a?.status_kehadiran || '').toUpperCase() === 'HADIR').length;
+    const izin = relevantAttendances.filter((a: any) => (a?.status_kehadiran || '').toUpperCase() === 'IZIN').length;
+    const sakit = relevantAttendances.filter((a: any) => (a?.status_kehadiran || '').toUpperCase() === 'SAKIT').length;
     const total = relevantAttendances.length;
 
     return { hadir, izin, sakit, total };
@@ -190,6 +233,7 @@ export default function KaryawanPage() {
   // ─── FILTERED DETAILED ATTENDANCE LOGS ───
   const filteredAttendances = useMemo(() => {
     return attendances.filter((a: any) => {
+      if (!a) return false;
       if (selectedEmployeeFilter !== 'ALL' && a.employee_id !== selectedEmployeeFilter) {
         return false;
       }
@@ -212,7 +256,7 @@ export default function KaryawanPage() {
 
   const selectedEmployeeObj = useMemo(() => {
     if (selectedEmployeeFilter === 'ALL') return null;
-    return employees.find((e: any) => e.id === selectedEmployeeFilter);
+    return employees.find((e: any) => e?.id === selectedEmployeeFilter);
   }, [employees, selectedEmployeeFilter]);
 
   const hasActiveFilter = selectedEmployeeFilter !== 'ALL' || presensiStatusFilter !== 'ALL' || presensiSearch.trim() !== '';
@@ -418,8 +462,8 @@ export default function KaryawanPage() {
                 >
                   <option value="ALL">👤 Semua Karyawan ({employees.length})</option>
                   {employees.map((emp: any) => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.nama} ({emp.posisi || emp.role || 'Staff'})
+                    <option key={emp?.id || Math.random()} value={emp?.id}>
+                      {emp?.nama || 'Karyawan'} ({emp?.posisi || emp?.role || 'Staff'})
                     </option>
                   ))}
                 </select>
@@ -565,12 +609,13 @@ export default function KaryawanPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filteredRecapList.map((emp: any) => {
+                    if (!emp) return null;
                     const isSelected = selectedEmployeeFilter === emp.id;
-                    const st = emp.stats;
+                    const st = emp.stats || { hadir: 0, izin: 0, sakit: 0, total: 0 };
 
                     return (
                       <tr 
-                        key={emp.id} 
+                        key={emp.id || Math.random()} 
                         className={`transition-colors ${
                           isSelected ? 'bg-blue-50/60' : 'hover:bg-gray-50/60'
                         }`}
@@ -583,7 +628,7 @@ export default function KaryawanPage() {
                             </div>
                             <div>
                               <div className="font-bold text-gray-900 flex items-center gap-1.5">
-                                <span>{emp.nama}</span>
+                                <span>{emp.nama || 'Karyawan'}</span>
                                 {isSelected && (
                                   <span className="text-[10px] bg-blue-600 text-white font-bold px-1.5 py-0.2 rounded-md">
                                     Aktif
@@ -709,19 +754,20 @@ export default function KaryawanPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filteredAttendances.map((a: any) => {
+                    if (!a) return null;
                     const status = (a.status_kehadiran || '').toUpperCase();
                     const isHadir = status === 'HADIR';
                     const isIzin = status === 'IZIN';
 
                     return (
-                      <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
+                      <tr key={a.id || Math.random()} className="hover:bg-gray-50/50 transition-colors">
                         <td className="py-3.5 px-4">
                           <div className="font-bold text-gray-900">
-                            {new Date(a.waktu || a.date || Date.now()).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            {safeFormatDate(a.waktu || a.date)}
                           </div>
                           <div className="text-[11px] text-gray-400 mt-0.5 flex items-center gap-1 font-mono">
                             <Clock className="w-3 h-3 text-gray-400" />
-                            <span>{new Date(a.waktu || a.date || Date.now()).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</span>
+                            <span>{safeFormatTime(a.waktu || a.date)}</span>
                           </div>
                         </td>
 
@@ -767,12 +813,13 @@ export default function KaryawanPage() {
             {/* Mobile Card View (Zero Overlap) */}
             <div className="block md:hidden p-3.5 space-y-3">
               {filteredAttendances.map((a: any) => {
+                if (!a) return null;
                 const status = (a.status_kehadiran || '').toUpperCase();
                 const isHadir = status === 'HADIR';
                 const isIzin = status === 'IZIN';
 
                 return (
-                  <div key={a.id} className="bg-gray-50/70 rounded-2xl border border-gray-200/90 p-3.5 shadow-xs space-y-2">
+                  <div key={a.id || Math.random()} className="bg-gray-50/70 rounded-2xl border border-gray-200/90 p-3.5 shadow-xs space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="font-bold text-gray-900 text-sm">{a.employee?.nama || 'Karyawan'}</div>
@@ -791,10 +838,10 @@ export default function KaryawanPage() {
 
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 font-mono">
                       <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                      <span>{new Date(a.waktu || a.date || Date.now()).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                      <span>{safeFormatDate(a.waktu || a.date)}</span>
                       <span>•</span>
                       <Clock className="w-3.5 h-3.5 text-gray-400" />
-                      <span>{new Date(a.waktu || a.date || Date.now()).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</span>
+                      <span>{safeFormatTime(a.waktu || a.date)}</span>
                     </div>
 
                     {a.alasan && (
