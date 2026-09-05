@@ -10,20 +10,32 @@ export async function GET(req: Request) {
     const employeeIdParam = searchParams.get('employeeId');
 
     const now = new Date();
-    let periodStart: Date;
-    let periodEnd: Date;
+    let periodStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    let periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-    if (startDateParam && endDateParam) {
-      periodStart = new Date(startDateParam);
-      periodStart.setHours(0, 0, 0, 0);
-      periodEnd = new Date(endDateParam);
+    if (startDateParam) {
+      const parsedStart = new Date(startDateParam);
+      if (!isNaN(parsedStart.getTime())) {
+        periodStart = parsedStart;
+        periodStart.setHours(0, 0, 0, 0);
+      }
+    }
+
+    if (endDateParam) {
+      const parsedEnd = new Date(endDateParam);
+      if (!isNaN(parsedEnd.getTime())) {
+        periodEnd = parsedEnd;
+        periodEnd.setHours(23, 59, 59, 999);
+      }
+    } else if (startDateParam) {
+      periodEnd = new Date(periodStart);
       periodEnd.setHours(23, 59, 59, 999);
-    } else {
-      // Default to current month
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth();
-      periodStart = new Date(currentYear, currentMonth, 1, 0, 0, 0, 0);
-      periodEnd = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59, 999);
+    }
+
+    if (periodStart > periodEnd) {
+      const temp = periodStart;
+      periodStart = periodEnd;
+      periodEnd = temp;
     }
 
     const attendanceWhere: any = {

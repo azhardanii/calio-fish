@@ -52,7 +52,7 @@ export function Sidebar({ user }: { user: { id: string; role: string; nama: stri
       title: "Tim & Gudang",
       visible: isOwnerOrAdmin || isMitra || isMarketing || isProduksi,
       items: [
-        { name: "Karyawan", href: "/karyawan", icon: Users, visible: isOwnerOrAdmin },
+        { name: "Karyawan", href: "/karyawan", icon: Users, visible: isOwnerOrAdmin || isMarketing || isProduksi },
         { name: "Database Outlet", href: "/outlet", icon: MapPin, visible: isOwnerOrAdmin || isMitra || isMarketing },
         { name: "Database Produk", href: "/produk", icon: PackageCheck, visible: isOwnerOrAdmin },
         { name: "Warehouse", href: "/warehouse", icon: WarehouseIcon, visible: isOwnerOrAdmin || isProduksi || isMarketing },

@@ -58,10 +58,10 @@ export async function proxy(req: NextRequest) {
         return NextResponse.redirect(new URL(defaultHome, req.url));
       }
 
-      const isMarketingPath = pathname.startsWith('/marketing') || pathname.startsWith('/booth') || pathname.startsWith('/outlet') || pathname.startsWith('/warehouse') || pathname.startsWith('/pengiriman');
-      const isProduksiPath = pathname.startsWith('/produksi') || pathname.startsWith('/warehouse');
+      const isMarketingPath = pathname.startsWith('/marketing') || pathname.startsWith('/booth') || pathname.startsWith('/outlet') || pathname.startsWith('/warehouse') || pathname.startsWith('/pengiriman') || pathname.startsWith('/karyawan');
+      const isProduksiPath = pathname.startsWith('/produksi') || pathname.startsWith('/warehouse') || pathname.startsWith('/karyawan');
       const isMitraPath = pathname.startsWith('/outlet') || pathname.startsWith('/pengiriman');
-      const isCommonPath = pathname.startsWith('/chats');
+      const isCommonPath = pathname.startsWith('/chats') || pathname.startsWith('/karyawan');
 
       const isAllowed = 
         isCommonPath ||
