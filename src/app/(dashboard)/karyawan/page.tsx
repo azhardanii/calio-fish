@@ -50,12 +50,13 @@ function safeFormatTime(val: any): string {
 }
 
 export default function KaryawanPage() {
+  // 1. Mount state
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  // Date range filter state for attendance period (default to current month)
+  // 2. Date range state
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
     const today = new Date();
     return {
@@ -65,6 +66,7 @@ export default function KaryawanPage() {
   });
   const [appliedDateRange, setAppliedDateRange] = useState<DateRange | undefined>(dateRange);
 
+  // 3. API URL calculation
   const apiUrl = useMemo(() => {
     if (appliedDateRange?.from) {
       try {
@@ -80,17 +82,19 @@ export default function KaryawanPage() {
     return '/api/data/employees';
   }, [appliedDateRange]);
 
+  // 4. Data fetching
   const { data, isLoading, error, mutate } = useSWR(apiUrl);
   const { data: currentUser } = useSWR('/api/auth/me');
   
-  // Default to 'karyawan' tab so employee database is immediately visible!
+  // 5. Active tab state
   const [activeTab, setActiveTab] = useState<'karyawan' | 'presensi'>('karyawan');
   
-  // Presensi search & filter states
+  // 6. Filter states
   const [presensiSearch, setPresensiSearch] = useState('');
   const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState('ALL');
   const [presensiStatusFilter, setPresensiStatusFilter] = useState('ALL');
 
+  // 7. Filter label
   const filterLabel = useMemo(() => {
     if (!appliedDateRange?.from) return 'Semua Waktu';
     try {
@@ -118,53 +122,19 @@ export default function KaryawanPage() {
     }
   }, [appliedDateRange]);
 
-  // Loading spinner during SSR / initial mount to prevent hydration crashes
-  if (!isMounted || (isLoading && !data)) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '50vh' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ width: 36, height: 36, border: '4px solid #e5e7eb', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
-          <div style={{ color: '#6b7280', fontSize: 14, fontWeight: 600 }}>Memuat data karyawan &amp; presensi...</div>
-        </div>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    );
-  }
+  const employees: any[] = useMemo(() => {
+    return Array.isArray(data?.employees) ? data.employees : [];
+  }, [data?.employees]);
 
-  if (error && !data) {
-    return (
-      <div className="p-8 text-center bg-white rounded-2xl border border-rose-200 text-rose-600 max-w-lg mx-auto my-12 shadow-xs">
-        <AlertCircle className="w-10 h-10 mx-auto mb-2 text-rose-500" />
-        <div className="font-bold text-base">Gagal memuat data karyawan &amp; presensi</div>
-        <div className="text-xs text-gray-500 mt-1">{error.message || 'Terjadi kesalahan saat memuat data'}</div>
-        <button 
-          onClick={() => mutate()} 
-          className="mt-4 px-4 py-2 bg-blue-600 text-white font-bold rounded-xl text-xs hover:bg-blue-700 transition cursor-pointer"
-        >
-          Coba Lagi
-        </button>
-      </div>
-    );
-  }
+  const attendances: any[] = useMemo(() => {
+    return Array.isArray(data?.attendances) ? data.attendances : [];
+  }, [data?.attendances]);
 
-  const employees: any[] = Array.isArray(data?.employees) ? data.employees : [];
-  const attendances: any[] = Array.isArray(data?.attendances) ? data.attendances : [];
-  const todayAttendances: any[] = Array.isArray(data?.todayAttendances) ? data.todayAttendances : [];
+  const todayAttendances: any[] = useMemo(() => {
+    return Array.isArray(data?.todayAttendances) ? data.todayAttendances : [];
+  }, [data?.todayAttendances]);
 
-  // Summary KPI Calculations for Top Header
-  const totalEmployees = employees.length;
-  const activeEmployees = employees.filter((e: any) => e?.status_aktif).length;
-  const marketingCount = employees.filter((e: any) => 
-    (e?.role || '').toUpperCase().includes('MARKETING') || (e?.posisi || '').toUpperCase().includes('MARKETING')
-  ).length;
-  const produksiCount = employees.filter((e: any) => 
-    (e?.role || '').toUpperCase().includes('PRODUKSI') || (e?.posisi || '').toUpperCase().includes('PRODUKSI')
-  ).length;
-
-  const hadirTodayCount = todayAttendances.filter((a: any) => (a?.status_kehadiran || '').toUpperCase() === 'HADIR').length;
-
-  // ─── PER-EMPLOYEE ATTENDANCE RECAP CALCULATION ───
-  // Computes Hadir, Izin, and Sakit count for each employee in the active period
+  // 8. Recap List Memo (MUST BE DECLARED BEFORE ANY RETURN STATEMENT TO SATISFY RULES OF HOOKS)
   const employeeRecapList = useMemo(() => {
     const map: Record<string, { hadir: number; izin: number; sakit: number; total: number }> = {};
     
@@ -199,7 +169,7 @@ export default function KaryawanPage() {
     });
   }, [employees, attendances]);
 
-  // Filtered recap list (by search or selected employee)
+  // 9. Filtered recap list memo
   const filteredRecapList = useMemo(() => {
     return employeeRecapList.filter((emp: any) => {
       if (!emp) return false;
@@ -216,7 +186,7 @@ export default function KaryawanPage() {
     });
   }, [employeeRecapList, selectedEmployeeFilter, presensiSearch]);
 
-  // ─── PERIOD KPI STATS (FOR CURRENT FILTER SELECTION) ───
+  // 10. Period KPI Stats memo
   const periodStats = useMemo(() => {
     const relevantAttendances = selectedEmployeeFilter === 'ALL'
       ? attendances
@@ -230,7 +200,7 @@ export default function KaryawanPage() {
     return { hadir, izin, sakit, total };
   }, [attendances, selectedEmployeeFilter]);
 
-  // ─── FILTERED DETAILED ATTENDANCE LOGS ───
+  // 11. Filtered attendances memo
   const filteredAttendances = useMemo(() => {
     return attendances.filter((a: any) => {
       if (!a) return false;
@@ -254,6 +224,7 @@ export default function KaryawanPage() {
     });
   }, [attendances, selectedEmployeeFilter, presensiStatusFilter, presensiSearch]);
 
+  // 12. Selected employee object memo
   const selectedEmployeeObj = useMemo(() => {
     if (selectedEmployeeFilter === 'ALL') return null;
     return employees.find((e: any) => e?.id === selectedEmployeeFilter);
@@ -266,6 +237,46 @@ export default function KaryawanPage() {
     setPresensiStatusFilter('ALL');
     setPresensiSearch('');
   };
+
+  // Top header summary numbers
+  const totalEmployees = employees.length;
+  const activeEmployees = employees.filter((e: any) => e?.status_aktif).length;
+  const marketingCount = employees.filter((e: any) => 
+    (e?.role || '').toUpperCase().includes('MARKETING') || (e?.posisi || '').toUpperCase().includes('MARKETING')
+  ).length;
+  const produksiCount = employees.filter((e: any) => 
+    (e?.role || '').toUpperCase().includes('PRODUKSI') || (e?.posisi || '').toUpperCase().includes('PRODUKSI')
+  ).length;
+  const hadirTodayCount = todayAttendances.filter((a: any) => (a?.status_kehadiran || '').toUpperCase() === 'HADIR').length;
+
+  // ─── CONDITIONAL RETURNS ARE PLACED HERE (AFTER ALL HOOKS ARE FULLY EXECUTED) ───
+  if (!isMounted || (isLoading && !data)) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '50vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 36, height: 36, border: '4px solid #e5e7eb', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+          <div style={{ color: '#6b7280', fontSize: 14, fontWeight: 600 }}>Memuat data karyawan &amp; presensi...</div>
+        </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  if (error && !data) {
+    return (
+      <div className="p-8 text-center bg-white rounded-2xl border border-rose-200 text-rose-600 max-w-lg mx-auto my-12 shadow-xs">
+        <AlertCircle className="w-10 h-10 mx-auto mb-2 text-rose-500" />
+        <div className="font-bold text-base">Gagal memuat data karyawan &amp; presensi</div>
+        <div className="text-xs text-gray-500 mt-1">{error?.message || 'Terjadi kesalahan saat memuat data'}</div>
+        <button 
+          onClick={() => mutate()} 
+          className="mt-4 px-4 py-2 bg-blue-600 text-white font-bold rounded-xl text-xs hover:bg-blue-700 transition cursor-pointer"
+        >
+          Coba Lagi
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 sm:space-y-6">
