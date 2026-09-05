@@ -78,17 +78,16 @@ export async function createOutlet(data: any) {
   const role = (user?.role || '').toUpperCase();
   const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
 
+  if (!isOwnerOrAdmin) {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat menambah outlet.');
+  }
+
   // Convert decimal fields if they come as strings
   if (data.tagihan !== undefined) data.tagihan = Number(data.tagihan);
   if (data.payment !== undefined) data.payment = Number(data.payment);
   if (data.sisa_tagihan !== undefined) data.sisa_tagihan = Number(data.sisa_tagihan);
 
-  // Jika dibuat oleh Marketing, OTOMATIS kaitkan outlet ke user marketing yang login
-  // Jika dibuat oleh Owner/Admin, gunakan pengelola_id yang dipilih di form
-  let assignedPengelolaId = data.pengelola_id || null;
-  if (!isOwnerOrAdmin && user && (role === 'MARKETING' || role.includes('MARKETING'))) {
-    assignedPengelolaId = user.id;
-  }
+  const assignedPengelolaId = data.pengelola_id || null;
 
   // Anti-duplicate protection:
   // Cek apakah outlet dengan nama dan pengelola yang sama baru saja dibuat dalam 10 detik terakhir (mencegah double/multiple click)
@@ -144,15 +143,12 @@ export async function updateOutlet(id: string, data: any) {
   const role = (user?.role || '').toUpperCase();
   const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
 
+  if (!isOwnerOrAdmin) {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat mengubah data outlet.');
+  }
+
   const existingOutlet = await prisma.outlet.findUnique({ where: { id } });
   if (!existingOutlet) throw new Error('Outlet tidak ditemukan');
-
-  // Marketing users can only update outlets they handle
-  if (!isOwnerOrAdmin && (role === 'MARKETING' || role.includes('MARKETING'))) {
-    if (existingOutlet.pengelola_id !== user?.id) {
-      throw new Error(`Akses ditolak: Anda tidak memiliki izin mengubah data outlet "${existingOutlet.nama}".`);
-    }
-  }
 
   const updateData: any = {
     nama: data.nama,
@@ -164,7 +160,7 @@ export async function updateOutlet(id: string, data: any) {
   };
 
   // Only Owner / Admin can change pengelola_id
-  if (isOwnerOrAdmin && data.pengelola_id !== undefined) {
+  if (data.pengelola_id !== undefined) {
     updateData.pengelola_id = data.pengelola_id === '' ? null : data.pengelola_id;
   }
   
@@ -185,15 +181,12 @@ export async function addPiutang(outletId: string, amount: number, description: 
   const role = (user?.role || '').toUpperCase();
   const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
 
+  if (!isOwnerOrAdmin) {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat menginput tagihan secara manual via web dashboard.');
+  }
+
   const outlet = await prisma.outlet.findUnique({ where: { id: outletId } });
   if (!outlet) throw new Error('Outlet tidak ditemukan');
-
-  // Marketing users can only add piutang to outlets they handle
-  if (!isOwnerOrAdmin && (role === 'MARKETING' || role.includes('MARKETING'))) {
-    if (outlet.pengelola_id !== user?.id) {
-      throw new Error(`Akses ditolak: Anda tidak memiliki izin untuk menginput tagihan ke outlet "${outlet.nama}".`);
-    }
-  }
 
   const newTagihan = Number(outlet.tagihan) + amount;
   const newSisa = newTagihan - Number(outlet.payment);
@@ -221,15 +214,12 @@ export async function addPelunasan(outletId: string, amount: number, description
   const role = (user?.role || '').toUpperCase();
   const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
 
+  if (!isOwnerOrAdmin) {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat menginput pelunasan secara manual via web dashboard.');
+  }
+
   const outlet = await prisma.outlet.findUnique({ where: { id: outletId } });
   if (!outlet) throw new Error('Outlet tidak ditemukan');
-
-  // Marketing users can only add pelunasan to outlets they handle
-  if (!isOwnerOrAdmin && (role === 'MARKETING' || role.includes('MARKETING'))) {
-    if (outlet.pengelola_id !== user?.id) {
-      throw new Error(`Akses ditolak: Anda tidak memiliki izin untuk menginput pelunasan ke outlet "${outlet.nama}".`);
-    }
-  }
 
   const newPayment = Number(outlet.payment) + amount;
   const newSisa = Number(outlet.tagihan) - newPayment;
@@ -299,15 +289,12 @@ export async function adjustOutletStock(outletStockId: string, newQty: number, n
   const role = (user?.role || '').toUpperCase();
   const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
 
+  if (!isOwnerOrAdmin) {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat mengubah stok outlet.');
+  }
+
   const os = await prisma.outletStock.findUnique({ where: { id: outletStockId }, include: { product: true, outlet: true } });
   if (!os) throw new Error('Outlet stock tidak ditemukan');
-
-  // Marketing users can only adjust stock for outlets they handle
-  if (!isOwnerOrAdmin && (role === 'MARKETING' || role.includes('MARKETING'))) {
-    if (os.outlet.pengelola_id !== user?.id) {
-      throw new Error(`Akses ditolak: Anda tidak memiliki izin untuk mengubah stok outlet "${os.outlet.nama}".`);
-    }
-  }
 
   const diff = newQty - os.quantity;
   if (diff === 0) return;
