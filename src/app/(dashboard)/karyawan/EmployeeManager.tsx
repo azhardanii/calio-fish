@@ -19,7 +19,7 @@ import {
   Shield,
   Crown,
   ExternalLink,
-  CheckCircle2,
+  CheckCircle,
   AlertCircle
 } from 'lucide-react';
 import { createKaryawan, updateKaryawan, deleteKaryawan } from '@/app/actions';

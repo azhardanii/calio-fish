@@ -12,15 +12,15 @@ import {
   CalendarCheck, 
   Clock, 
   Search, 
-  CheckCircle2, 
+  CheckCircle, 
   AlertCircle,
   Calendar,
   X,
   UserCheck,
-  HeartPulse,
+  Heart,
   FileText,
   ChevronRight,
-  BarChart3,
+  Activity,
   Filter,
   RotateCcw
 } from 'lucide-react';
@@ -498,7 +498,7 @@ export default function KaryawanPage() {
                   Total Sakit
                 </span>
                 <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
-                  <HeartPulse className="w-4 h-4" />
+                  <Heart className="w-4 h-4" />
                 </div>
               </div>
               <div className="text-xl sm:text-3xl font-black text-rose-800 mt-0.5">
@@ -533,7 +533,7 @@ export default function KaryawanPage() {
             <div className="p-4 border-b border-gray-100 bg-gray-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
-                  <BarChart3 className="w-4 h-4" />
+                  <Activity className="w-4 h-4" />
                 </div>
                 <div>
                   <h3 className="font-extrabold text-sm sm:text-base text-gray-900">
