@@ -2,6 +2,9 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import useSWR from 'swr';
+import { DateRange } from "react-day-picker";
+import { format } from "date-fns";
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PdfExportButton } from '@/components/ui/PdfExportButton';
@@ -9,13 +12,50 @@ import { Badge } from '@/components/ui/badge';
 import { Navigation, Search } from 'lucide-react';
 
 export default function PengirimanPage() {
-  const { data, isLoading } = useSWR('/api/data/pengiriman');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+    const today = new Date();
+    return {
+      from: new Date(today.getFullYear(), today.getMonth(), 1),
+      to: new Date(today.getFullYear(), today.getMonth() + 1, 0)
+    };
+  });
+  const [appliedDateRange, setAppliedDateRange] = useState<DateRange | undefined>(dateRange);
+
+  const apiUrl = useMemo(() => {
+    if (appliedDateRange?.from && appliedDateRange?.to) {
+      const fromStr = format(appliedDateRange.from, 'yyyy-MM-dd');
+      const toStr = format(appliedDateRange.to, 'yyyy-MM-dd');
+      return `/api/data/pengiriman?startDate=${fromStr}&endDate=${toStr}`;
+    }
+    return '/api/data/pengiriman';
+  }, [appliedDateRange]);
+
+  const { data, isLoading } = useSWR(apiUrl);
   const [filterType, setFilterType] = useState('ALL');
   const [filterInput, setFilterInput] = useState('');
   const [detailedShipment, setDetailedShipment] = useState<any>(null);
   const [sortOrder, setSortOrder] = useState('DESC');
   const [visibleCount, setVisibleCount] = useState(50);
   const observerTarget = useRef(null);
+
+  const filterLabel = useMemo(() => {
+    if (!appliedDateRange?.from) return 'Lifetime (Semua Waktu)';
+    const fromDate = appliedDateRange.from;
+    const toDate = appliedDateRange.to || fromDate;
+    
+    const isFullMonth = 
+      fromDate.getDate() === 1 && 
+      toDate.getDate() === new Date(toDate.getFullYear(), toDate.getMonth() + 1, 0).getDate() &&
+      fromDate.getMonth() === toDate.getMonth() &&
+      fromDate.getFullYear() === toDate.getFullYear();
+
+    if (isFullMonth) {
+      return fromDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+    }
+    const fromStr = fromDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    const toStr = toDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    return `${fromStr} - ${toStr}`;
+  }, [appliedDateRange]);
 
   const shipments = data?.shipments || [];
 
@@ -104,10 +144,32 @@ export default function PengirimanPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Log Pengiriman</h1>
-          <p className="text-gray-500 mt-1">Laporan terpusat pendistribusian produk (Online, Outlet, Sample, Retur).</p>
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Log Pengiriman &amp; Distribusi</h1>
+          <p className="text-gray-500 mt-1">Laporan terpadu arus logistik (Outlet, Personal Buyer, Booth, Sample, Retur).</p>
+          <div className="text-xs text-blue-700 font-semibold mt-1 bg-blue-50 px-2.5 py-1 rounded inline-block">
+            📅 Periode: <b>{filterLabel}</b> ({shipments.length} transaksi keluar terdeteksi)
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <DateRangePicker date={dateRange} setDate={setDateRange} />
+          <button
+            onClick={() => setAppliedDateRange(dateRange)}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition shadow-sm"
+          >
+            Tampilkan
+          </button>
+          <button
+            onClick={() => {
+              setDateRange(undefined);
+              setAppliedDateRange(undefined);
+            }}
+            className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition"
+          >
+            Semua Waktu
+          </button>
         </div>
       </div>
 
@@ -124,7 +186,7 @@ export default function PengirimanPage() {
         {/* Produk Terkirim */}
         <div style={{ background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)', borderRadius: 16, padding: '20px 24px', border: '1px solid #bbf7d0', boxShadow: '0 4px 15px rgba(34, 197, 94, 0.1)', position: 'relative', overflow: 'hidden' }}>
           <div style={{ fontSize: 13, color: '#16a34a', fontWeight: 700, letterSpacing: 0.5, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 16 }}>🚚</span> TOTAL PRODUK
+            <span style={{ fontSize: 16 }}>🚚</span> TOTAL PRODUK KELUAR
           </div>
           <div style={{ fontSize: 26, fontWeight: 800, color: '#14532d' }}>{summaryItems} <span style={{ fontSize: 16, fontWeight: 600 }}>pcs</span></div>
           <div style={{ position: 'absolute', right: -15, bottom: -15, fontSize: 80, opacity: 0.05 }}>🚚</div>
@@ -144,7 +206,7 @@ export default function PengirimanPage() {
         <Card className="hover:shadow-lg transition-shadow duration-300 border-0 shadow-none">
           <CardHeader className="px-0 pt-0 border-b border-gray-100 pb-4 mb-4">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <CardTitle>History Distribusi & Pengiriman</CardTitle>
+              <CardTitle>History Distribusi &amp; Pengiriman</CardTitle>
               <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
                 <div className="relative flex-1 md:w-64">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -152,7 +214,7 @@ export default function PengirimanPage() {
                   </div>
                   <input
                     type="text"
-                    placeholder="Cari rute atau staf..."
+                    placeholder="Cari rute, tujuan, atau staf..."
                     value={filterInput}
                     onChange={(e) => setFilterInput(e.target.value)}
                     className="pl-10 pr-3 py-2 w-full border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -163,8 +225,16 @@ export default function PengirimanPage() {
                   onChange={(e) => setFilterType(e.target.value)}
                   className="px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="ALL">Semua Tipe</option>
-                  {uniqueTypes.map(t => <option key={t as string} value={t as string}>{t as string}</option>)}
+                  <option value="ALL">Semua Kategori</option>
+                  {uniqueTypes.map(t => (
+                    <option key={t as string} value={t as string}>
+                      {String(t) === 'PENGIRIMAN_OUTLET' ? '🚚 Outlet' :
+                       String(t) === 'PERSONAL_BUYER' ? '👤 Personal Buyer' :
+                       String(t) === 'TRANSFER_BOOTH' ? '🎪 Booth Event' :
+                       String(t) === 'SAMPLE' ? '🎁 Sample Promo' :
+                       String(t) === 'RETUR' ? '🔄 Retur' : String(t)}
+                    </option>
+                  ))}
                 </select>
                 <select
                   value={sortOrder}
@@ -184,17 +254,22 @@ export default function PengirimanPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Tanggal & Waktu</TableHead>
-                  <TableHead>Tipe Pengiriman</TableHead>
+                  <TableHead>Tanggal &amp; Waktu</TableHead>
+                  <TableHead>Kategori Arus</TableHead>
                   <TableHead>Rute (Dari &rarr; Ke)</TableHead>
                   <TableHead>Detail Produk</TableHead>
                   <TableHead>Catatan</TableHead>
-                  <TableHead>Diinput Oleh</TableHead>
+                  <TableHead>PIC / Petugas</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {visibleShipments.map((s: any) => {
                   const qty = s.items?.reduce((sum: number, item: any) => sum + item.qty, 0) || 0;
+                  const isRetur = s.shipment_type === 'RETUR';
+                  const isPB = s.shipment_type === 'PERSONAL_BUYER';
+                  const isBooth = s.shipment_type === 'TRANSFER_BOOTH';
+                  const isSample = s.shipment_type === 'SAMPLE';
+                  const isOutlet = s.shipment_type === 'PENGIRIMAN_OUTLET' || s.destination_type === 'OUTLET';
                   
                   return (
                     <TableRow key={s.id} className="hover:bg-gray-100 transition-colors cursor-pointer" onClick={() => setDetailedShipment(s)}>
@@ -204,9 +279,18 @@ export default function PengirimanPage() {
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className={`
-                          ${s.shipment_type === 'RETUR' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-700 border-blue-200'}
+                          ${isRetur ? 'bg-red-50 text-red-700 border-red-200' :
+                            isPB ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                            isBooth ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                            isSample ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                            isOutlet ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                            'bg-gray-50 text-gray-700 border-gray-200'}
                         `}>
-                          {s.shipment_type || 'PENGIRIMAN'}
+                          {isRetur ? '🔄 RETUR' :
+                           isPB ? '👤 PERSONAL BUYER' :
+                           isBooth ? '🎪 BOOTH EVENT' :
+                           isSample ? '🎁 SAMPLE' :
+                           isOutlet ? '🚚 OUTLET' : (s.shipment_type || 'DISTRIBUSI')}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -221,7 +305,7 @@ export default function PengirimanPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="font-semibold">{qty} pcs</span>
+                        <span className="font-semibold text-blue-900">{qty} pcs</span>
                         <div className="text-xs text-gray-500 mt-1">
                           {s.items?.length || 0} macam SKU
                         </div>

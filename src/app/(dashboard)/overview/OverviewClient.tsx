@@ -62,9 +62,12 @@ interface OverviewData {
     totalKasMasuk: number;
     totalSisaTagihan: number;
     kasPelunasanOutlet: number;
+    kasDistributor?: number;
     kasBooth: number;
     kasPersonalBuyer: number;
     kasEcommerce: number;
+    totalPengeluaranCalio?: number;
+    netMargin?: number;
   };
   boothSummary?: {
     activeBoothCount: number;
@@ -458,39 +461,65 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
           </div>
         </div>
 
-        {/* 3 Metric Pillars */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4">
+        {/* 4 Metric Pillars */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-4">
           <div className="bg-white/5 border border-white/10 rounded-xl p-3 sm:p-4">
             <div className="text-[11px] text-blue-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
               <Receipt className="w-3.5 h-3.5 text-blue-400" />
-              <span>TOTAL OMSET KESELURUHAN</span>
+              <span>TOTAL OMSET PENJUALAN</span>
             </div>
             <div className="text-xl sm:text-2xl font-black text-white mt-1">{formatRp(totalOmset)}</div>
             <div className="text-[11px] text-slate-400 mt-1">
-              Tim Marketing ({formatRp(channels.find(c => c.name.includes('Marketing'))?.mtd || 0)}) + Online ({formatRp((channels.find(c => c.name.includes('Shopee'))?.mtd || 0) + (channels.find(c => c.name.includes('TikTok'))?.mtd || 0))}) + Booth &amp; Personal
+              Marketing ({formatRp(channels.find(c => c.name.includes('Marketing'))?.mtd || 0)}) + E-Commerce ({formatRp((channels.find(c => c.name.includes('Shopee'))?.mtd || 0) + (channels.find(c => c.name.includes('TikTok'))?.mtd || 0))}) + Booth &amp; PB
             </div>
           </div>
 
           <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 sm:p-4">
             <div className="text-[11px] text-emerald-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
               <Wallet className="w-3.5 h-3.5 text-emerald-400" />
-              <span>KAS MASUK BERSIH (REALISASI)</span>
+              <span>TOTAL KAS TERKUMPUL</span>
             </div>
             <div className="text-xl sm:text-2xl font-black text-emerald-300 mt-1">{formatRp(totalKasMasuk)}</div>
             <div className="text-[11px] text-emerald-200/80 mt-1">
-              Pelunasan Outlet + Kas Penjualan Booth + Personal Buyer + E-Commerce
+              Outlet Reguler + Hasil Distributor ({formatRp(financials?.kasDistributor || 0)}) + Booth + PB + Online
             </div>
           </div>
 
           <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 sm:p-4">
             <div className="text-[11px] text-rose-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
-              <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-              <span>SISA PIUTANG OUTLET MITRA</span>
+              <Boxes className="w-3.5 h-3.5 text-rose-400" />
+              <span>PENGELUARAN CALIOFISH</span>
             </div>
-            <div className="text-xl sm:text-2xl font-black text-rose-300 mt-1">{formatRp(totalSisaTagihan)}</div>
+            <div className="text-xl sm:text-2xl font-black text-rose-300 mt-1">{formatRp(financials?.totalPengeluaranCalio || 0)}</div>
             <div className="text-[11px] text-rose-200/80 mt-1">
-              Tagihan konsinyasi {totalOutlets} outlet mitra aktif yang belum lunas
+              Total biaya operasional, logistik &amp; dinas CalioFish terhubung langsung
             </div>
+          </div>
+
+          <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-3 sm:p-4">
+            <div className="text-[11px] text-indigo-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+              <span>ARUS KAS BERSIH (NET MARGIN)</span>
+            </div>
+            <div className={`text-xl sm:text-2xl font-black mt-1 ${
+              (financials?.netMargin ?? 0) >= 0 ? 'text-indigo-200' : 'text-rose-400'
+            }`}>
+              {formatRp(financials?.netMargin ?? (totalKasMasuk - (financials?.totalPengeluaranCalio || 0)))}
+            </div>
+            <div className="text-[11px] text-indigo-200/80 mt-1">
+              Akumulasi Kas Terkumpul dikurangi Pengeluaran Operasional CalioFish
+            </div>
+          </div>
+        </div>
+
+        {/* Financial Sub-Row for Outstanding Receivables */}
+        <div className="mt-3 pt-3 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 text-amber-300">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>Sisa Piutang Konsinyasi Outlet &amp; Mitra: <b>{formatRp(totalSisaTagihan)}</b> ({totalOutlets} Outlet Terdaftar)</span>
+          </div>
+          <div className="text-slate-400 text-[11px]">
+            *Data kas dan tagihan tersinkronisasi otomatis dengan riwayat pembayaran outlet
           </div>
         </div>
       </div>
@@ -673,6 +702,14 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
                 <span>Kelola Target di Halaman Marketing</span>
                 <ArrowUpRight className="w-3.5 h-3.5" />
               </Link>
+            </div>
+          </div>
+
+          {/* Guidance Note: Penjelasan Kontribusi Tim Marketing */}
+          <div className="bg-blue-50/80 border border-blue-200/80 rounded-xl p-3 flex items-start gap-2.5 text-xs text-blue-900 leading-relaxed shadow-xs">
+            <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold">Penjelasan Alur Finansial:</span> Kontribusi tim marketing dan persentase capaian target dihitung berdasarkan <b>Kas Masuk Nyata (Uang yang berhasil disetor/dilunasi oleh outlet binaannya)</b> serta transaksi <b>Personal Buyer</b> masing-masing, bukan sekadar tagihan produk yang terkirim ke outlet. Hal ini memastikan target kinerja marketing selaras dengan uang riil yang masuk ke kas perusahaan.
             </div>
           </div>
 

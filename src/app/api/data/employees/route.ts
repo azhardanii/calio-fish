@@ -73,12 +73,18 @@ export async function GET(req: Request) {
         include: {
           managed_outlets: {
             select: { id: true, nama: true, wilayah: true }
+          },
+          distributor_warehouses: {
+            select: { id: true, name: true, address: true }
+          },
+          distributor_outlets: {
+            select: { id: true, nama: true, wilayah: true, status: true }
           }
         }
       });
     } catch (empErr) {
-      console.error('Error fetching employees with managed_outlets:', empErr);
-      // Fallback without managed_outlets relation if that was the issue
+      console.error('Error fetching employees with relations:', empErr);
+      // Fallback without relations if needed
       try {
         employees = await prisma.employee.findMany({
           orderBy: { nama: 'asc' }

@@ -77,9 +77,10 @@ export async function createOutlet(data: any) {
   const user = await verifySession();
   const role = (user?.role || '').toUpperCase();
   const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+  const isDistributor = role === 'DISTRIBUTOR';
 
-  if (!isOwnerOrAdmin) {
-    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat menambah outlet.');
+  if (!isOwnerOrAdmin && !isDistributor) {
+    throw new Error('Akses ditolak: Hanya OWNER, ADMIN, atau DISTRIBUTOR yang dapat menambah outlet.');
   }
 
   // Convert decimal fields if they come as strings
@@ -87,16 +88,17 @@ export async function createOutlet(data: any) {
   if (data.payment !== undefined) data.payment = Number(data.payment);
   if (data.sisa_tagihan !== undefined) data.sisa_tagihan = Number(data.sisa_tagihan);
 
-  const assignedPengelolaId = data.pengelola_id || null;
+  const assignedPengelolaId = isDistributor ? null : (data.pengelola_id || null);
+  const assignedDistributorId = isDistributor ? user.id : (data.distributor_id || null);
 
   // Anti-duplicate protection:
-  // Cek apakah outlet dengan nama dan pengelola yang sama baru saja dibuat dalam 10 detik terakhir (mencegah double/multiple click)
+  // Cek apakah outlet dengan nama dan distributor yang sama baru saja dibuat dalam 10 detik terakhir
   const trimmedNama = (data.nama || '').trim();
   const tenSecondsAgo = new Date(Date.now() - 10000);
   const existingRecent = await prisma.outlet.findFirst({
     where: {
       nama: { equals: trimmedNama, mode: 'insensitive' },
-      pengelola_id: assignedPengelolaId,
+      distributor_id: assignedDistributorId,
       created_at: { gte: tenSecondsAgo }
     }
   });
@@ -111,7 +113,7 @@ export async function createOutlet(data: any) {
       nama: trimmedNama,
       tlp: data.tlp,
       alamat: data.alamat,
-      wilayah: data.wilayah,
+      wilayah: data.wilayah || (isDistributor ? user.wilayah : null),
       status: data.status || 'Active',
       pic: data.pic,
       order_baru: data.order_baru || 0,
@@ -119,6 +121,7 @@ export async function createOutlet(data: any) {
       payment: data.payment || 0,
       sisa_tagihan: data.sisa_tagihan || 0,
       pengelola_id: assignedPengelolaId,
+      distributor_id: assignedDistributorId,
     } 
   });
 
@@ -142,13 +145,16 @@ export async function updateOutlet(id: string, data: any) {
   const user = await verifySession();
   const role = (user?.role || '').toUpperCase();
   const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
-
-  if (!isOwnerOrAdmin) {
-    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat mengubah data outlet.');
-  }
+  const isDistributor = role === 'DISTRIBUTOR';
 
   const existingOutlet = await prisma.outlet.findUnique({ where: { id } });
   if (!existingOutlet) throw new Error('Outlet tidak ditemukan');
+
+  if (!isOwnerOrAdmin) {
+    if (!isDistributor || existingOutlet.distributor_id !== user.id) {
+      throw new Error('Akses ditolak: Anda hanya dapat mengubah data outlet milik Anda sendiri.');
+    }
+  }
 
   const updateData: any = {
     nama: data.nama,
@@ -159,15 +165,19 @@ export async function updateOutlet(id: string, data: any) {
     pic: data.pic,
   };
 
-  // Only Owner / Admin can change pengelola_id
-  if (data.pengelola_id !== undefined) {
-    updateData.pengelola_id = data.pengelola_id === '' ? null : data.pengelola_id;
+  // Only Owner / Admin can change pengelola_id, distributor_id, and finance figures
+  if (isOwnerOrAdmin) {
+    if (data.pengelola_id !== undefined) {
+      updateData.pengelola_id = data.pengelola_id === '' ? null : data.pengelola_id;
+    }
+    if (data.distributor_id !== undefined) {
+      updateData.distributor_id = data.distributor_id === '' ? null : data.distributor_id;
+    }
+    if (data.tagihan !== undefined) updateData.tagihan = Number(data.tagihan);
+    if (data.payment !== undefined) updateData.payment = Number(data.payment);
+    if (data.sisa_tagihan !== undefined) updateData.sisa_tagihan = Number(data.sisa_tagihan);
+    if (data.order_baru !== undefined) updateData.order_baru = Number(data.order_baru);
   }
-  
-  if (data.tagihan !== undefined) updateData.tagihan = Number(data.tagihan);
-  if (data.payment !== undefined) updateData.payment = Number(data.payment);
-  if (data.sisa_tagihan !== undefined) updateData.sisa_tagihan = Number(data.sisa_tagihan);
-  if (data.order_baru !== undefined) updateData.order_baru = Number(data.order_baru);
   
   // Clean undefined values
   Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
@@ -277,9 +287,18 @@ export async function resetOutletFinance(outletId: string) {
 export async function deleteOutlet(id: string) {
   const user = await verifySession();
   const role = (user?.role || '').toUpperCase();
-  if (role !== 'OWNER' && role !== 'ADMIN') {
-    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat menghapus outlet.');
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+  const isDistributor = role === 'DISTRIBUTOR';
+
+  const existingOutlet = await prisma.outlet.findUnique({ where: { id } });
+  if (!existingOutlet) throw new Error('Outlet tidak ditemukan');
+
+  if (!isOwnerOrAdmin) {
+    if (!isDistributor || existingOutlet.distributor_id !== user.id) {
+      throw new Error('Akses ditolak: Anda hanya dapat menghapus outlet milik Anda sendiri.');
+    }
   }
+
   await prisma.outlet.delete({ where: { id } });
   revalidatePath('/outlet');
 }
@@ -585,11 +604,13 @@ export async function setMarketingTarget(employeeId: string, bulan: number, tahu
 export async function createPersonalBuyerTransaction(data: { 
   buyer_name: string; 
   product_name?: string;
+  product_id?: string;
   quantity?: number;
   price_per_unit?: number;
   amount: number; 
   description?: string; 
-  date?: string 
+  date?: string;
+  warehouse_id?: string;
 }) {
   const user = await verifySession();
   if (!user) throw new Error('Tidak terautentikasi');
@@ -602,21 +623,92 @@ export async function createPersonalBuyerTransaction(data: {
     throw new Error('Akses ditolak: Hanya Marketing atau Admin/Owner yang dapat menambahkan transaksi personal buyer.');
   }
 
-  const result = await prisma.personalBuyerTransaction.create({
-    data: {
-      employee_id: user.id,
-      buyer_name: data.buyer_name,
-      product_name: data.product_name || null,
-      quantity: data.quantity && data.quantity > 0 ? data.quantity : 1,
-      price_per_unit: data.price_per_unit || null,
-      amount: data.amount,
-      description: data.description || null,
-      date: data.date ? new Date(data.date) : new Date(),
+  const requestedQty = data.quantity && data.quantity > 0 ? data.quantity : 1;
+
+  const result = await prisma.$transaction(async (tx) => {
+    // 1. Check product & deduct stock if product is selected
+    let resolvedProductName = data.product_name || 'Produk Personal';
+    if (data.product_id) {
+      const product = await tx.product.findUnique({ where: { id: data.product_id } });
+      if (!product) throw new Error('Produk tidak ditemukan di database.');
+      resolvedProductName = product.name;
+
+      // Find warehouse (use supplied or first warehouse with enough stock or central warehouse)
+      let targetWarehouse = data.warehouse_id 
+        ? await tx.warehouse.findUnique({ where: { id: data.warehouse_id } })
+        : await tx.warehouse.findFirst({
+            where: {
+              stocks: { some: { product_id: product.id, quantity: { gte: requestedQty } } }
+            }
+          });
+
+      if (!targetWarehouse) {
+        targetWarehouse = await tx.warehouse.findFirst({
+          where: { OR: [{ type: 'FACTORY' }, { type: 'STORAGE' }] },
+          orderBy: { created_at: 'asc' }
+        });
+      }
+
+      if (targetWarehouse) {
+        const ws = await tx.warehouseStock.findUnique({
+          where: { warehouse_id_product_id: { warehouse_id: targetWarehouse.id, product_id: product.id } }
+        });
+        const currentQty = ws?.quantity || 0;
+        if (currentQty < requestedQty) {
+          throw new Error(`Stok produk "${product.name}" di gudang "${targetWarehouse.name}" tidak mencukupi (Tersedia: ${currentQty} pcs, Diminta: ${requestedQty} pcs). Transaksi Personal Buyer dibatalkan.`);
+        }
+
+        // Deduct warehouse stock
+        await tx.warehouseStock.update({
+          where: { id: ws!.id },
+          data: { quantity: currentQty - requestedQty }
+        });
+
+        // Deduct global product stock
+        const newStock = product.stok - requestedQty;
+        await tx.product.update({
+          where: { id: product.id },
+          data: { stok: newStock }
+        });
+
+        // Create StockTransaction for audit trail
+        await tx.stockTransaction.create({
+          data: {
+            product_id: product.id,
+            type: 'PENJUALAN',
+            flow: 'OUT',
+            qty: requestedQty,
+            balance: newStock,
+            description: `Personal Buyer: ${data.buyer_name} (${data.description || 'Penjualan langsung'})`,
+            date: data.date ? new Date(data.date) : new Date(),
+            source_type: 'WAREHOUSE',
+            source_id: targetWarehouse.id,
+            destination_type: 'ENDUSER',
+            employee_id: user.id
+          }
+        });
+      }
     }
+
+    // 2. Create PersonalBuyerTransaction record
+    return await tx.personalBuyerTransaction.create({
+      data: {
+        employee_id: user.id,
+        buyer_name: data.buyer_name,
+        product_name: resolvedProductName,
+        quantity: requestedQty,
+        price_per_unit: data.price_per_unit || null,
+        amount: data.amount,
+        description: data.description || null,
+        date: data.date ? new Date(data.date) : new Date(),
+      }
+    });
   });
 
   revalidatePath('/marketing');
   revalidatePath('/overview');
+  revalidatePath('/warehouse');
+  revalidatePath('/produk');
   return result;
 }
 
@@ -636,6 +728,65 @@ export async function deletePersonalBuyerTransaction(id: string) {
   }
 
   await prisma.personalBuyerTransaction.delete({ where: { id } });
+  revalidatePath('/marketing');
+  revalidatePath('/overview');
+}
+
+// ═══════════════════════════════════════════════════════════
+// PENGELUARAN / EXPENSES (CalioFish & Marketing)
+// ═══════════════════════════════════════════════════════════
+export async function createExpense(data: {
+  category: string;
+  title: string;
+  amount: number;
+  date?: string;
+  description?: string;
+  employee_id?: string;
+}) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const role = (user.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+  const isMarketing = role === 'MARKETING' || role.includes('MARKETING');
+
+  if (!isOwnerOrAdmin && !isMarketing) {
+    throw new Error('Akses ditolak untuk mencatat pengeluaran.');
+  }
+
+  const assignedEmployeeId = isMarketing && !isOwnerOrAdmin ? user.id : (data.employee_id || user.id);
+
+  const expense = await prisma.expense.create({
+    data: {
+      category: data.category || (isMarketing ? 'MARKETING' : 'OPERASIONAL'),
+      title: data.title,
+      amount: data.amount,
+      date: data.date ? new Date(data.date) : new Date(),
+      description: data.description || null,
+      employee_id: assignedEmployeeId,
+    }
+  });
+
+  revalidatePath('/marketing');
+  revalidatePath('/overview');
+  return expense;
+}
+
+export async function deleteExpense(id: string) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const role = (user.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+
+  const exp = await prisma.expense.findUnique({ where: { id } });
+  if (!exp) throw new Error('Pengeluaran tidak ditemukan');
+
+  if (!isOwnerOrAdmin && exp.employee_id !== user.id) {
+    throw new Error('Akses ditolak: Anda hanya dapat menghapus pengeluaran milik Anda sendiri.');
+  }
+
+  await prisma.expense.delete({ where: { id } });
   revalidatePath('/marketing');
   revalidatePath('/overview');
 }
@@ -1019,4 +1170,164 @@ export async function completeEventBooth(boothId: string, targetWarehouseId: str
   revalidatePath('/warehouse');
   revalidatePath('/produk');
 }
+
+export async function deleteEventBooth(boothId: string) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const role = (user.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+  if (!isOwnerOrAdmin) throw new Error('Akses ditolak: Hanya Admin/Owner yang dapat menghapus Event/Booth.');
+
+  const booth = await prisma.eventBooth.findUnique({
+    where: { id: boothId },
+    include: { stocks: true, sales: true }
+  });
+  if (!booth) throw new Error('Booth tidak ditemukan');
+
+  // If booth has unsold active stock, return it to central warehouse before deleting
+  const activeStocks = booth.stocks.filter(s => s.quantity > 0);
+  if (activeStocks.length > 0) {
+    const centralWarehouse = await prisma.warehouse.findFirst({
+      where: { OR: [{ type: 'FACTORY' }, { type: 'STORAGE' }] },
+      orderBy: { created_at: 'asc' }
+    });
+    if (centralWarehouse) {
+      for (const bs of activeStocks) {
+        await prisma.warehouseStock.upsert({
+          where: { warehouse_id_product_id: { warehouse_id: centralWarehouse.id, product_id: bs.product_id } },
+          update: { quantity: { increment: bs.quantity } },
+          create: { warehouse_id: centralWarehouse.id, product_id: bs.product_id, quantity: bs.quantity }
+        });
+        await prisma.product.update({
+          where: { id: bs.product_id },
+          data: { stok: { increment: bs.quantity } }
+        });
+      }
+    }
+  }
+
+  await prisma.eventBooth.delete({ where: { id: boothId } });
+  revalidatePath('/booth');
+  revalidatePath('/overview');
+}
+
+export async function updateBoothBundlePrice(bundleId: string, hargaJual: number) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const role = (user.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+  const isMarketing = role === 'MARKETING' || role.includes('MARKETING');
+  if (!isOwnerOrAdmin && !isMarketing) throw new Error('Akses ditolak: Hanya Admin/Owner atau Marketing yang dapat mengubah harga bundle.');
+
+  const bundle = await prisma.boothBundle.update({
+    where: { id: bundleId },
+    data: { harga_jual: hargaJual }
+  });
+
+  revalidatePath('/booth');
+  return bundle;
+}
+
+// ═══════════════════════════════════════════════════════════
+// DISTRIBUTOR ACTIONS
+// ═══════════════════════════════════════════════════════════
+export async function createDistributor(data: {
+  nama: string;
+  no_hp: string;
+  wilayah?: string;
+  warehouse_name?: string;
+  address?: string;
+}) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const role = (user.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+  if (!isOwnerOrAdmin) throw new Error('Akses ditolak: Hanya Admin/Owner yang dapat mendaftarkan distributor.');
+
+  const cleanPhone = (data.no_hp || '').replace(/\D/g, '');
+
+  const result = await prisma.$transaction(async (tx) => {
+    const distributor = await tx.employee.create({
+      data: {
+        nama: data.nama,
+        role: 'DISTRIBUTOR',
+        posisi: 'Distributor',
+        no_hp: cleanPhone || null,
+        wilayah: data.wilayah || null,
+        status_aktif: true,
+      }
+    });
+
+    const warehouse = await tx.warehouse.create({
+      data: {
+        name: data.warehouse_name || `Gudang Distributor - ${data.nama}`,
+        type: 'DISTRIBUTOR',
+        address: data.address || data.wilayah || null,
+        distributor_id: distributor.id,
+      }
+    });
+
+    return { distributor, warehouse };
+  });
+
+  revalidatePath('/karyawan');
+  revalidatePath('/warehouse');
+  revalidatePath('/marketing');
+  return result;
+}
+
+export async function updateDistributor(id: string, data: {
+  nama?: string;
+  no_hp?: string;
+  wilayah?: string;
+  status_aktif?: boolean;
+}) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const role = (user.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+  if (!isOwnerOrAdmin) throw new Error('Akses ditolak: Hanya Admin/Owner yang dapat mengedit distributor.');
+
+  const updated = await prisma.employee.update({
+    where: { id },
+    data: {
+      ...(data.nama ? { nama: data.nama } : {}),
+      ...(data.no_hp !== undefined ? { no_hp: data.no_hp.replace(/\D/g, '') || null } : {}),
+      ...(data.wilayah !== undefined ? { wilayah: data.wilayah } : {}),
+      ...(data.status_aktif !== undefined ? { status_aktif: data.status_aktif } : {}),
+    }
+  });
+
+  revalidatePath('/karyawan');
+  revalidatePath('/warehouse');
+  revalidatePath('/marketing');
+  return updated;
+}
+
+export async function setOnlineTarget(platform: string, target: number) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const role = (user.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+  if (!isOwnerOrAdmin) throw new Error('Akses ditolak: Hanya Admin/Owner yang dapat mengatur target e-commerce.');
+
+  const key = `${platform.toLowerCase()}_target_mtd`;
+  const label = `Target MTD ${platform.toUpperCase()}`;
+
+  const updated = await prisma.reportSettings.upsert({
+    where: { key },
+    update: { value: target },
+    create: { key, value: target, label }
+  });
+
+  revalidatePath('/ecommerce');
+  revalidatePath('/overview');
+  return updated;
+}
+
 

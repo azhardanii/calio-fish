@@ -88,8 +88,10 @@ export async function GET(req: NextRequest) {
     // NEW: Event & Open Booth
     boothSalesAgg, boothSalesToday, boothSalesDaily, recentBoothSales,
     activeBoothCount, totalBoothCount, boothStockAgg,
-    // NEW: Kas Masuk Pelunasan Outlet
-    outletPaymentAgg, recentOutletPayments,
+    // NEW: Kas Masuk Pelunasan Outlet Reguler & Distributor
+    outletPaymentRegulerAgg, distributorPaymentAgg, recentOutletPayments,
+    // NEW: Pengeluaran Operasional CalioFish
+    calioExpensesAgg, recentExpenses,
     // NEW: Tim Marketing Employees & Individual Targets
     marketingEmployees
   ] = await Promise.all([
@@ -172,9 +174,41 @@ export async function GET(req: NextRequest) {
     prisma.eventBooth.count(),
     prisma.boothStock.aggregate({ _sum: { quantity: true }, where: { booth: { status: 'AKTIF' } } }),
 
-    // Kas Masuk Outlet Payment
-    prisma.outletTransaction.aggregate({ _sum: { amount: true }, where: { type: 'PAYMENT', ...(dateFilter ? { date: dateFilter } : {}) } }),
-    prisma.outletTransaction.findMany({ where: { type: 'PAYMENT' }, take: 3, orderBy: { created_at: 'desc' }, select: { amount: true, date: true, created_at: true, outlet: { select: { nama: true } } } }),
+    // Kas Masuk Outlet Payment Reguler (Non-Distributor)
+    prisma.outletTransaction.aggregate({ 
+      _sum: { amount: true }, 
+      where: { 
+        type: { in: ['PELUNASAN', 'PAYMENT'] }, 
+        outlet: { distributor_id: null },
+        ...(dateFilter ? { date: dateFilter } : {}) 
+      } 
+    }),
+    // Kas Masuk Hasil Distributor (Outlet di bawah jaringan distributor)
+    prisma.outletTransaction.aggregate({ 
+      _sum: { amount: true }, 
+      where: { 
+        type: { in: ['PELUNASAN', 'PAYMENT'] }, 
+        outlet: { distributor_id: { not: null } },
+        ...(dateFilter ? { date: dateFilter } : {}) 
+      } 
+    }),
+    prisma.outletTransaction.findMany({ 
+      where: { type: { in: ['PELUNASAN', 'PAYMENT'] } }, 
+      take: 4, 
+      orderBy: { created_at: 'desc' }, 
+      select: { amount: true, date: true, created_at: true, outlet: { select: { nama: true, distributor_id: true } } } 
+    }),
+    // Pengeluaran Operasional CalioFish
+    prisma.expense.aggregate({ 
+      _sum: { amount: true }, 
+      where: dateFilter ? { date: dateFilter } : {} 
+    }),
+    prisma.expense.findMany({ 
+      where: dateFilter ? { date: dateFilter } : {}, 
+      take: 4, 
+      orderBy: { date: 'desc' }, 
+      include: { employee: { select: { nama: true } } } 
+    }),
 
     // Tim Marketing Employees & Individual Targets
     prisma.employee.findMany({
@@ -310,12 +344,15 @@ export async function GET(req: NextRequest) {
   const totalOmset = offlineOmset + shopeeOmset + tiktokOmset + personalBuyerDirectOmset + boothOmset;
 
   // Kas Masuk (Dana Cair / Kas Terkumpul)
-  // Event & Booth dan Personal Buyer Direct TETAP masuk ke akumulasi total kas yang terkumpul!
-  const kasPelunasanOutlet = toNum(outletPaymentAgg._sum.amount);
+  // Akumulasi total kas yang terkumpul mencakup: Outlet Reguler + Hasil Distributor + Booth + Personal + E-Commerce!
+  const kasPelunasanOutlet = toNum(outletPaymentRegulerAgg._sum.amount);
+  const kasDistributor = toNum(distributorPaymentAgg._sum.amount);
   const kasBooth = boothOmset; // Penjualan booth langsung tunai / QRIS / transfer
   const kasPersonalBuyer = personalBuyerAllOmset; // Seluruh penjualan langsung perorangan tunai/transfer
   const kasEcommerce = shopeeOmset + tiktokOmset; // Penjualan online
-  const totalKasMasuk = kasPelunasanOutlet + kasBooth + kasPersonalBuyer + kasEcommerce;
+  const totalKasMasuk = kasPelunasanOutlet + kasDistributor + kasBooth + kasPersonalBuyer + kasEcommerce;
+  const totalPengeluaranCalio = toNum(calioExpensesAgg._sum.amount);
+  const netMargin = totalKasMasuk - totalPengeluaranCalio;
   const totalSisaTagihan = toNum(outletTagihanAgg._sum.sisa_tagihan);
 
   // Omset Hari Ini
@@ -418,13 +455,24 @@ export async function GET(req: NextRequest) {
     });
   }
   for (const r of recentOutletPayments) {
+    const isDist = !!r.outlet?.distributor_id;
     feed.push({ 
       type: '💵', 
-      title: `Pelunasan Outlet: Rp ${toNum(r.amount).toLocaleString('id-ID')}`, 
-      sub: `${r.outlet?.nama || 'Outlet Mitra'}`, 
+      title: `${isDist ? 'Hasil Distributor' : 'Pelunasan Outlet'}: Rp ${toNum(r.amount).toLocaleString('id-ID')}`, 
+      sub: `${r.outlet?.nama || 'Outlet Mitra'}${isDist ? ' (Mitra Distributor)' : ''}`, 
       time: new Date(r.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }), 
       rawDate: new Date(r.created_at).toISOString(),
-      color: 'fi-green' 
+      color: isDist ? 'fi-purple' : 'fi-green' 
+    });
+  }
+  for (const e of recentExpenses) {
+    feed.push({ 
+      type: '📤', 
+      title: `Pengeluaran: ${e.title} (Rp ${toNum(e.amount).toLocaleString('id-ID')})`, 
+      sub: `${e.category} • ${e.employee?.nama || 'Operasional CalioFish'}`, 
+      time: new Date(e.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }), 
+      rawDate: new Date(e.created_at).toISOString(),
+      color: 'fi-red' 
     });
   }
   for (const r of recentAttendance) {
@@ -522,15 +570,18 @@ export async function GET(req: NextRequest) {
       staff: marketingStaffPerformance,
     },
 
-    // Financial Health: Kas Masuk vs Piutang
+    // Financial Health: Kas Masuk vs Piutang & Pengeluaran
     financials: {
       totalOmset,
       totalKasMasuk,
       totalSisaTagihan,
       kasPelunasanOutlet,
+      kasDistributor,
       kasBooth,
       kasPersonalBuyer,
       kasEcommerce,
+      totalPengeluaranCalio,
+      netMargin,
     },
 
     // Event & Booth Summary

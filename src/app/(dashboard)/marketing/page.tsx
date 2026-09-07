@@ -7,7 +7,13 @@ import { format } from "date-fns";
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Tabs } from '@/components/ui/tabs';
 import { formatCurrency } from '@/lib/utils';
-import { setMarketingTarget, createPersonalBuyerTransaction, deletePersonalBuyerTransaction } from '@/app/actions';
+import {
+  setMarketingTarget,
+  createPersonalBuyerTransaction,
+  deletePersonalBuyerTransaction,
+  createExpense,
+  deleteExpense,
+} from '@/app/actions';
 
 function formatRp(val: number) { return formatCurrency(val); }
 
@@ -84,16 +90,49 @@ function SetTargetModal({ employee, currentMonth, currentYear, onClose, onSaved 
   );
 }
 
-// ─── ADD PERSONAL BUYER MODAL ────────────────────────────
-function AddPersonalBuyerModal({ onClose, onSaved, products = [] }: { onClose: () => void; onSaved: () => void; products?: any[] }) {
+// ─── ADD PERSONAL BUYER MODAL (Dengan Dropdown Produk & Cek Stok Fisik Gudang) ───
+function AddPersonalBuyerModal({ onClose, onSaved, products = [], warehouses = [] }: {
+  onClose: () => void;
+  onSaved: () => void;
+  products?: any[];
+  warehouses?: any[];
+}) {
   const [buyerName, setBuyerName] = useState('');
-  const [productName, setProductName] = useState('');
+  const [jenisProduk, setJenisProduk] = useState<'SATUAN' | 'PAKET'>('SATUAN');
+  const [selectedProductId, setSelectedProductId] = useState(products[0]?.id || '');
+  const [customPackageName, setCustomPackageName] = useState('');
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState(warehouses[0]?.id || '');
   const [quantity, setQuantity] = useState<number>(1);
   const [pricePerUnit, setPricePerUnit] = useState<number>(0);
   const [amount, setAmount] = useState<number>(0);
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [saving, setSaving] = useState(false);
+
+  const selectedProduct = useMemo(() => {
+    return products.find(p => p.id === selectedProductId) || products[0];
+  }, [selectedProductId, products]);
+
+  // Sync price when product changes
+  React.useEffect(() => {
+    if (selectedProduct) {
+      const base = Number(selectedProduct.base_price || 0);
+      setPricePerUnit(base);
+      setAmount(base * (quantity || 1));
+    }
+  }, [selectedProduct]);
+
+  // Calculate available stock in selected warehouse
+  const availableStock = useMemo(() => {
+    if (!selectedProduct) return 0;
+    if (selectedWarehouseId) {
+      const ws = (selectedProduct.warehouse_stocks || []).find((w: any) => w.warehouse_id === selectedWarehouseId);
+      return ws ? ws.quantity : 0;
+    }
+    return selectedProduct.stok || 0;
+  }, [selectedProduct, selectedWarehouseId]);
+
+  const isStockInsufficient = quantity > availableStock;
 
   const handleQtyChange = (val: number) => {
     const qty = Math.max(1, val);
@@ -112,19 +151,30 @@ function AddPersonalBuyerModal({ onClose, onSaved, products = [] }: { onClose: (
 
   const handleSave = async () => {
     if (!buyerName.trim()) { alert('Nama buyer wajib diisi'); return; }
-    if (!productName.trim()) { alert('Nama produk wajib diisi'); return; }
     if (quantity <= 0) { alert('Jumlah stok yang dibeli harus lebih dari 0'); return; }
     if (amount <= 0) { alert('Harga nominal total harus lebih dari 0'); return; }
+
+    if (isStockInsufficient) {
+      alert(`Transaksi gagal: Stok tidak mencukupi!\nStok tersedia di gudang: ${availableStock} pcs\nJumlah diminta: ${quantity} pcs`);
+      return;
+    }
+
     setSaving(true);
     try {
-      await createPersonalBuyerTransaction({ 
-        buyer_name: buyerName.trim(), 
-        product_name: productName.trim(),
+      const finalProductName = jenisProduk === 'PAKET' && customPackageName.trim()
+        ? `[Paket] ${customPackageName.trim()} (${selectedProduct?.name})`
+        : selectedProduct?.name || 'Produk Personal';
+
+      await createPersonalBuyerTransaction({
+        buyer_name: buyerName.trim(),
+        product_name: finalProductName,
+        product_id: selectedProduct?.id,
         quantity,
         price_per_unit: pricePerUnit > 0 ? pricePerUnit : undefined,
-        amount, 
-        description: description.trim() || undefined, 
-        date 
+        amount,
+        description: description.trim() || (jenisProduk === 'PAKET' ? 'Paket Khusus Personal' : undefined),
+        date,
+        warehouse_id: selectedWarehouseId || undefined,
       });
       onSaved();
       onClose();
@@ -137,16 +187,16 @@ function AddPersonalBuyerModal({ onClose, onSaved, products = [] }: { onClose: (
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}>
-      <div style={{ background: '#fff', borderRadius: 20, padding: 28, maxWidth: 480, width: '100%', boxShadow: '0 25px 50px rgba(0,0,0,0.15)' }}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 700, color: '#0f172a' }}>👤 Input Transaksi Personal Buyer</h3>
+      <div style={{ background: '#fff', borderRadius: 20, padding: 28, maxWidth: 500, width: '100%', maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.15)' }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: '#0f172a' }}>👤 Input Transaksi Personal Buyer</h3>
         <p style={{ margin: '0 0 16px', fontSize: 12, color: '#64748b' }}>
-          Penjualan langsung ke pembeli personal memiliki harga mandiri (tidak mengikuti harga database).
+          Pilih produk katalog, jenis bundle, dan gudang asal. Stok otomatis divalidasi dan dipotong dari gudang.
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {/* Buyer Name */}
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' }}>Nama Pembeli / Buyer *</label>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Nama Pembeli / Buyer *</label>
             <input 
               value={buyerName} 
               onChange={e => setBuyerName(e.target.value)} 
@@ -155,41 +205,112 @@ function AddPersonalBuyerModal({ onClose, onSaved, products = [] }: { onClose: (
             />
           </div>
 
-          {/* Product Name */}
+          {/* Jenis Penjualan: Satuan vs Paket */}
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' }}>Nama Produk *</label>
-            <input 
-              list="marketing-products-datalist"
-              value={productName} 
-              onChange={e => setProductName(e.target.value)} 
-              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} 
-              placeholder="Pilih atau ketik nama produk..." 
-            />
-            <datalist id="marketing-products-datalist">
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Jenis Penjualan</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setJenisProduk('SATUAN')}
+                style={{
+                  padding: '8px 12px', borderRadius: 10, border: jenisProduk === 'SATUAN' ? '2px solid #3b82f6' : '1px solid #e2e8f0',
+                  background: jenisProduk === 'SATUAN' ? '#eff6ff' : '#fff', color: jenisProduk === 'SATUAN' ? '#1d4ed8' : '#64748b',
+                  fontSize: 13, fontWeight: 700, cursor: 'pointer'
+                }}
+              >
+                🏷️ Satuan (Pcs)
+              </button>
+              <button
+                type="button"
+                onClick={() => setJenisProduk('PAKET')}
+                style={{
+                  padding: '8px 12px', borderRadius: 10, border: jenisProduk === 'PAKET' ? '2px solid #8b5cf6' : '1px solid #e2e8f0',
+                  background: jenisProduk === 'PAKET' ? '#f5f3ff' : '#fff', color: jenisProduk === 'PAKET' ? '#6d28d9' : '#64748b',
+                  fontSize: 13, fontWeight: 700, cursor: 'pointer'
+                }}
+              >
+                🎁 Paket / Bundle
+              </button>
+            </div>
+          </div>
+
+          {jenisProduk === 'PAKET' && (
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#6d28d9', marginBottom: 4, display: 'block' }}>Nama Paket / Keterangan Bundle</label>
+              <input
+                value={customPackageName}
+                onChange={e => setCustomPackageName(e.target.value)}
+                placeholder="Contoh: Paket Keluarga Hemat 3 Rasa"
+                style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #ddd6fe', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+          )}
+
+          {/* Product Dropdown */}
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Pilih Produk Aktif *</label>
+            <select
+              value={selectedProductId}
+              onChange={e => setSelectedProductId(e.target.value)}
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 13, fontWeight: 600, outline: 'none', background: '#fff' }}
+            >
               {products.map((p: any) => (
-                <option key={p.id} value={p.name} />
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.short_name}) — Rp {Number(p.base_price).toLocaleString('id-ID')}
+                </option>
               ))}
-            </datalist>
-            <span style={{ fontSize: 10, color: '#94a3b8', marginTop: 2, display: 'block' }}>
-              💡 Bisa pilih produk dari saran katalog atau ketik nama produk custom / paket khusus.
+            </select>
+          </div>
+
+          {/* Warehouse Dropdown */}
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Gudang Asal Barang *</label>
+            <select
+              value={selectedWarehouseId}
+              onChange={e => setSelectedWarehouseId(e.target.value)}
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 13, fontWeight: 600, outline: 'none', background: '#fff' }}
+            >
+              {warehouses.map((w: any) => (
+                <option key={w.id} value={w.id}>
+                  🏬 {w.name} ({w.type})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Stock Availability Pill */}
+          <div style={{
+            background: isStockInsufficient ? '#fef2f2' : '#f0fdf4',
+            border: `1px solid ${isStockInsufficient ? '#fecaca' : '#bbf7d0'}`,
+            padding: '8px 12px', borderRadius: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+          }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: isStockInsufficient ? '#b91c1c' : '#15803d' }}>
+              {isStockInsufficient ? '⚠️ Stok Gudang Kurang!' : '📦 Stok Tersedia di Gudang ini:'}
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: isStockInsufficient ? '#b91c1c' : '#15803d' }}>
+              {availableStock} pcs
             </span>
           </div>
 
           {/* Qty & Unit Price */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 10 }}>
             <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' }}>Jumlah Stok (Qty) *</label>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Jumlah (Qty) *</label>
               <input 
                 type="number" 
                 min="1" 
                 value={quantity} 
                 onChange={e => handleQtyChange(Number(e.target.value))} 
-                style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} 
+                style={{
+                  width: '100%', padding: '9px 12px', borderRadius: 10,
+                  border: isStockInsufficient ? '2px solid #ef4444' : '1.5px solid #e2e8f0',
+                  fontSize: 14, outline: 'none', boxSizing: 'border-box'
+                }} 
                 placeholder="1" 
               />
             </div>
             <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' }}>Harga Satuan (Rp)</label>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Harga Satuan (Rp)</label>
               <input 
                 type="number" 
                 value={pricePerUnit || ''} 
@@ -203,7 +324,7 @@ function AddPersonalBuyerModal({ onClose, onSaved, products = [] }: { onClose: (
           {/* Total Amount */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Total Harga Nominal (Rp) *</label>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>Total Nominal Pembayaran (Rp) *</label>
               {pricePerUnit > 0 && (
                 <span style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>
                   ({quantity} pcs &times; {formatRp(pricePerUnit)})
@@ -214,29 +335,29 @@ function AddPersonalBuyerModal({ onClose, onSaved, products = [] }: { onClose: (
               type="number" 
               value={amount || ''} 
               onChange={e => setAmount(Number(e.target.value))} 
-              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #10b981', background: '#f0fdf4', fontSize: 15, fontWeight: 700, color: '#065f46', outline: 'none', boxSizing: 'border-box' }} 
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #10b981', background: '#f0fdf4', fontSize: 15, fontWeight: 800, color: '#065f46', outline: 'none', boxSizing: 'border-box' }} 
               placeholder="Total nominal pembayaran" 
             />
           </div>
 
           {/* Date */}
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' }}>Tanggal Transaksi</label>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Tanggal Transaksi</label>
             <input 
               type="date" 
               value={date} 
               onChange={e => setDate(e.target.value)} 
-              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} 
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} 
             />
           </div>
 
           {/* Description */}
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' }}>Keterangan (opsional)</label>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Keterangan (opsional)</label>
             <input 
               value={description} 
               onChange={e => setDescription(e.target.value)} 
-              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} 
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} 
               placeholder="Catatan / keterangan tambahan" 
             />
           </div>
@@ -244,10 +365,380 @@ function AddPersonalBuyerModal({ onClose, onSaved, products = [] }: { onClose: (
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 22 }}>
           <button onClick={onClose} style={{ padding: '8px 18px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#64748b' }}>Batal</button>
-          <button onClick={handleSave} disabled={saving} style={{ padding: '8px 20px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #10b981, #059669)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}>
-            {saving ? '⏳ Menyimpan...' : '✅ Simpan Transaksi'}
+          <button
+            onClick={handleSave}
+            disabled={saving || isStockInsufficient}
+            style={{
+              padding: '8px 20px', borderRadius: 10, border: 'none',
+              background: isStockInsufficient ? '#cbd5e1' : 'linear-gradient(135deg, #10b981, #059669)',
+              color: '#fff', fontSize: 13, fontWeight: 700,
+              cursor: isStockInsufficient ? 'not-allowed' : saving ? 'wait' : 'pointer',
+              opacity: saving ? 0.7 : 1
+            }}
+          >
+            {saving ? '⏳ Menyimpan...' : isStockInsufficient ? '❌ Stok Kurang' : '✅ Simpan Transaksi'}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MODAL DETAIL KARYAWAN MARKETING (Outlet, Pembayaran Masuk & Pengeluaran) ───
+function MarketingDetailModal({ employee, onClose, onSaved }: { employee: any; onClose: () => void; onSaved: () => void }) {
+  const [detailTab, setDetailTab] = useState<'outlets' | 'payments' | 'expenses' | 'personal'>('outlets');
+  
+  // Expense form state
+  const [showAddExpense, setShowAddExpense] = useState(false);
+  const [expTitle, setExpTitle] = useState('');
+  const [expAmount, setExpAmount] = useState<number | ''>('');
+  const [expCategory, setExpCategory] = useState('MARKETING');
+  const [expDesc, setExpDesc] = useState('');
+  const [expDate, setExpDate] = useState(new Date().toISOString().split('T')[0]);
+  const [savingExp, setSavingExp] = useState(false);
+
+  const handleAddExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!expTitle.trim()) { alert('Judul pengeluaran wajib diisi'); return; }
+    if (!expAmount || Number(expAmount) <= 0) { alert('Nominal harus lebih dari 0'); return; }
+
+    setSavingExp(true);
+    try {
+      await createExpense({
+        title: expTitle.trim(),
+        amount: Number(expAmount),
+        category: expCategory,
+        description: expDesc.trim() || undefined,
+        date: expDate,
+        employee_id: employee.id,
+      });
+      setShowAddExpense(false);
+      setExpTitle('');
+      setExpAmount('');
+      setExpDesc('');
+      onSaved();
+    } catch (err: any) {
+      alert(err.message || 'Gagal mencatat pengeluaran');
+    } finally {
+      setSavingExp(false);
+    }
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    if (!confirm('Hapus catatan pengeluaran ini?')) return;
+    try {
+      await deleteExpense(id);
+      onSaved();
+    } catch (err: any) {
+      alert(err.message || 'Gagal menghapus pengeluaran');
+    }
+  };
+
+  const outlets: any[] = employee.outlets || [];
+  const payments: any[] = employee.outlet_payments_history || [];
+  const expenses: any[] = employee.expenses || [];
+  const personalTxns: any[] = employee.personal_buyer_transactions || [];
+
+  const totalBilling = employee.total_billing_this_month || 0;
+  const totalPayment = employee.total_payment_this_month || 0;
+  const totalExpenses = employee.total_expenses_this_month || 0;
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}>
+      <div style={{ background: '#fff', borderRadius: 24, padding: 24, maxWidth: 760, width: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.2)' }}>
+        {/* Modal Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', pb: 16, marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 16, background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 20 }}>
+              {employee.nama.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: '#0f172a' }}>{employee.nama}</h2>
+              <div style={{ fontSize: 12, color: '#64748b' }}>
+                {employee.posisi || 'Marketing'} • {employee.no_hp || 'No HP -'}
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: '#f1f5f9', border: 'none', borderRadius: 10, width: 32, height: 32, cursor: 'pointer', fontWeight: 800, color: '#64748b' }}>✕</button>
+        </div>
+
+        {/* Dual Metric Highlights: Distribusi (Barang Keluar) vs Kas Masuk (Pembayaran) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 16 }}>
+          <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 12, padding: '10px 14px' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#7c3aed', letterSpacing: 0.5 }}>REALISASI DISTRIBUSI (BILLING)</div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: '#5b21b6', marginTop: 2 }}>{formatRp(totalBilling)}</div>
+            <div style={{ fontSize: 10, color: '#6d28d9', marginTop: 1 }}>Total nilai barang dikirim ke outlet</div>
+          </div>
+
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '10px 14px' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#15803d', letterSpacing: 0.5 }}>KAS MASUK (PEMBAYARAN)</div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: '#14532d', marginTop: 2 }}>{formatRp(totalPayment)}</div>
+            <div style={{ fontSize: 10, color: '#166534', marginTop: 1 }}>Uang tunai/transfer disetor outlet</div>
+          </div>
+
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '10px 14px' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#b91c1c', letterSpacing: 0.5 }}>PENGELUARAN OPERASIONAL</div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: '#991b1b', marginTop: 2 }}>{formatRp(totalExpenses)}</div>
+            <div style={{ fontSize: 10, color: '#b91c1c', marginTop: 1 }}>Bensin, makan & biaya dinas</div>
+          </div>
+        </div>
+
+        {/* Sub-tab Navigation */}
+        <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid #e2e8f0', marginBottom: 16, overflowX: 'auto' }}>
+          <button
+            onClick={() => setDetailTab('outlets')}
+            style={{
+              padding: '8px 14px', border: 'none', background: 'transparent',
+              borderBottom: detailTab === 'outlets' ? '2px solid #2563eb' : '2px solid transparent',
+              color: detailTab === 'outlets' ? '#1d4ed8' : '#64748b', fontWeight: 700, fontSize: 13, cursor: 'pointer'
+            }}
+          >
+            🏪 Outlet Binaan ({outlets.length})
+          </button>
+          <button
+            onClick={() => setDetailTab('payments')}
+            style={{
+              padding: '8px 14px', border: 'none', background: 'transparent',
+              borderBottom: detailTab === 'payments' ? '2px solid #16a34a' : '2px solid transparent',
+              color: detailTab === 'payments' ? '#15803d' : '#64748b', fontWeight: 700, fontSize: 13, cursor: 'pointer'
+            }}
+          >
+            💵 Riwayat Pembayaran Masuk ({payments.length})
+          </button>
+          <button
+            onClick={() => setDetailTab('expenses')}
+            style={{
+              padding: '8px 14px', border: 'none', background: 'transparent',
+              borderBottom: detailTab === 'expenses' ? '2px solid #dc2626' : '2px solid transparent',
+              color: detailTab === 'expenses' ? '#b91c1c' : '#64748b', fontWeight: 700, fontSize: 13, cursor: 'pointer'
+            }}
+          >
+            📤 Pengeluaran ({expenses.length})
+          </button>
+          <button
+            onClick={() => setDetailTab('personal')}
+            style={{
+              padding: '8px 14px', border: 'none', background: 'transparent',
+              borderBottom: detailTab === 'personal' ? '2px solid #0891b2' : '2px solid transparent',
+              color: detailTab === 'personal' ? '#0e7490' : '#64748b', fontWeight: 700, fontSize: 13, cursor: 'pointer'
+            }}
+          >
+            👤 Personal Buyer ({personalTxns.length})
+          </button>
+        </div>
+
+        {/* Tab 1: Outlets */}
+        {detailTab === 'outlets' && (
+          <div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 11, fontWeight: 700 }}>
+                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>OUTLET</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>WILAYAH</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>TAGIHAN (BILLING)</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>DIBAYAR</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>SISA TAGIHAN</th>
+                  </tr>
+                </thead>
+                <tbody style={{ divideY: '1px solid #f1f5f9' }}>
+                  {outlets.length === 0 ? (
+                    <tr><td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>Belum ada outlet binaan</td></tr>
+                  ) : outlets.map(o => (
+                    <tr key={o.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0f172a' }}>{o.nama}</td>
+                      <td style={{ padding: '10px 12px', color: '#64748b' }}>{o.wilayah || '-'}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>{formatRp(o.tagihan)}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#15803d' }}>{formatRp(o.payment)}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: o.sisa_tagihan > 0 ? '#dc2626' : '#15803d' }}>
+                        {formatRp(o.sisa_tagihan)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 2: Payments History */}
+        {detailTab === 'payments' && (
+          <div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 11, fontWeight: 700 }}>
+                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>TANGGAL</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>OUTLET</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>NOMINAL BAYAR</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>KETERANGAN / METODE</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>SISA TAGIHAN SAAT INI</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payments.length === 0 ? (
+                    <tr><td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>Belum ada riwayat pembayaran outlet pada periode ini</td></tr>
+                  ) : payments.map((pay: any) => (
+                    <tr key={pay.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
+                        {new Date(pay.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </td>
+                      <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0f172a' }}>{pay.outlet_nama}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#15803d' }}>
+                        {formatRp(pay.amount)}
+                      </td>
+                      <td style={{ padding: '10px 12px', color: '#64748b' }}>{pay.description || 'Pelunasan'}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: '#b91c1c' }}>
+                        {formatRp(pay.sisa_tagihan_outlet)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 3: Expenses */}
+        {detailTab === 'expenses' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ fontSize: 13, color: '#64748b' }}>
+                Total Pengeluaran: <b style={{ color: '#b91c1c' }}>{formatRp(totalExpenses)}</b>
+              </div>
+              <button
+                onClick={() => setShowAddExpense(!showAddExpense)}
+                style={{
+                  padding: '6px 14px', borderRadius: 8, border: 'none',
+                  background: showAddExpense ? '#f1f5f9' : 'linear-gradient(135deg, #ef4444, #dc2626)',
+                  color: showAddExpense ? '#475569' : '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                }}
+              >
+                {showAddExpense ? '✕ Batal' : '➕ Catat Pengeluaran'}
+              </button>
+            </div>
+
+            {showAddExpense && (
+              <form onSubmit={handleAddExpense} style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 14, padding: 16, marginBottom: 16 }}>
+                <div style={{ fontWeight: 800, fontSize: 13, color: '#991b1b', marginBottom: 10 }}>Form Catat Pengeluaran Personil</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 10 }}>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 2 }}>Judul Biaya *</label>
+                    <input
+                      value={expTitle}
+                      onChange={e => setExpTitle(e.target.value)}
+                      placeholder="Contoh: Bensin motor kunjungan Malang"
+                      style={{ width: '100%', padding: '8px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12, background: '#fff', boxSizing: 'border-box' }}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 2 }}>Nominal (Rp) *</label>
+                    <input
+                      type="number"
+                      value={expAmount}
+                      onChange={e => setExpAmount(Number(e.target.value))}
+                      placeholder="50000"
+                      style={{ width: '100%', padding: '8px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12, background: '#fff', boxSizing: 'border-box' }}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 2 }}>Tanggal</label>
+                    <input
+                      type="date"
+                      value={expDate}
+                      onChange={e => setExpDate(e.target.value)}
+                      style={{ width: '100%', padding: '8px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12, background: '#fff', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <button
+                    type="submit"
+                    disabled={savingExp}
+                    style={{ padding: '7px 18px', borderRadius: 8, border: 'none', background: '#dc2626', color: '#fff', fontSize: 12, fontWeight: 700, cursor: savingExp ? 'wait' : 'pointer' }}
+                  >
+                    {savingExp ? 'Menyimpan...' : 'Simpan Biaya'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 11, fontWeight: 700 }}>
+                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>TANGGAL</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>JUDUL BIAYA</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>NOMINAL</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>KATEGORI</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center' }}>AKSI</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {expenses.length === 0 ? (
+                    <tr><td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>Belum ada catatan pengeluaran untuk personil ini</td></tr>
+                  ) : expenses.map(e => (
+                    <tr key={e.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
+                        {new Date(e.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </td>
+                      <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0f172a' }}>{e.title}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#dc2626' }}>
+                        {formatRp(e.amount)}
+                      </td>
+                      <td style={{ padding: '10px 12px', color: '#64748b' }}>{e.category}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                        <button
+                          onClick={() => handleDeleteExpense(e.id)}
+                          style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', cursor: 'pointer', fontSize: 11 }}
+                          title="Hapus"
+                        >
+                          🗑️
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 4: Personal Buyer */}
+        {detailTab === 'personal' && (
+          <div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 11, fontWeight: 700 }}>
+                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>TANGGAL</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>PEMBELI</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left' }}>PRODUK</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center' }}>QTY</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>TOTAL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {personalTxns.length === 0 ? (
+                    <tr><td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>Belum ada transaksi personal buyer</td></tr>
+                  ) : personalTxns.map(t => (
+                    <tr key={t.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
+                        {new Date(t.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </td>
+                      <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0f172a' }}>{t.buyer_name}</td>
+                      <td style={{ padding: '10px 12px', color: '#334155' }}>{t.product_name}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#0284c7' }}>{t.quantity} pcs</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#15803d' }}>{formatRp(t.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -271,6 +762,7 @@ function KpiMini({ icon, label, value, color, sub }: { icon: string; label: stri
 // ═══════════════════════════════════════════════════════════
 function PerformanceDashboard({ data, mutate, filterLabel }: { data: any; mutate: () => void; filterLabel?: string }) {
   const [targetModal, setTargetModal] = useState<any>(null);
+  const [detailModal, setDetailModal] = useState<any>(null);
   const performance: any[] = data?.marketingPerformance || [];
   const currentMonth = data?.currentMonth || new Date().getMonth() + 1;
   const currentYear = data?.currentYear || new Date().getFullYear();
@@ -279,24 +771,25 @@ function PerformanceDashboard({ data, mutate, filterLabel }: { data: any; mutate
   const totalOmsetAll = performance.reduce((s: number, p: any) => s + p.total_omset_this_month, 0);
   const totalTargetAll = performance.reduce((s: number, p: any) => s + p.target_omset, 0);
   const totalOutletAll = performance.reduce((s: number, p: any) => s + p.outlet_count, 0);
+  const totalPaymentAll = performance.reduce((s: number, p: any) => s + p.total_payment_this_month, 0);
   const totalOutstandingAll = performance.reduce((s: number, p: any) => s + p.total_outstanding_all, 0);
-  const totalBoothSalesAll = data?.totalBoothSalesAll || 0;
-  const activeBoothCount = data?.activeBoothCount || 0;
+  const totalExpensesAll = performance.reduce((s: number, p: any) => s + (p.total_expenses_this_month || 0), 0);
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Overall Summary Cards */}
+      {/* Overall Summary Cards (Tanpa Omset Booth!) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
-        <KpiMini icon="💰" label="TOTAL OMSET MARKETING" value={formatRp(totalOmsetAll)} color="#7c3aed" sub="Outlet + Personal Buyer" />
+        <KpiMini icon="💰" label="TOTAL OMSET MARKETING" value={formatRp(totalOmsetAll)} color="#7c3aed" sub="Distribusi Outlet + Personal" />
+        <KpiMini icon="💵" label="TOTAL KAS MASUK" value={formatRp(totalPaymentAll)} color="#15803d" sub="Pelunasan Outlet Disetor" />
         <KpiMini icon="🎯" label="TOTAL TARGET" value={formatRp(totalTargetAll)} color="#2563eb" />
-        <KpiMini icon="🏪" label="OUTLET DIKELOLA" value={String(totalOutletAll)} color="#0891b2" />
-        <KpiMini icon="🎪" label="OMSET BOOTH (CASHFLOW)" value={formatRp(totalBoothSalesAll)} color="#059669" sub={`Cashflow PT (${activeBoothCount} booth aktif)`} />
-        <KpiMini icon="📋" label="OUTSTANDING OUTLET" value={formatRp(totalOutstandingAll)} color={totalOutstandingAll > 0 ? '#dc2626' : '#16a34a'} />
+        <KpiMini icon="🏪" label="OUTLET BINAAN" value={String(totalOutletAll)} color="#0891b2" />
+        <KpiMini icon="📤" label="PENGELUARAN DINAS" value={formatRp(totalExpensesAll)} color="#dc2626" sub="Biaya Operasional Lapangan" />
+        <KpiMini icon="📋" label="OUTSTANDING PIUTANG" value={formatRp(totalOutstandingAll)} color={totalOutstandingAll > 0 ? '#dc2626' : '#16a34a'} />
       </div>
 
       {/* Per-User Performance Cards */}
       <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-        <span>👥</span> Performa Tim Marketing — {filterLabel || `${MONTH_NAMES[currentMonth - 1]} ${currentYear}`}
+        <span>👥</span> Performa Tim Marketing Offline — {filterLabel || `${MONTH_NAMES[currentMonth - 1]} ${currentYear}`}
       </div>
 
       {performance.length === 0 ? (
@@ -325,7 +818,7 @@ function PerformanceDashboard({ data, mutate, filterLabel }: { data: any; mutate
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>{p.nama}</div>
                     <div style={{ fontSize: 11, color: '#64748b' }}>
-                      {p.outlet_count} outlet dikelola {p.booth_count > 0 ? `• ${p.booth_count} booth` : ''}
+                      {p.outlet_count} outlet dikelola
                     </div>
                   </div>
                 </div>
@@ -333,7 +826,7 @@ function PerformanceDashboard({ data, mutate, filterLabel }: { data: any; mutate
               </div>
 
               {/* Body */}
-              <div style={{ padding: '16px 20px', flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ padding: '16px 20px', flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {/* Progress */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6 }}>
@@ -345,78 +838,54 @@ function PerformanceDashboard({ data, mutate, filterLabel }: { data: any; mutate
                   <ProgressBar value={p.pencapaian} color={p.pencapaian >= 100 ? '#22c55e' : p.pencapaian >= 50 ? '#eab308' : '#ef4444'} />
                 </div>
 
-                {/* Stats Grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {/* Stats Grid: Realisasi Distribusi vs Kas Masuk */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}>
-                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, letterSpacing: 0.5 }}>TARGET</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>{p.target_omset > 0 ? formatRp(p.target_omset) : 'Belum diset'}</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, letterSpacing: 0.5 }}>TARGET BULANAN</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{p.target_omset > 0 ? formatRp(p.target_omset) : 'Belum diset'}</div>
                   </div>
-                  <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}>
-                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, letterSpacing: 0.5 }}>OMSET MARKETING</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>{formatRp(p.total_omset_this_month)}</div>
+                  <div style={{ background: '#f5f3ff', borderRadius: 10, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 10, color: '#7c3aed', fontWeight: 700, letterSpacing: 0.5 }}>DISTRIBUSI (BILLING)</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: '#5b21b6' }}>{formatRp(p.total_billing_this_month)}</div>
                   </div>
-                  <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}>
-                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, letterSpacing: 0.5 }}>BILLING OUTLET</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#7c3aed' }}>{formatRp(p.total_billing_this_month)}</div>
+                  <div style={{ background: '#f0fdf4', borderRadius: 10, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 10, color: '#15803d', fontWeight: 700, letterSpacing: 0.5 }}>KAS MASUK (BAYAR)</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: '#166534' }}>{formatRp(p.total_payment_this_month)}</div>
                   </div>
-                  <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}>
-                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, letterSpacing: 0.5 }}>PERSONAL BUYER</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#0891b2' }}>{formatRp(p.personal_buyer_this_month)}</div>
-                  </div>
-                  <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}>
-                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, letterSpacing: 0.5 }}>BOOTH (CASHFLOW PT)</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#059669' }}>{formatRp(p.booth_sales_this_month || 0)}</div>
+                  <div style={{ background: '#fef2f2', borderRadius: 10, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 10, color: '#dc2626', fontWeight: 700, letterSpacing: 0.5 }}>PENGELUARAN</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: '#b91c1c' }}>{formatRp(p.total_expenses_this_month || 0)}</div>
                   </div>
                 </div>
 
                 {/* Gap */}
                 <div style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  background: p.gap >= 0 ? '#f0fdf4' : '#fef2f2', borderRadius: 10, padding: '10px 14px',
+                  background: p.gap >= 0 ? '#f0fdf4' : '#fef2f2', borderRadius: 10, padding: '8px 12px',
                   border: `1px solid ${p.gap >= 0 ? '#bbf7d0' : '#fecaca'}`
                 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: p.gap >= 0 ? '#15803d' : '#b91c1c' }}>
-                    {p.gap >= 0 ? '✅ Surplus' : '⚠️ Gap'}
+                  <span style={{ fontSize: 11, fontWeight: 600, color: p.gap >= 0 ? '#15803d' : '#b91c1c' }}>
+                    {p.gap >= 0 ? '✅ Surplus Target' : '⚠️ Gap Target'}
                   </span>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: p.gap >= 0 ? '#15803d' : '#b91c1c' }}>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: p.gap >= 0 ? '#15803d' : '#b91c1c' }}>
                     {p.gap >= 0 ? '+' : '-'}{formatRp(Math.abs(p.gap))}
                   </span>
                 </div>
-
-                {/* Outstanding */}
-                {p.total_outstanding_all > 0 && (
-                  <div style={{ fontSize: 12, color: '#dc2626', background: '#fef2f2', borderRadius: 8, padding: '8px 12px', border: '1px solid #fecaca' }}>
-                    💳 Outstanding seluruh outlet: <b>{formatRp(p.total_outstanding_all)}</b>
-                  </div>
-                )}
-
-                {/* Managed Booths Summary */}
-                {p.managed_booths && p.managed_booths.length > 0 && (
-                  <div style={{ background: '#f0fdf4', borderRadius: 10, padding: '10px 12px', border: '1px solid #bbf7d0' }}>
-                    <div style={{ fontSize: 10, color: '#166534', fontWeight: 700, letterSpacing: 0.5, marginBottom: 4 }}>
-                      🎪 EVENT BOOTH DI-HANDLE ({p.managed_booths.length})
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {p.managed_booths.map((b: any) => (
-                        <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
-                          <span style={{ fontWeight: 600, color: '#0f172a' }}>{b.nama}</span>
-                          <span style={{ fontWeight: 700, color: '#15803d' }}>{formatRp(b.total_penjualan)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* Footer action */}
-              <div style={{ borderTop: '1px solid #f1f5f9', padding: '12px 20px' }}>
+              <div style={{ borderTop: '1px solid #f1f5f9', padding: '10px 16px', display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => setDetailModal(p)}
+                  style={{ flex: 1, padding: '8px 12px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', color: '#2563eb' }}
+                >
+                  🔍 Detail &amp; Keuangan
+                </button>
                 <button
                   onClick={() => setTargetModal(p)}
-                  style={{ width: '100%', padding: '8px', borderRadius: 10, border: '1.5px dashed #cbd5e1', background: '#fafafa', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#64748b', transition: 'all 0.2s' }}
-                  onMouseEnter={e => { (e.target as HTMLButtonElement).style.background = '#f1f5f9'; (e.target as HTMLButtonElement).style.borderColor = '#94a3b8'; }}
-                  onMouseLeave={e => { (e.target as HTMLButtonElement).style.background = '#fafafa'; (e.target as HTMLButtonElement).style.borderColor = '#cbd5e1'; }}
+                  style={{ padding: '8px 12px', borderRadius: 10, border: '1px dashed #cbd5e1', background: '#fafafa', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#64748b' }}
                 >
-                  🎯 {p.target_omset > 0 ? 'Ubah' : 'Set'} Target Bulan Ini
+                  🎯 Target
                 </button>
               </div>
             </div>
@@ -432,6 +901,208 @@ function PerformanceDashboard({ data, mutate, filterLabel }: { data: any; mutate
           onClose={() => setTargetModal(null)}
           onSaved={mutate}
         />
+      )}
+
+      {detailModal && (
+        <MarketingDetailModal
+          employee={detailModal}
+          onClose={() => setDetailModal(null)}
+          onSaved={mutate}
+        />
+      )}
+    </section>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// ADMIN/OWNER: DISTRIBUTOR TAB (Dengan Filter Area)
+// ═══════════════════════════════════════════════════════════
+function DistributorTab({ data }: { data: any }) {
+  const [areaFilter, setAreaFilter] = useState('ALL');
+  const [selectedDistributorModal, setSelectedDistributorModal] = useState<any>(null);
+
+  const distributors: any[] = data?.distributorPerformance || [];
+
+  // Extract unique areas
+  const uniqueAreas = useMemo(() => {
+    const set = new Set<string>();
+    distributors.forEach(d => {
+      if (d.wilayah && d.wilayah !== 'Umum') set.add(d.wilayah);
+    });
+    return Array.from(set);
+  }, [distributors]);
+
+  const filteredDistributors = useMemo(() => {
+    if (areaFilter === 'ALL') return distributors;
+    return distributors.filter(d => (d.wilayah || '').toLowerCase() === areaFilter.toLowerCase());
+  }, [distributors, areaFilter]);
+
+  const totalDistributors = filteredDistributors.length;
+  const totalStokGudangAll = filteredDistributors.reduce((sum, d) => sum + (d.total_stok_gudang || 0), 0);
+  const totalBillingAll = filteredDistributors.reduce((sum, d) => sum + (d.total_billing_this_month || 0), 0);
+  const totalPaymentAll = filteredDistributors.reduce((sum, d) => sum + (d.total_payment_this_month || 0), 0);
+  const totalSisaTagihanAll = filteredDistributors.reduce((sum, d) => sum + (d.total_sisa_tagihan || 0), 0);
+
+  return (
+    <section style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Header & Filter Area */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0f172a' }}>
+            🏢 Manajemen &amp; Performa Distributor
+          </h3>
+          <p style={{ margin: '2px 0 0', fontSize: 13, color: '#64748b' }}>
+            Monitoring stok di gudang distributor, pergerakan outlet distribusi, dan setoran kas
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>📍 Filter Area:</span>
+          <select
+            value={areaFilter}
+            onChange={e => setAreaFilter(e.target.value)}
+            style={{ padding: '8px 14px', borderRadius: 10, border: '1.5px solid #cbd5e1', fontSize: 13, fontWeight: 700, background: '#fff', color: '#1e293b' }}
+          >
+            <option value="ALL">Semua Wilayah ({distributors.length})</option>
+            {uniqueAreas.map(area => (
+              <option key={area} value={area}>{area}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Summary KPI Cards (Tanpa Omset Booth & Total Target) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
+        <KpiMini icon="🏢" label="TOTAL DISTRIBUTOR" value={`${totalDistributors} Mitra`} color="#2563eb" />
+        <KpiMini icon="📦" label="STOK DI DISTRIBUTOR" value={`${totalStokGudangAll} pcs`} color="#0891b2" sub="Stok aktif di gudang mitra" />
+        <KpiMini icon="📤" label="DISTRIBUSI PRODUK (BILLING)" value={formatRp(totalBillingAll)} color="#7c3aed" sub="Nilai invoice pengiriman" />
+        <KpiMini icon="💵" label="KAS MASUK DISETOR" value={formatRp(totalPaymentAll)} color="#15803d" sub="Dana cair diterima" />
+        <KpiMini icon="📋" label="SISA TAGIHAN DISTRIBUSI" value={formatRp(totalSisaTagihanAll)} color={totalSisaTagihanAll > 0 ? '#dc2626' : '#16a34a'} />
+      </div>
+
+      {/* Distributors Grid */}
+      {filteredDistributors.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '50px 20px', background: '#f8fafc', borderRadius: 16, color: '#94a3b8' }}>
+          Belum ada data distributor untuk filter wilayah ini. Daftarkan distributor baru melalui menu <b>Karyawan &gt; Database Distributor</b> atau modul <b>Warehouse</b>.
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
+          {filteredDistributors.map((dist: any) => (
+            <div key={dist.id} style={{ background: '#fff', borderRadius: 18, border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.04)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ background: 'linear-gradient(135deg, #eff6ff, #dbeafe)', padding: '16px 20px', borderBottom: '1px solid #bfdbfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: '#1e3a8a' }}>{dist.nama}</div>
+                  <div style={{ fontSize: 12, color: '#2563eb', fontWeight: 600 }}>📍 Wilayah: {dist.wilayah || 'Umum'}</div>
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: '#2563eb', color: '#fff' }}>
+                  Distributor
+                </span>
+              </div>
+
+              <div style={{ padding: '16px 20px', flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700 }}>STOK GUDANG</div>
+                    <div style={{ fontSize: 15, fontWeight: 900, color: '#0f172a' }}>{dist.total_stok_gudang} pcs</div>
+                  </div>
+                  <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700 }}>OUTLET DIKELOLA</div>
+                    <div style={{ fontSize: 15, fontWeight: 900, color: '#0f172a' }}>{dist.outlet_count} Outlet</div>
+                  </div>
+                  <div style={{ background: '#f5f3ff', borderRadius: 10, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 10, color: '#7c3aed', fontWeight: 700 }}>DISTRIBUSI (BILLING)</div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: '#5b21b6' }}>{formatRp(dist.total_billing_this_month)}</div>
+                  </div>
+                  <div style={{ background: '#f0fdf4', borderRadius: 10, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 10, color: '#15803d', fontWeight: 700 }}>KAS DISETOR</div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: '#166534' }}>{formatRp(dist.total_payment_this_month)}</div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '8px 12px', borderRadius: 10 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>Sisa Tagihan Konsinyasi:</span>
+                  <span style={{ fontSize: 13, fontWeight: 900, color: dist.total_sisa_tagihan > 0 ? '#dc2626' : '#15803d' }}>
+                    {formatRp(dist.total_sisa_tagihan)}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid #f1f5f9', padding: '10px 16px' }}>
+                <button
+                  onClick={() => setSelectedDistributorModal(dist)}
+                  style={{ width: '100%', padding: '8px', borderRadius: 10, border: '1px solid #2563eb', background: '#eff6ff', color: '#1d4ed8', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  🔍 Rincian Outlet &amp; Gudang Distributor
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Distributor Detail Modal */}
+      {selectedDistributorModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 24, padding: 24, maxWidth: 650, width: '100%', maxHeight: '88vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', pb: 14, marginBottom: 14 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 900, color: '#0f172a' }}>{selectedDistributorModal.nama}</h3>
+                <div style={{ fontSize: 12, color: '#64748b' }}>📍 Wilayah: {selectedDistributorModal.wilayah} • No HP: {selectedDistributorModal.no_hp || '-'}</div>
+              </div>
+              <button onClick={() => setSelectedDistributorModal(null)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, width: 30, height: 30, cursor: 'pointer', fontWeight: 800 }}>✕</button>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#1e3a8a', marginBottom: 8 }}>🏬 Fasilitas Gudang Distributor:</div>
+              {(!selectedDistributorModal.warehouses || selectedDistributorModal.warehouses.length === 0) ? (
+                <div style={{ fontSize: 12, color: '#94a3b8' }}>Belum ada gudang distributor terdaftar</div>
+              ) : selectedDistributorModal.warehouses.map((w: any) => (
+                <div key={w.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 12, marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 13 }}>
+                    <span>{w.name}</span>
+                    <span style={{ color: '#2563eb' }}>{w.total_stock} pcs</span>
+                  </div>
+                  {w.address && <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{w.address}</div>}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                    {(w.stocks || []).map((s: any, idx: number) => (
+                      <span key={idx} style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>
+                        {s.product_name}: {s.quantity} pcs
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#1e3a8a', marginBottom: 8 }}>
+                🏪 Daftar Outlet Jaringan ({selectedDistributorModal.outlets?.length || 0}):
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', color: '#64748b' }}>
+                      <th style={{ padding: '6px 10px', textAlign: 'left' }}>NAMA OUTLET</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'right' }}>TAGIHAN</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'right' }}>BAYAR</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'right' }}>SISA</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(selectedDistributorModal.outlets || []).map((o: any) => (
+                      <tr key={o.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '8px 10px', fontWeight: 700 }}>{o.nama}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right' }}>{formatRp(o.tagihan)}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#15803d', fontWeight: 700 }}>{formatRp(o.payment)}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', color: o.sisa_tagihan > 0 ? '#dc2626' : '#15803d', fontWeight: 700 }}>{formatRp(o.sisa_tagihan)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );
@@ -480,51 +1151,64 @@ function PersonalBuyerTab({ data, mutate }: { data: any; mutate: () => void }) {
           <select
             value={filterEmployee}
             onChange={e => setFilterEmployee(e.target.value)}
-            style={{ padding: '6px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 13, outline: 'none', background: '#fff', cursor: 'pointer' }}
+            style={{ padding: '7px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 13, outline: 'none', background: '#fff' }}
           >
-            <option value="all">Semua Marketing</option>
-            {performance.map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
+            <option value="all">Semua Marketing ({allTransactions.length} transaksi)</option>
+            {performance.map(p => (
+              <option key={p.id} value={p.id}>{p.nama} ({p.personal_buyer_transactions.length})</option>
+            ))}
           </select>
         </div>
+
         <button
           onClick={() => setShowAddModal(true)}
-          style={{ padding: '8px 18px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #10b981, #059669)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+          style={{
+            padding: '8px 18px', borderRadius: 10, border: 'none',
+            background: 'linear-gradient(135deg, #10b981, #059669)',
+            color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 2px 8px rgba(16,185,129,0.25)'
+          }}
         >
-          ➕ Input Personal Buyer
+          ➕ Input Personal Buyer Baru
         </button>
       </div>
 
       {/* Table */}
       <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }} className="no-scrollbar">
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 550 }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, letterSpacing: 0.5, borderBottom: '1px solid #e2e8f0' }}>TANGGAL</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, letterSpacing: 0.5, borderBottom: '1px solid #e2e8f0' }}>NAMA BUYER</th>
-                <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, color: '#475569', fontSize: 11, letterSpacing: 0.5, borderBottom: '1px solid #e2e8f0' }}>NOMINAL</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, letterSpacing: 0.5, borderBottom: '1px solid #e2e8f0' }}>MARKETING</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, letterSpacing: 0.5, borderBottom: '1px solid #e2e8f0' }}>KETERANGAN</th>
-                <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 700, color: '#475569', fontSize: 11, letterSpacing: 0.5, borderBottom: '1px solid #e2e8f0' }}>AKSI</th>
+                <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>TANGGAL</th>
+                <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>BUYER</th>
+                <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>MARKETING</th>
+                <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>PRODUK</th>
+                <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>STOK (QTY)</th>
+                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>HARGA SATUAN</th>
+                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>TOTAL NOMINAL</th>
+                <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>KETERANGAN</th>
+                <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>AKSI</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={6} style={{ padding: '32px 16px', textAlign: 'center', color: '#94a3b8' }}>Belum ada transaksi personal buyer</td></tr>
+                <tr><td colSpan={9} style={{ padding: '30px 14px', textAlign: 'center', color: '#94a3b8' }}>Belum ada transaksi personal buyer</td></tr>
               ) : filtered.map(t => (
                 <tr key={t.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '10px 16px', color: '#334155' }}>{new Date(t.date).toLocaleDateString('id-ID')}</td>
-                  <td style={{ padding: '10px 16px', fontWeight: 600, color: '#0f172a' }}>{t.buyer_name}</td>
-                  <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 700, color: '#15803d' }}>{formatRp(t.amount)}</td>
-                  <td style={{ padding: '10px 16px' }}>
-                    <span style={{ background: '#ede9fe', color: '#7c3aed', padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>{t.marketing_name}</span>
-                  </td>
-                  <td style={{ padding: '10px 16px', color: '#64748b', fontSize: 12 }}>{t.description || '-'}</td>
-                  <td style={{ padding: '10px 16px', textAlign: 'center' }}>
+                  <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>{new Date(t.date).toLocaleDateString('id-ID')}</td>
+                  <td style={{ padding: '10px 14px', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap' }}>{t.buyer_name}</td>
+                  <td style={{ padding: '10px 14px', color: '#3b82f6', fontWeight: 600 }}>{t.marketing_name}</td>
+                  <td style={{ padding: '10px 14px', fontWeight: 600, color: '#334155' }}>{t.product_name || '-'}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: '#0284c7' }}>{t.quantity ? `${t.quantity} pcs` : '1 pcs'}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right', color: '#64748b' }}>{t.price_per_unit ? formatRp(t.price_per_unit) : '-'}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#15803d', whiteSpace: 'nowrap' }}>{formatRp(t.amount)}</td>
+                  <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{t.description || '-'}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'center' }}>
                     <button
                       onClick={() => handleDelete(t.id)}
                       disabled={deleting === t.id}
                       style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', fontSize: 11, fontWeight: 600, cursor: deleting === t.id ? 'wait' : 'pointer' }}
+                      title="Hapus Transaksi"
                     >
                       {deleting === t.id ? '⏳' : '🗑️'}
                     </button>
@@ -536,308 +1220,27 @@ function PersonalBuyerTab({ data, mutate }: { data: any; mutate: () => void }) {
         </div>
       </div>
 
-      {showAddModal && <AddPersonalBuyerModal onClose={() => setShowAddModal(false)} onSaved={mutate} />}
+      {showAddModal && (
+        <AddPersonalBuyerModal
+          onClose={() => setShowAddModal(false)}
+          onSaved={mutate}
+          products={data?.products}
+          warehouses={data?.warehouses}
+        />
+      )}
     </section>
   );
 }
 
 // ═══════════════════════════════════════════════════════════
-// ADMIN/OWNER: E-COMMERCE TAB (Legacy Online Reports)
-// ═══════════════════════════════════════════════════════════
-function ECommerceTab({ data }: { data: any }) {
-  const onlineReports: any[] = data?.onlineReports || [];
-  const globalShopeeTarget = data?.globalShopeeTarget || 0;
-  const globalTiktokTarget = data?.globalTiktokTarget || 0;
-
-  const shopeeReports = onlineReports.filter((r: any) => r.platform?.toLowerCase() === 'shopee');
-  const tiktokReports = onlineReports.filter((r: any) => r.platform?.toLowerCase() === 'tiktok');
-
-  const shopeeOmsetMtd = shopeeReports.reduce((sum: number, r: any) => sum + Number(r.omset_harian), 0);
-  const tiktokOmsetMtd = tiktokReports.reduce((sum: number, r: any) => sum + Number(r.omset_harian), 0);
-
-  const shopeePersentase = globalShopeeTarget > 0 ? (shopeeOmsetMtd / globalShopeeTarget) * 100 : 0;
-  const tiktokPersentase = globalTiktokTarget > 0 ? (tiktokOmsetMtd / globalTiktokTarget) * 100 : 0;
-
-  return (
-    <section className="flex flex-col gap-5 w-full">
-      {/* Cards Container */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Shopee Card */}
-        <div className="bg-gradient-to-br from-orange-50/80 to-amber-100/60 rounded-2xl p-4 sm:p-5 border border-orange-200 shadow-xs flex flex-col justify-between gap-3.5">
-          {/* Header */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-orange-200/70 pb-3">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">🛍️</span>
-              <div>
-                <h4 className="text-base sm:text-lg font-black text-orange-950 leading-tight">Shopee</h4>
-                <span className="text-[11px] font-semibold text-orange-700/80">Marketplace Online</span>
-              </div>
-            </div>
-            <div className="bg-orange-200/70 text-orange-900 border border-orange-300/80 text-xs px-2.5 py-1 rounded-full font-bold whitespace-nowrap">
-              Target: {globalShopeeTarget > 0 ? formatRp(globalShopeeTarget) : 'Belum diset'}
-            </div>
-          </div>
-
-          {/* Progress Bar */}
-          <div>
-            <div className="flex justify-between text-xs font-semibold text-orange-900 mb-1.5">
-              <span>Pencapaian MTD</span>
-              <span className="font-extrabold">{shopeePersentase.toFixed(1)}%</span>
-            </div>
-            <ProgressBar value={shopeePersentase} color="#ea580c" />
-          </div>
-
-          {/* Stats Grid: On mobile each is full width row, on sm+ 3 columns */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            <div className="bg-white/90 backdrop-blur-xs p-3 rounded-xl border border-orange-100 flex sm:flex-col justify-between sm:justify-start items-center sm:items-start gap-1">
-              <div className="text-[10px] sm:text-[11px] text-orange-600 font-bold uppercase tracking-wider">OMSET MTD</div>
-              <div className="text-sm sm:text-base font-black text-orange-950 whitespace-nowrap">{formatRp(shopeeOmsetMtd)}</div>
-            </div>
-
-            <div className="bg-white/90 backdrop-blur-xs p-3 rounded-xl border border-orange-100 flex sm:flex-col justify-between sm:justify-start items-center sm:items-start gap-1">
-              <div className="text-[10px] sm:text-[11px] text-orange-600 font-bold uppercase tracking-wider">PENCAPAIAN</div>
-              <div className="text-sm sm:text-base font-black text-orange-950 whitespace-nowrap">{shopeePersentase.toFixed(1)}%</div>
-            </div>
-
-            <div className="bg-white/90 backdrop-blur-xs p-3 rounded-xl border border-orange-100 flex sm:flex-col justify-between sm:justify-start items-center sm:items-start gap-1">
-              <div className="text-[10px] sm:text-[11px] text-orange-600 font-bold uppercase tracking-wider">GAP TARGET</div>
-              <div className={`text-sm sm:text-base font-black whitespace-nowrap ${(shopeeOmsetMtd - globalShopeeTarget) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {(shopeeOmsetMtd - globalShopeeTarget) >= 0 ? '+' : '-'}{formatRp(Math.abs(shopeeOmsetMtd - globalShopeeTarget))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* TikTok Card */}
-        <div className="bg-gradient-to-br from-slate-50 to-slate-100/90 rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col justify-between gap-3.5">
-          {/* Header */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">🎵</span>
-              <div>
-                <h4 className="text-base sm:text-lg font-black text-slate-900 leading-tight">TikTok Shop</h4>
-                <span className="text-[11px] font-semibold text-slate-500">Social Commerce</span>
-              </div>
-            </div>
-            <div className="bg-slate-200/80 text-slate-800 border border-slate-300 text-xs px-2.5 py-1 rounded-full font-bold whitespace-nowrap">
-              Target: {globalTiktokTarget > 0 ? formatRp(globalTiktokTarget) : 'Belum diset'}
-            </div>
-          </div>
-
-          {/* Progress Bar */}
-          <div>
-            <div className="flex justify-between text-xs font-semibold text-slate-700 mb-1.5">
-              <span>Pencapaian MTD</span>
-              <span className="font-extrabold">{tiktokPersentase.toFixed(1)}%</span>
-            </div>
-            <ProgressBar value={tiktokPersentase} color="#0f172a" />
-          </div>
-
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            <div className="bg-white/90 backdrop-blur-xs p-3 rounded-xl border border-slate-200 flex sm:flex-col justify-between sm:justify-start items-center sm:items-start gap-1">
-              <div className="text-[10px] sm:text-[11px] text-slate-500 font-bold uppercase tracking-wider">OMSET MTD</div>
-              <div className="text-sm sm:text-base font-black text-slate-900 whitespace-nowrap">{formatRp(tiktokOmsetMtd)}</div>
-            </div>
-
-            <div className="bg-white/90 backdrop-blur-xs p-3 rounded-xl border border-slate-200 flex sm:flex-col justify-between sm:justify-start items-center sm:items-start gap-1">
-              <div className="text-[10px] sm:text-[11px] text-slate-500 font-bold uppercase tracking-wider">PENCAPAIAN</div>
-              <div className="text-sm sm:text-base font-black text-slate-900 whitespace-nowrap">{tiktokPersentase.toFixed(1)}%</div>
-            </div>
-
-            <div className="bg-white/90 backdrop-blur-xs p-3 rounded-xl border border-slate-200 flex sm:flex-col justify-between sm:justify-start items-center sm:items-start gap-1">
-              <div className="text-[10px] sm:text-[11px] text-slate-500 font-bold uppercase tracking-wider">GAP TARGET</div>
-              <div className={`text-sm sm:text-base font-black whitespace-nowrap ${(tiktokOmsetMtd - globalTiktokTarget) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {(tiktokOmsetMtd - globalTiktokTarget) >= 0 ? '+' : '-'}{formatRp(Math.abs(tiktokOmsetMtd - globalTiktokTarget))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Online History Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-4 sm:p-5 border-b border-slate-100 flex justify-between items-center">
-          <div>
-            <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
-              <span>📋</span> History Laporan Harian E-Commerce
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">Daftar transaksi harian Shopee dan TikTok yang telah dilaporkan</p>
-          </div>
-          <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full whitespace-nowrap">
-            {onlineReports.length} Laporan
-          </span>
-        </div>
-
-        <div className="overflow-x-auto no-scrollbar">
-          <table className="w-full text-left text-xs sm:text-sm border-collapse min-w-[500px]">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="p-3 sm:px-4 sm:py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">TANGGAL</th>
-                <th className="p-3 sm:px-4 sm:py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">PLATFORM</th>
-                <th className="p-3 sm:px-4 sm:py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right">OMSET HARIAN</th>
-                <th className="p-3 sm:px-4 sm:py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">PELAPOR</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {onlineReports.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="p-8 text-center text-slate-400">
-                    <div className="text-2xl mb-1">🛒</div>
-                    Belum ada data laporan penjualan e-commerce.
-                  </td>
-                </tr>
-              ) : (
-                onlineReports.slice(0, 50).map((r: any) => (
-                  <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="p-3 sm:px-4 sm:py-3 font-medium text-slate-700 whitespace-nowrap">
-                      {new Date(r.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    </td>
-                    <td className="p-3 sm:px-4 sm:py-3 whitespace-nowrap">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1 ${
-                        r.platform?.toLowerCase() === 'shopee'
-                          ? 'bg-orange-100 text-orange-700 border border-orange-200'
-                          : 'bg-slate-100 text-slate-800 border border-slate-300'
-                      }`}>
-                        {r.platform?.toLowerCase() === 'shopee' ? '🛍️ Shopee' : '🎵 TikTok'}
-                      </span>
-                    </td>
-                    <td className="p-3 sm:px-4 sm:py-3 text-right font-black text-slate-900 whitespace-nowrap">
-                      {formatRp(Number(r.omset_harian))}
-                    </td>
-                    <td className="p-3 sm:px-4 sm:py-3 text-slate-600 whitespace-nowrap">
-                      <span className="text-xs font-semibold">{r.employee ? r.employee.nama : 'Sistem'}</span>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════
-// ADMIN: EVENT & BOOTH TAB
-// ═══════════════════════════════════════════════════════════
-function EventBoothTab({ data }: { data: any }) {
-  const booths: any[] = data?.eventBooths || [];
-  const totalBoothSalesAll = data?.totalBoothSalesAll || 0;
-  const totalBoothKasAll = data?.totalBoothKasAll || 0;
-  const activeBoothCount = data?.activeBoothCount || 0;
-
-  return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Financial Flow Explanation Alert */}
-      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 14, padding: '14px 18px' }}>
-        <div style={{ fontWeight: 800, fontSize: 13, color: '#166534', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-          <span>💡</span> Relasi Finansial &amp; Omset Event Booth ke Marketing
-        </div>
-        <div style={{ fontSize: 12, color: '#15803d', lineHeight: 1.5 }}>
-          <b>1. Akumulasi Omset:</b> Seluruh transaksi penjualan booth otomatis terhubung dan masuk ke perhitungan omset bulanan <b>PIC Marketing</b> yang ditugaskan mengelola booth tersebut.<br />
-          <b>2. Transaksi Langsung (Kas vs Piutang):</b> Berbeda dari outlet yang menerapkan sistem tempo/piutang konsinyasi, booth bertransaksi langsung secara tunai/QRIS/transfer, sehingga hasil penjualan langsung diakui sebagai <b>Kas Masuk</b> tanpa menimbulkan tagihan tertunda.<br />
-          <b>3. Rekonsiliasi Sisa Stok:</b> Sisa fisik produk saat booth ditutup otomatis dikembalikan ke kuantitas aktif gudang tujuan dan siap dijual kembali (Bukan Retur Rusak).
-        </div>
-      </div>
-
-      {/* Summary KPI Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
-        <KpiMini icon="💰" label="TOTAL OMSET BOOTH" value={formatRp(totalBoothSalesAll)} color="#15803d" />
-        <KpiMini icon="💵" label="TOTAL KAS TERKUMPUL" value={formatRp(totalBoothKasAll)} color="#0f172a" />
-        <KpiMini icon="🟢" label="BOOTH AKTIF" value={`${activeBoothCount} Event`} color="#2563eb" />
-        <KpiMini icon="🎪" label="TOTAL EVENT" value={`${booths.length} Event`} color="#7c3aed" />
-      </div>
-
-      {/* Booth List Table */}
-      <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a' }}>Monitoring Agenda Event &amp; Open Booth</div>
-            <div style={{ fontSize: 12, color: '#64748b' }}>Daftar seluruh booth yang dikelola oleh tim marketing</div>
-          </div>
-          <a
-            href="/booth"
-            style={{
-              padding: '8px 16px', borderRadius: 10, background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
-              color: '#fff', fontSize: 12, fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 5
-            }}
-          >
-            🎪 Buka Modul Booth Lengkap ↗
-          </a>
-        </div>
-
-        <div style={{ overflowX: 'auto' }} className="no-scrollbar">
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 680 }}>
-            <thead>
-              <tr style={{ background: '#f8fafc' }}>
-                <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>NAMA BOOTH / EVENT</th>
-                <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>PIC MARKETING</th>
-                <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>PERIODE</th>
-                <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>STATUS</th>
-                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>TRANSAKSI</th>
-                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>TOTAL PENJUALAN</th>
-                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>KAS MASUK</th>
-              </tr>
-            </thead>
-            <tbody>
-              {booths.length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>
-                    Belum ada data event atau open booth. Klik tombol &quot;Buka Modul Booth Lengkap&quot; untuk menambah agenda baru.
-                  </td>
-                </tr>
-              ) : (
-                booths.map(b => (
-                  <tr key={b.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '12px 14px' }}>
-                      <div style={{ fontWeight: 700, color: '#0f172a' }}>{b.nama}</div>
-                      {b.lokasi && <div style={{ fontSize: 11, color: '#64748b' }}>📍 {b.lokasi}</div>}
-                    </td>
-                    <td style={{ padding: '12px 14px', color: '#334155' }}>
-                      <b>{b.pic?.nama || 'Belum diset'}</b>
-                    </td>
-                    <td style={{ padding: '12px 14px', color: '#64748b', fontSize: 12 }}>
-                      {new Date(b.tanggal_mulai).toLocaleDateString('id-ID')} s/d {new Date(b.tanggal_selesai).toLocaleDateString('id-ID')}
-                    </td>
-                    <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                      <span style={{
-                        padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700,
-                        background: b.status === 'AKTIF' ? '#dcfce7' : '#e2e8f0',
-                        color: b.status === 'AKTIF' ? '#15803d' : '#64748b'
-                      }}>
-                        {b.status === 'AKTIF' ? '🟢 AKTIF' : '⚪ SELESAI'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 600 }}>
-                      {b.sales_count || 0}x
-                    </td>
-                    <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: '#15803d' }}>
-                      {formatRp(b.total_penjualan)}
-                    </td>
-                    <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
-                      {formatRp(b.kas_masuk)}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════
-// MARKETING USER: MY DASHBOARD (Isolated)
+// MARKETING USER: MY DASHBOARD (Isolated untuk Role Marketing)
 // ═══════════════════════════════════════════════════════════
 function MarketingMyDashboard({ data, mutate, filterLabel }: { data: any; mutate: () => void; filterLabel?: string }) {
   const p = data?.myPerformance;
   const currentMonth = data?.currentMonth || new Date().getMonth() + 1;
   const currentYear = data?.currentYear || new Date().getFullYear();
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
   if (!p) {
@@ -865,39 +1268,31 @@ function MarketingMyDashboard({ data, mutate, filterLabel }: { data: any; mutate
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Hero Performance Card */}
-      <div style={{
-        background: p.pencapaian >= 100 ? 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 50%, #bbf7d0 100%)' : p.pencapaian >= 50 ? 'linear-gradient(135deg, #fefce8 0%, #fef3c7 100%)' : 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)',
-        borderRadius: 20, padding: '24px 28px', border: `1px solid ${p.pencapaian >= 100 ? '#86efac' : p.pencapaian >= 50 ? '#fde047' : '#fca5a5'}`,
-        boxShadow: '0 8px 30px rgba(0,0,0,0.05)', position: 'relative', overflow: 'hidden'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a' }}>📊 Dashboard Saya</h2>
-            <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{filterLabel || `${MONTH_NAMES[currentMonth - 1]} ${currentYear}`}</div>
-          </div>
-          <StatusBadge status={p.status} />
-        </div>
+      {/* KPI Cards: Distribusi vs Kas Masuk */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
+        <KpiMini icon="🎯" label="TARGET BULAN INI" value={p.target_omset > 0 ? formatRp(p.target_omset) : 'Belum diset'} color="#2563eb" />
+        <KpiMini icon="📦" label="REALISASI DISTRIBUSI (BILLING)" value={formatRp(p.total_billing_this_month)} color="#7c3aed" sub="Nilai barang ke outlet" />
+        <KpiMini icon="💵" label="KAS MASUK (PEMBAYARAN)" value={formatRp(p.total_payment_this_month)} color="#15803d" sub="Pelunasan disetor" />
+        <KpiMini icon="📤" label="PENGELUARAN DINAS" value={formatRp(p.total_expenses_this_month || 0)} color="#dc2626" sub="Biaya operasional" />
+        <KpiMini icon="👤" label="PERSONAL BUYER" value={formatRp(p.personal_buyer_this_month)} color="#0891b2" />
+        <KpiMini icon="📋" label="OUTSTANDING SISA TAGIHAN" value={formatRp(p.total_outstanding_all)} color={p.total_outstanding_all > 0 ? '#dc2626' : '#16a34a'} />
+      </div>
 
-        {/* Progress */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 8 }}>
-            <span style={{ fontWeight: 600, color: '#475569' }}>Pencapaian Target</span>
-            <span style={{ fontWeight: 800, fontSize: 18, color: (p.pencapaian || 0) >= 100 ? '#15803d' : (p.pencapaian || 0) >= 50 ? '#ca8a04' : '#dc2626' }}>
-              {(p.pencapaian || 0).toFixed(1)}%
-            </span>
+      {/* Progress & Quick Action */}
+      <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', padding: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ flex: '1 1 240px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}>
+            <span style={{ fontWeight: 700, color: '#334155' }}>Pencapaian Target {filterLabel || `${MONTH_NAMES[currentMonth - 1]} ${currentYear}`}</span>
+            <span style={{ fontWeight: 800, color: p.pencapaian >= 100 ? '#15803d' : p.pencapaian >= 50 ? '#ca8a04' : '#dc2626' }}>{p.pencapaian.toFixed(1)}%</span>
           </div>
-          <ProgressBar value={p.pencapaian || 0} color={(p.pencapaian || 0) >= 100 ? '#22c55e' : (p.pencapaian || 0) >= 50 ? '#eab308' : '#ef4444'} />
+          <ProgressBar value={p.pencapaian} color={p.pencapaian >= 100 ? '#22c55e' : p.pencapaian >= 50 ? '#eab308' : '#ef4444'} />
         </div>
-
-        {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-          <KpiMini icon="🎯" label="TARGET OMSET" value={p.target_omset > 0 ? formatRp(p.target_omset) : 'Belum diset'} color="#2563eb" />
-          <KpiMini icon="💰" label="OMSET MARKETING" value={formatRp(p.total_omset_this_month || 0)} color="#7c3aed" sub="Outlet + Personal" />
-          <KpiMini icon="🏪" label="BILLING OUTLET" value={formatRp(p.total_billing_this_month || 0)} color="#0891b2" />
-          <KpiMini icon="👤" label="PERSONAL BUYER" value={formatRp(p.personal_buyer_this_month || 0)} color="#d97706" />
-          <KpiMini icon="🎪" label="BOOTH (CASHFLOW)" value={formatRp(p.booth_sales_this_month || 0)} color="#059669" sub="Cashflow Perusahaan" />
-        </div>
+        <button
+          onClick={() => setShowDetailModal(true)}
+          style={{ padding: '8px 18px', borderRadius: 10, background: '#eff6ff', color: '#1d4ed8', border: '1.5px solid #bfdbfe', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+        >
+          🔍 Lihat Rincian &amp; Catat Pengeluaran
+        </button>
       </div>
 
       {/* Outlet Summary */}
@@ -945,69 +1340,17 @@ function MarketingMyDashboard({ data, mutate, filterLabel }: { data: any; mutate
         )}
       </div>
 
-      {/* Booth Section */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>🎪</span> Event &amp; Booth Saya ({p.managed_booths?.length || 0})
-          </div>
-          <a
-            href="/booth"
-            style={{
-              padding: '6px 14px', borderRadius: 8, background: '#eff6ff', color: '#2563eb',
-              fontSize: 12, fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4
-            }}
-          >
-            Buka Kasir / Booth ↗
-          </a>
-        </div>
-        {(!p.managed_booths || p.managed_booths.length === 0) ? (
-          <div style={{ textAlign: 'center', padding: '30px', background: '#f8fafc', borderRadius: 14, color: '#94a3b8', fontSize: 13 }}>
-            Belum ada agenda event atau booth pameran yang ditugaskan kepada Anda.
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-            {p.managed_booths.map((b: any) => (
-              <div key={b.id} style={{
-                background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '14px 18px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', gap: 8
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>{b.nama}</div>
-                  <span style={{
-                    fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
-                    background: b.status === 'AKTIF' ? '#dcfce7' : '#e2e8f0',
-                    color: b.status === 'AKTIF' ? '#15803d' : '#64748b',
-                  }}>{b.status}</span>
-                </div>
-                {b.lokasi && <div style={{ fontSize: 11, color: '#94a3b8' }}>📍 {b.lokasi}</div>}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, background: '#f8fafc', padding: '8px 10px', borderRadius: 8 }}>
-                  <div>
-                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>Total Penjualan</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#15803d' }}>{formatRp(b.total_penjualan)}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>Kas Masuk</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{formatRp(b.kas_masuk)}</div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
       {/* Personal Buyer Section */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>👤</span> Transaksi Personal Buyer
+            <span>👤</span> Transaksi Personal Buyer Saya
           </div>
           <button
             onClick={() => setShowAddModal(true)}
             style={{ padding: '7px 16px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #10b981, #059669)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
           >
-            ➕ Input Baru
+            ➕ Input Personal Buyer
           </button>
         </div>
         <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
@@ -1055,13 +1398,28 @@ function MarketingMyDashboard({ data, mutate, filterLabel }: { data: any; mutate
         </div>
       </div>
 
-      {showAddModal && <AddPersonalBuyerModal onClose={() => setShowAddModal(false)} onSaved={mutate} products={data?.products} />}
+      {showAddModal && (
+        <AddPersonalBuyerModal
+          onClose={() => setShowAddModal(false)}
+          onSaved={mutate}
+          products={data?.products}
+          warehouses={data?.warehouses}
+        />
+      )}
+
+      {showDetailModal && (
+        <MarketingDetailModal
+          employee={p}
+          onClose={() => setShowDetailModal(false)}
+          onSaved={mutate}
+        />
+      )}
     </div>
   );
 }
 
 // ═══════════════════════════════════════════════════════════
-// MAIN MARKETING PAGE
+// MAIN MARKETING OFFLINE PAGE
 // ═══════════════════════════════════════════════════════════
 export default function MarketingPage() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
@@ -1103,18 +1461,6 @@ export default function MarketingPage() {
     }
     
     const fromStr = fromDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-    
-    const today = new Date();
-    const isToday = fromDate.getDate() === today.getDate() && 
-                    fromDate.getMonth() === today.getMonth() &&
-                    fromDate.getFullYear() === today.getFullYear();
-
-    const isSameDay = fromDate.getTime() === toDate.getTime();
-
-    if (isSameDay) {
-      return isToday ? 'Hari Ini' : fromStr;
-    }
-    
     const toStr = toDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
     return `${fromStr} - ${toStr}`;
   }, [appliedDateRange]);
@@ -1126,7 +1472,7 @@ export default function MarketingPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ width: 36, height: 36, border: '4px solid #e5e7eb', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
-          <div style={{ color: '#6b7280', fontSize: 14 }}>Memuat data marketing...</div>
+          <div style={{ color: '#6b7280', fontSize: 14 }}>Memuat data marketing offline...</div>
         </div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
@@ -1136,7 +1482,7 @@ export default function MarketingPage() {
   if (error) {
     return (
       <div style={{ padding: '32px', textAlign: 'center', background: '#fef2f2', borderRadius: 16, margin: '24px 0' }}>
-        <h3 style={{ color: '#b91c1c', fontSize: 18, fontWeight: 700, margin: '0 0 8px' }}>Gagal Memuat Data Marketing</h3>
+        <h3 style={{ color: '#b91c1c', fontSize: 18, fontWeight: 700, margin: '0 0 8px' }}>Gagal Memuat Data Marketing Offline</h3>
         <p style={{ color: '#dc2626', fontSize: 14, margin: 0 }}>Terjadi kesalahan saat mengambil data dari server. Silakan coba muat ulang halaman (F5).</p>
       </div>
     );
@@ -1144,13 +1490,14 @@ export default function MarketingPage() {
 
   const userRole = (data?.userRole || '').toUpperCase();
   const isOwnerOrAdmin = userRole === 'OWNER' || userRole === 'ADMIN';
+  const isDistributor = userRole === 'DISTRIBUTOR' || userRole.includes('DISTRIBUTOR');
 
   const filterToolbar = (
     <div className="marketing-filter-toolbar">
       <div>
-        <h2 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#0f172a' }}>Marketing &amp; Penjualan</h2>
+        <h2 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#0f172a' }}>Marketing Offline</h2>
         <div style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
-          Menampilkan data untuk: <b>{filterLabel}</b>
+          Menampilkan data distribusi konsinyasi &amp; penjualan langsung untuk: <b>{filterLabel}</b>
         </div>
       </div>
 
@@ -1172,23 +1519,18 @@ export default function MarketingPage() {
     const tabs = [
       {
         id: 'performance',
-        label: '📊 Performance Marketing',
+        label: '📊 Performance Marketing Offline',
         content: <PerformanceDashboard data={data} mutate={mutate} filterLabel={filterLabel} />,
       },
       {
-        id: 'booth',
-        label: `🎪 Event & Booth (${data?.activeBoothCount || 0})`,
-        content: <EventBoothTab data={data} />,
+        id: 'distributor',
+        label: `🏢 Distributor (${data?.distributorPerformance?.length || 0})`,
+        content: <DistributorTab data={data} />,
       },
       {
         id: 'personal-buyer',
         label: '👤 Personal Buyer',
         content: <PersonalBuyerTab data={data} mutate={mutate} />,
-      },
-      {
-        id: 'ecommerce',
-        label: '🛒 E-Commerce',
-        content: <ECommerceTab data={data} />,
       },
     ];
 
@@ -1196,6 +1538,16 @@ export default function MarketingPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         {filterToolbar}
         <Tabs tabs={tabs} />
+      </div>
+    );
+  }
+
+  // ─── DISTRIBUTOR ROLE VIEW ──────────────────
+  if (isDistributor) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        {filterToolbar}
+        <DistributorTab data={data} />
       </div>
     );
   }

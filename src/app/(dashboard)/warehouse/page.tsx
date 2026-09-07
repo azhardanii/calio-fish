@@ -18,12 +18,13 @@ import {
   X
 } from 'lucide-react';
 import Link from 'next/link';
-import { createWarehouse, updateWarehouse, deleteWarehouse } from '@/app/actions';
+import { createWarehouse, updateWarehouse, deleteWarehouse, createDistributor } from '@/app/actions';
 
 export default function WarehousePage() {
   const { data, isLoading, mutate } = useSWR('/api/data/warehouses');
   const { data: currentUser } = useSWR('/api/auth/me');
   
+  const [activeTab, setActiveTab] = useState<'warehouse' | 'distributor'>('warehouse');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<any>({ name: '', type: 'STORAGE', address: '' });
@@ -31,6 +32,17 @@ export default function WarehousePage() {
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [detailedShipment, setDetailedShipment] = useState<any>(null);
+
+  // Distributor modal state
+  const [isDistributorModalOpen, setIsDistributorModalOpen] = useState(false);
+  const [distributorFormData, setDistributorFormData] = useState({
+    nama: '',
+    no_hp: '',
+    wilayah: '',
+    warehouse_name: '',
+    address: '',
+  });
+  const [isSubmittingDistributor, setIsSubmittingDistributor] = useState(false);
 
   if (isLoading && !data) {
     return (
@@ -44,12 +56,22 @@ export default function WarehousePage() {
     );
   }
 
-  const isOwnerOrAdmin = currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN';
+  const role = (currentUser?.role || '').toUpperCase();
+  const isDistributor = role === 'DISTRIBUTOR';
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+
+  const currentTab = isDistributor ? 'distributor' : activeTab;
+
   const warehouses = data?.warehouses || [];
   const shipments = data?.shipments || [];
   const totalShipments = data?.totalShipments || 0;
   const totalItemsSent = data?.totalItemsSent || 0;
-  const totalGlobalStock = warehouses.reduce((sum: number, w: any) => {
+
+  const centralAndBranchWarehouses = warehouses.filter((w: any) => w.type === 'FACTORY' || w.type === 'STORAGE');
+  const distributorWarehouses = warehouses.filter((w: any) => w.type === 'DISTRIBUTOR');
+  const displayedWarehouses = currentTab === 'distributor' ? distributorWarehouses : centralAndBranchWarehouses;
+
+  const totalGlobalStock = displayedWarehouses.reduce((sum: number, w: any) => {
     return sum + (w.stocks || []).reduce((acc: number, s: any) => acc + (s.quantity || 0), 0);
   }, 0);
 
@@ -76,6 +98,23 @@ export default function WarehousePage() {
       address: w.address || ''
     });
     setIsModalOpen(true);
+  };
+
+  const handleSaveDistributor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!distributorFormData.nama.trim()) { alert('Nama distributor wajib diisi'); return; }
+    setIsSubmittingDistributor(true);
+    try {
+      await createDistributor(distributorFormData);
+      await mutate();
+      setIsDistributorModalOpen(false);
+      setDistributorFormData({ nama: '', no_hp: '', wilayah: '', warehouse_name: '', address: '' });
+      alert('Distributor dan gudang distributor berhasil ditambahkan!');
+    } catch (err: any) {
+      alert(err.message || 'Gagal mendaftarkan distributor');
+    } finally {
+      setIsSubmittingDistributor(false);
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -132,28 +171,73 @@ export default function WarehousePage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-gray-900">Manajemen Gudang</h1>
-          <p className="text-gray-500 text-sm mt-1">Status stok fisik, lokasi fasilitas penyimpanan, dan manajemen gudang cabang.</p>
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-gray-900">
+            {isDistributor ? 'Gudang Distributor' : 'Manajemen Gudang & Distributor'}
+          </h1>
+          <p className="text-gray-500 text-sm mt-1">
+            {isDistributor
+              ? 'Status stok fisik dan logistik fasilitas distributor Anda.'
+              : 'Status stok fisik, lokasi fasilitas penyimpanan, dan manajemen gudang distributor.'}
+          </p>
         </div>
         <div className="flex items-center gap-2.5 flex-wrap">
           <PdfExportButton targetId="warehouse-report" filename="laporan-warehouse" />
-          {isOwnerOrAdmin ? (
-            <button
-              onClick={openCreateModal}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Tambah Warehouse</span>
-            </button>
-          ) : (
+          {isOwnerOrAdmin && (
+            currentTab === 'distributor' ? (
+              <button
+                onClick={() => setIsDistributorModalOpen(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Tambah Distributor</span>
+              </button>
+            ) : (
+              <button
+                onClick={openCreateModal}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Tambah Warehouse</span>
+              </button>
+            )
+          )}
+          {!isOwnerOrAdmin && (
             <span className="text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200/80 px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-2xs">
               <span>👁️</span> Mode View Only
             </span>
           )}
         </div>
       </div>
+
+      {/* Tabs Switcher for Non-Distributor */}
+      {!isDistributor && (
+        <div className="flex gap-2 border-b border-gray-200 pb-3">
+          <button
+            onClick={() => setActiveTab('warehouse')}
+            className={`px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 ${
+              activeTab === 'warehouse'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            <span>🏢 Gudang Pusat &amp; Cabang ({centralAndBranchWarehouses.length})</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('distributor')}
+            className={`px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 ${
+              activeTab === 'distributor'
+                ? 'bg-emerald-700 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            <Boxes className="w-4 h-4" />
+            <span>🚚 Distributor ({distributorWarehouses.length})</span>
+          </button>
+        </div>
+      )}
 
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
@@ -189,140 +273,161 @@ export default function WarehousePage() {
 
       {/* Warehouse Cards List */}
       <div id="warehouse-report" className="grid grid-cols-1 gap-6">
-        {warehouses.map((w: any) => {
-          const totalStockFasilitas = (w.stocks || []).reduce((acc: number, s: any) => acc + (s.quantity || 0), 0);
-          const totalKerugian = (w.stocks || []).reduce((acc: number, s: any) => acc + (s.returned_qty * Number(s.product.base_price)), 0);
-          const mapQuery = w.address || w.name;
-          const isFactory = w.type === 'FACTORY';
+        {displayedWarehouses.length === 0 ? (
+          <div className="text-center py-16 px-4 bg-white rounded-2xl border border-dashed border-gray-300">
+            <div className="text-4xl mb-2">{currentTab === 'distributor' ? '🚚' : '🏢'}</div>
+            <div className="text-base font-bold text-gray-800">
+              {currentTab === 'distributor'
+                ? 'Belum ada fasilitas gudang distributor yang terdaftar'
+                : 'Belum ada fasilitas gudang pusat/cabang yang terdaftar'}
+            </div>
+            <p className="text-sm text-gray-500 mt-1 max-w-md mx-auto">
+              {currentTab === 'distributor'
+                ? 'Gunakan tombol "+ Tambah Distributor" untuk mendaftarkan mitra distributor baru beserta gudangnya.'
+                : 'Gunakan tombol "+ Tambah Warehouse" untuk mendaftarkan gudang penyimpanan baru.'}
+            </p>
+          </div>
+        ) : (
+          displayedWarehouses.map((w: any) => {
+            const totalStockFasilitas = (w.stocks || []).reduce((acc: number, s: any) => acc + (s.quantity || 0), 0);
+            const totalKerugian = (w.stocks || []).reduce((acc: number, s: any) => acc + (s.returned_qty * Number(s.product?.base_price || 0)), 0);
+            const mapQuery = w.address || w.name;
+            const isFactory = w.type === 'FACTORY';
+            const isDist = w.type === 'DISTRIBUTOR';
 
-          return (
-            <Card key={w.id} className="border-t-4 border-t-blue-600 shadow-sm rounded-2xl overflow-hidden border border-gray-200">
-              <div className="grid grid-cols-1 lg:grid-cols-3">
-                <div className="lg:col-span-2 flex flex-col">
-                  {/* Card Header */}
-                  <CardHeader className="p-4 sm:p-5 border-b border-gray-100 bg-gray-50/60 flex flex-row items-center justify-between gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <CardTitle className="text-lg sm:text-xl font-bold text-gray-900 flex items-center gap-2">
-                          <Building2 className={isFactory ? 'text-blue-600 w-5 h-5' : 'text-emerald-600 w-5 h-5'} />
-                          <span>{w.name}</span>
-                        </CardTitle>
-                        <Badge 
-                          variant="outline" 
-                          className={isFactory 
-                            ? 'bg-blue-50 text-blue-800 border-blue-300 font-bold' 
-                            : 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold'
-                          }
-                        >
-                          {isFactory ? '🏭 FACTORY (Pabrik)' : '📦 STORAGE (Gudang Cabang)'}
-                        </Badge>
-                        <span className="text-xs bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full font-bold">
-                          {totalStockFasilitas} pcs stok
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs sm:text-sm text-gray-500 mt-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                        <span className="line-clamp-1">{w.address || 'Alamat fisik belum diatur'}</span>
-                      </div>
-                    </div>
-
-                    {/* Action buttons */}
-                    {isOwnerOrAdmin && (
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button 
-                          onClick={() => openEditModal(w)} 
-                          title="Edit Warehouse"
-                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button 
-                          disabled={isDeletingId === w.id}
-                          onClick={() => handleDelete(w)} 
-                          title="Hapus Warehouse"
-                          className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer disabled:opacity-50"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    )}
-                  </CardHeader>
-
-                  {/* Card Content: Stocks */}
-                  <CardContent className="p-4 sm:p-6 space-y-4 flex-1">
-                    <div>
-                      <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2.5">Stok Fisik Per SKU</div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                        {w.stocks.map((s: any) => (
-                          <div key={s.id} className="p-3 bg-white border border-gray-200/80 rounded-xl shadow-xs">
-                            <div className="text-xs font-bold text-gray-500 truncate">{s.product.name}</div>
-                            <div className="text-xl font-black text-gray-900 mt-1">
-                              {s.quantity} <span className="text-xs font-semibold text-gray-400">pcs</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {totalKerugian > 0 && (
-                      <div className="mt-4 p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <PackageMinus className="text-rose-500 w-5 h-5" />
-                          <div className="font-semibold text-rose-800 text-xs sm:text-sm">Estimasi Kerugian (Barang Rusak/Retur)</div>
+            return (
+              <Card
+                key={w.id}
+                className={`shadow-sm rounded-2xl overflow-hidden border border-gray-200 border-t-4 ${
+                  isDist ? 'border-t-emerald-600' : isFactory ? 'border-t-blue-600' : 'border-t-indigo-600'
+                }`}
+              >
+                <div className="grid grid-cols-1 lg:grid-cols-3">
+                  <div className="lg:col-span-2 flex flex-col">
+                    {/* Card Header */}
+                    <CardHeader className="p-4 sm:p-5 border-b border-gray-100 bg-gray-50/60 flex flex-row items-center justify-between gap-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <CardTitle className="text-lg sm:text-xl font-bold text-gray-900 flex items-center gap-2">
+                            <Building2 className={isDist ? 'text-emerald-600 w-5 h-5' : isFactory ? 'text-blue-600 w-5 h-5' : 'text-indigo-600 w-5 h-5'} />
+                            <span>{w.name}</span>
+                          </CardTitle>
+                          <Badge 
+                            variant="outline" 
+                            className={isDist
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold'
+                              : isFactory 
+                              ? 'bg-blue-50 text-blue-800 border-blue-300 font-bold' 
+                              : 'bg-indigo-50 text-indigo-800 border-indigo-300 font-bold'
+                            }
+                          >
+                            {isDist ? '🚚 DISTRIBUTOR' : isFactory ? '🏭 FACTORY (Pabrik)' : '📦 STORAGE (Cabang)'}
+                          </Badge>
+                          <span className="text-xs bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full font-bold">
+                            {totalStockFasilitas} pcs stok
+                          </span>
                         </div>
-                        <div className="font-bold text-sm sm:text-base text-rose-700">Rp {totalKerugian.toLocaleString('id-ID')}</div>
+                        {w.distributor && (
+                          <div className="text-xs font-bold text-emerald-800 mt-1">
+                            👤 Mitra: {w.distributor.nama} {w.distributor.no_hp ? `(${w.distributor.no_hp})` : ''} {w.distributor.wilayah ? `• Area: ${w.distributor.wilayah}` : ''}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1.5 text-xs sm:text-sm text-gray-500 mt-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                          <span className="line-clamp-1">{w.address || 'Alamat fisik belum diatur'}</span>
+                        </div>
                       </div>
-                    )}
 
-                    {/* Riwayat Pengiriman */}
-                    <div className="mt-4 pt-4 border-t border-gray-100">
-                      <h4 className="font-bold text-gray-700 mb-2.5 text-xs uppercase tracking-wider">Riwayat Logistik Terakhir Dari Gudang Ini</h4>
-                      <div className="space-y-2 max-h-56 overflow-y-auto pr-1 no-scrollbar">
-                        {shipments.filter((s: any) => s.source_name === w.name).slice(0, 8).map((s: any) => (
-                          <div key={s.id} onClick={() => setDetailedShipment(s)} className="flex justify-between items-center p-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-200/60 rounded-xl text-xs cursor-pointer transition">
-                            <div>
-                              <div className="font-bold text-gray-800">{s.destination_name || s.destination_type}</div>
-                              <div className="text-[11px] text-gray-400 mt-0.5">
-                                {new Date(s.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} • {s.shipment_type || 'PENGIRIMAN'}
+                      {/* Action buttons */}
+                      {isOwnerOrAdmin && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button 
+                            onClick={() => openEditModal(w)} 
+                            title="Edit Warehouse"
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button 
+                            disabled={isDeletingId === w.id}
+                            onClick={() => handleDelete(w)} 
+                            title="Hapus Warehouse"
+                            className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer disabled:opacity-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </CardHeader>
+
+                    {/* Card Content: Stocks */}
+                    <CardContent className="p-4 sm:p-6 space-y-4 flex-1">
+                      <div>
+                        <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2.5">Stok Fisik Standby Per SKU</div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                          {w.stocks.map((s: any) => (
+                            <div key={s.id} className="p-3 bg-white border border-gray-200/80 rounded-xl shadow-xs">
+                              <div className="text-xs font-bold text-gray-500 truncate">{s.product.name}</div>
+                              <div className="text-xl font-black text-gray-900 mt-1">
+                                {s.quantity} <span className="text-xs font-semibold text-gray-400">pcs</span>
                               </div>
                             </div>
-                            <div className="font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
-                              {s.items?.reduce((sum: number, i: any) => sum + i.qty, 0)} pcs
-                            </div>
-                          </div>
-                        ))}
-                        
-                        {shipments.filter((s: any) => s.source_name === w.name).length > 8 && (
-                          <div className="pt-2 text-center">
-                            <Link href={`/pengiriman?search=${encodeURIComponent(w.name)}`} className="text-xs text-blue-600 font-bold hover:underline">
-                              Lihat riwayat selengkapnya ({shipments.filter((s: any) => s.source_name === w.name).length - 8}+ pengiriman) &rarr;
-                            </Link>
-                          </div>
-                        )}
-                        
-                        {shipments.filter((s: any) => s.source_name === w.name).length === 0 && (
-                          <div className="text-xs text-gray-400 italic py-3 text-center">Belum ada riwayat pengiriman dari fasilitas ini.</div>
-                        )}
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
+
+                      {totalKerugian > 0 && (
+                        <div className="mt-4 p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <PackageMinus className="text-rose-500 w-5 h-5" />
+                            <div className="font-semibold text-rose-800 text-xs sm:text-sm">Estimasi Kerugian (Barang Rusak/Retur)</div>
+                          </div>
+                          <div className="font-bold text-sm sm:text-base text-rose-700">Rp {totalKerugian.toLocaleString('id-ID')}</div>
+                        </div>
+                      )}
+
+                      {/* Riwayat Pengiriman */}
+                      <div className="mt-4 pt-4 border-t border-gray-100">
+                        <h4 className="font-bold text-gray-700 mb-2.5 text-xs uppercase tracking-wider">Riwayat Logistik Terakhir</h4>
+                        <div className="space-y-2 max-h-56 overflow-y-auto pr-1 no-scrollbar">
+                          {shipments.filter((s: any) => s.source_name === w.name || s.destination_name === w.name).slice(0, 8).map((s: any) => (
+                            <div key={s.id} onClick={() => setDetailedShipment(s)} className="flex justify-between items-center p-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-200/60 rounded-xl text-xs cursor-pointer transition">
+                              <div>
+                                <div className="font-bold text-gray-800">{s.destination_name || s.destination_type}</div>
+                                <div className="text-[11px] text-gray-400 mt-0.5">
+                                  {new Date(s.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} • {s.shipment_type || 'PENGIRIMAN'}
+                                </div>
+                              </div>
+                              <div className="font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+                                {s.items?.reduce((sum: number, i: any) => sum + i.qty, 0)} pcs
+                              </div>
+                            </div>
+                          ))}
+                          
+                          {shipments.filter((s: any) => s.source_name === w.name || s.destination_name === w.name).length === 0 && (
+                            <div className="text-xs text-gray-400 italic py-3 text-center">Belum ada riwayat logistik tercatat.</div>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </div>
+                  
+                  {/* Map preview */}
+                  <div className="border-t lg:border-t-0 lg:border-l border-gray-100 bg-gray-50 p-4 h-64 lg:h-auto min-h-[220px]">
+                    <iframe 
+                      width="100%" 
+                      height="100%" 
+                      frameBorder="0" 
+                      style={{ border: 0, borderRadius: 12, minHeight: 200 }}
+                      src={`https://www.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`} 
+                      allowFullScreen
+                    />
+                  </div>
                 </div>
-                
-                {/* Map preview */}
-                <div className="border-t lg:border-t-0 lg:border-l border-gray-100 bg-gray-50 p-4 h-64 lg:h-auto min-h-[220px]">
-                  <iframe 
-                    width="100%" 
-                    height="100%" 
-                    frameBorder="0" 
-                    style={{ border: 0, borderRadius: 12, minHeight: 200 }}
-                    src={`https://www.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`} 
-                    allowFullScreen
-                  />
-                </div>
-              </div>
-            </Card>
-          );
-        })}
+              </Card>
+            );
+          })
+        )}
       </div>
       
       {/* Bottom Link */}
@@ -450,6 +555,119 @@ export default function WarehousePage() {
                     )}
                   </button>
                 </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE DISTRIBUTOR MODAL */}
+      {isDistributorModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[92vh] overflow-y-auto">
+            <div className="flex justify-between items-center pb-3 border-b border-gray-100 mb-4">
+              <div>
+                <h3 className="text-lg sm:text-xl font-bold text-gray-900">
+                  🚚 Daftarkan Distributor &amp; Fasilitas Gudang
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Daftarkan mitra distributor baru beserta fasilitas penyimpanan stoknya
+                </p>
+              </div>
+              <button 
+                onClick={() => setIsDistributorModalOpen(false)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveDistributor} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Nama Distributor / Badan Usaha *
+                </label>
+                <input 
+                  required 
+                  type="text" 
+                  className="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" 
+                  placeholder="Contoh: CV Berkah Bahari / Budi Santoso" 
+                  value={distributorFormData.nama} 
+                  onChange={e => setDistributorFormData({...distributorFormData, nama: e.target.value})} 
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                    No. WhatsApp / HP *
+                  </label>
+                  <input 
+                    required 
+                    type="text" 
+                    className="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" 
+                    placeholder="081234567890" 
+                    value={distributorFormData.no_hp} 
+                    onChange={e => setDistributorFormData({...distributorFormData, no_hp: e.target.value})} 
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                    Wilayah / Area *
+                  </label>
+                  <input 
+                    required 
+                    type="text" 
+                    className="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" 
+                    placeholder="Contoh: Malang Raya / Jember" 
+                    value={distributorFormData.wilayah} 
+                    onChange={e => setDistributorFormData({...distributorFormData, wilayah: e.target.value})} 
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Nama Fasilitas Gudang Distributor (Opsional)
+                </label>
+                <input 
+                  type="text" 
+                  className="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" 
+                  placeholder="Otomatis: Gudang Distributor - [Nama]" 
+                  value={distributorFormData.warehouse_name} 
+                  onChange={e => setDistributorFormData({...distributorFormData, warehouse_name: e.target.value})} 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Alamat Fasilitas Gudang Distributor
+                </label>
+                <textarea 
+                  className="w-full border border-gray-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" 
+                  rows={2} 
+                  placeholder="Contoh: Jl. Ijen No. 12, Klojen, Kota Malang" 
+                  value={distributorFormData.address} 
+                  onChange={e => setDistributorFormData({...distributorFormData, address: e.target.value})} 
+                />
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-gray-100">
+                <button 
+                  type="button" 
+                  onClick={() => setIsDistributorModalOpen(false)} 
+                  disabled={isSubmittingDistributor} 
+                  className="px-4 py-2 border border-gray-300 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isSubmittingDistributor} 
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingDistributor ? 'Mendaftarkan...' : '🚀 Simpan Distributor'}
+                </button>
               </div>
             </form>
           </div>

@@ -12,6 +12,8 @@ export async function GET() {
 
   if (!isOwnerOrAdmin && user && (role === 'MARKETING' || role.includes('MARKETING') || role === 'MITRA')) {
     whereClause = { pengelola_id: user.id };
+  } else if (!isOwnerOrAdmin && user && role === 'DISTRIBUTOR') {
+    whereClause = { distributor_id: user.id };
   }
 
   const outlets = await prisma.outlet.findMany({
@@ -19,6 +21,7 @@ export async function GET() {
     include: { 
       stocks: { include: { product: true } },
       pengelola: { select: { id: true, nama: true } },
+      distributor: { select: { id: true, nama: true, wilayah: true } },
       transactions: { orderBy: { date: 'desc' } },
       shipments: { orderBy: { date: 'desc' }, include: { items: { include: { product: true } } } }
     },

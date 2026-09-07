@@ -9,7 +9,9 @@ import { formatCurrency } from '@/lib/utils';
 import {
   createEventBooth,
   updateEventBooth,
+  deleteEventBooth,
   createBoothBundle,
+  updateBoothBundlePrice,
   deleteBoothBundle,
   transferStockToBooth,
   recordBoothSale,
@@ -607,6 +609,77 @@ function RecordSaleModal({
   );
 }
 
+// ─── MODAL: EDIT HARGA BUNDLE ───────────────────────────────────────
+function EditBundlePriceModal({
+  bundle,
+  onClose,
+  onSaved,
+}: {
+  bundle: any;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [hargaJual, setHargaJual] = useState<number>(Number(bundle.harga_jual) || 0);
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (hargaJual <= 0) { alert('Harga jual harus lebih dari 0'); return; }
+
+    setSaving(true);
+    try {
+      await updateBoothBundlePrice(bundle.id, hargaJual);
+      onSaved();
+      onClose();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, padding: 16 }}>
+      <div style={{ background: '#fff', borderRadius: 20, padding: 26, maxWidth: 420, width: '100%', boxShadow: '0 25px 50px rgba(0,0,0,0.15)' }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: '#0f172a' }}>✏️ Edit Harga Paket Bundling</h3>
+        <p style={{ margin: '0 0 16px', fontSize: 13, color: '#64748b' }}>Sesuaikan harga jual paket: <b>{bundle.nama}</b></p>
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Nama Paket</label>
+            <input
+              type="text"
+              value={bundle.nama}
+              disabled
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, background: '#f8fafc', color: '#64748b', boxSizing: 'border-box' }}
+            />
+          </div>
+
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Harga Jual Paket (Rp) *</label>
+            <input
+              type="number"
+              min="1"
+              value={hargaJual || ''}
+              onChange={e => setHargaJual(Number(e.target.value))}
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #3b82f6', fontSize: 16, fontWeight: 700, outline: 'none', boxSizing: 'border-box' }}
+              required
+              autoFocus
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
+            <button type="button" onClick={onClose} style={{ padding: '8px 18px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#64748b' }}>Batal</button>
+            <button type="submit" disabled={saving} style={{ padding: '8px 22px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+              {saving ? 'Menyimpan...' : '💾 Simpan Perubahan'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── MODAL: SELESAIKAN BOOTH & PENGEMBALIAN SISA STOK ───────────────
 function CompleteBoothModal({
   booth,
@@ -619,22 +692,49 @@ function CompleteBoothModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [targetWarehouseId, setTargetWarehouseId] = useState(warehouses[0]?.id || '');
+  const centralWarehouse = warehouses.find((w: any) => w.type === 'FACTORY' || w.type === 'STORAGE') || warehouses[0];
+  const [targetWarehouseId, setTargetWarehouseId] = useState(centralWarehouse?.id || '');
   const [notes, setNotes] = useState('Event selesai, seluruh sisa stok fisik dikembalikan ke gudang');
   const [saving, setSaving] = useState(false);
 
   const remainingStocks = booth.stocks.filter((s: any) => s.quantity > 0);
   const totalRemainingPcs = remainingStocks.reduce((sum: number, s: any) => sum + s.quantity, 0);
+  const totalValuation = remainingStocks.reduce((sum: number, s: any) => sum + (s.quantity * Number(s.product.base_price || 0)), 0);
+
+  const selectedWarehouse = warehouses.find(w => w.id === targetWarehouseId);
+
+  const copyReturnManifest = () => {
+    const text = `*BERITA ACARA PENGEMBALIAN SISA STOK EVENT*\n` +
+      `🎪 Event: ${booth.nama}\n` +
+      `📍 Lokasi: ${booth.lokasi || '-'}\n` +
+      `🗓️ Tanggal Selesai: ${new Date().toLocaleDateString('id-ID')}\n` +
+      `🏢 Gudang Tujuan: ${selectedWarehouse?.name || 'Gudang Pusat'}\n` +
+      `👤 PIC: ${booth.pic?.nama || '-'}\n` +
+      `----------------------------------------\n` +
+      `RINCIAN SISA STOK KEMBALI:\n` +
+      (remainingStocks.length === 0 ? `(Semua stok habis terjual 0 sisa)\n` : remainingStocks.map((s: any, idx: number) => `${idx + 1}. ${s.product.name} [${s.product.sku}]\n   Sisa: ${s.quantity} pcs @ ${formatRp(Number(s.product.base_price))} = ${formatRp(s.quantity * Number(s.product.base_price))}`).join('\n')) +
+      `\n----------------------------------------\n` +
+      `📦 TOTAL SISA BARANG: ${totalRemainingPcs} pcs\n` +
+      `💰 TOTAL VALUASI FISIK: ${formatRp(totalValuation)}\n` +
+      `💵 OMSET EVENT: ${formatRp(Number(booth.total_penjualan))}\n` +
+      `🏦 KAS MASUK DISETOR: ${formatRp(Number(booth.kas_masuk))}\n` +
+      `📝 Catatan: ${notes}\n` +
+      `✅ Status: Stok fisik otomatis bertambah ke Gudang Tujuan.`;
+    
+    navigator.clipboard.writeText(text);
+    alert('📋 Rincian Berita Acara Sisa Stok berhasil disalin ke clipboard!');
+  };
 
   const handleComplete = async () => {
     if (!targetWarehouseId) { alert('Pilih gudang tujuan pengembalian'); return; }
-    if (!confirm(`Konfirmasi penutupan event "${booth.nama}"?\n\nSisa stok (${totalRemainingPcs} pcs) akan langsung dikembalikan ke stok aktif gudang tujuan dan siap dijual kembali.`)) {
+    if (!confirm(`Konfirmasi penutupan event "${booth.nama}"?\n\nSisa stok (${totalRemainingPcs} pcs senilai ${formatRp(totalValuation)}) akan langsung dikembalikan ke stok aktif ${selectedWarehouse?.name || 'Gudang'} dan siap dijual kembali.`)) {
       return;
     }
 
     setSaving(true);
     try {
       await completeEventBooth(booth.id, targetWarehouseId, notes);
+      alert(`Event "${booth.nama}" berhasil diselesaikan!\n\n${totalRemainingPcs} pcs produk telah resmi masuk kembali ke ${selectedWarehouse?.name || 'Gudang Pusat'}.`);
       onSaved();
       onClose();
     } catch (err: any) {
@@ -646,9 +746,21 @@ function CompleteBoothModal({
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, padding: 16 }}>
-      <div style={{ background: '#fff', borderRadius: 20, padding: 28, maxWidth: 480, width: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.15)' }}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: '#0f172a' }}>🏁 Selesaikan Event &amp; Pengembalian Sisa Stok</h3>
-        <p style={{ margin: '0 0 16px', fontSize: 13, color: '#64748b' }}>Tutup status booth <b>{booth.nama}</b> dan kembalikan sisa produk ke gudang</p>
+      <div style={{ background: '#fff', borderRadius: 24, padding: 28, maxWidth: 540, width: '100%', maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 25px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+          <div>
+            <h3 style={{ margin: '0 0 4px', fontSize: 19, fontWeight: 800, color: '#0f172a' }}>🏁 Selesaikan Event &amp; Pengembalian Sisa Stok</h3>
+            <p style={{ margin: 0, fontSize: 13, color: '#64748b' }}>Tutup status booth <b>{booth.nama}</b> dan kembalikan sisa produk ke gudang pusat</p>
+          </div>
+          <button
+            type="button"
+            onClick={copyReturnManifest}
+            style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#f8fafc', fontSize: 11, fontWeight: 700, color: '#334155', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+            title="Salin Berita Acara ke WhatsApp"
+          >
+            📋 Salin WA
+          </button>
+        </div>
 
         {/* Highlight perbedaan pengembalian vs retur */}
         <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '12px 14px', marginBottom: 16 }}>
@@ -663,42 +775,71 @@ function CompleteBoothModal({
         {/* Ringkasan Keuangan */}
         <div style={{ background: '#f8fafc', borderRadius: 12, padding: '12px 16px', border: '1px solid #e2e8f0', marginBottom: 16 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', letterSpacing: 0.5, marginBottom: 8 }}>REKONSILIASI PENJUALAN BOOTH</div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-            <span style={{ color: '#64748b' }}>Total Penjualan:</span>
-            <span style={{ fontWeight: 800, color: '#15803d' }}>{formatRp(Number(booth.total_penjualan))}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-            <span style={{ color: '#64748b' }}>Kas Masuk Disetor:</span>
-            <span style={{ fontWeight: 800, color: '#0f172a' }}>{formatRp(Number(booth.kas_masuk))}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-            <span style={{ color: '#64748b' }}>Sisa Fisik Kembali:</span>
-            <span style={{ fontWeight: 800, color: '#2563eb' }}>{totalRemainingPcs} pcs</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <span style={{ fontSize: 12, color: '#64748b' }}>Total Penjualan:</span>
+              <div style={{ fontWeight: 800, color: '#15803d', fontSize: 15 }}>{formatRp(Number(booth.total_penjualan))}</div>
+            </div>
+            <div>
+              <span style={{ fontSize: 12, color: '#64748b' }}>Kas Masuk Disetor:</span>
+              <div style={{ fontWeight: 800, color: '#0f172a', fontSize: 15 }}>{formatRp(Number(booth.kas_masuk))}</div>
+            </div>
+            <div>
+              <span style={{ fontSize: 12, color: '#64748b' }}>Sisa Fisik Kembali:</span>
+              <div style={{ fontWeight: 800, color: '#2563eb', fontSize: 15 }}>{totalRemainingPcs} pcs</div>
+            </div>
+            <div>
+              <span style={{ fontSize: 12, color: '#64748b' }}>Total Valuasi Sisa:</span>
+              <div style={{ fontWeight: 800, color: '#7c3aed', fontSize: 15 }}>{formatRp(totalValuation)}</div>
+            </div>
           </div>
         </div>
 
-        {/* Daftar Sisa Fisik */}
+        {/* Rincian Sisa Fisik yang Dikirim Balik */}
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 6 }}>Rincian Sisa Produk ({remainingStocks.length} SKU):</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>Rincian Sisa Produk Dikembalikan ({remainingStocks.length} SKU):</div>
+            <span style={{ fontSize: 11, color: '#2563eb', fontWeight: 700 }}>Total: {totalRemainingPcs} pcs</span>
+          </div>
+
           {remainingStocks.length === 0 ? (
-            <div style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>Seluruh produk habis terjual (0 sisa).</div>
+            <div style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic', padding: 12, background: '#f8fafc', borderRadius: 10, textAlign: 'center' }}>Seluruh produk habis terjual (0 sisa).</div>
           ) : (
-            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
               <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                    <th style={{ padding: '6px 10px', textAlign: 'left', color: '#64748b' }}>PRODUK</th>
-                    <th style={{ padding: '6px 10px', textAlign: 'right', color: '#64748b' }}>SISA</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'left', color: '#64748b', fontSize: 11, fontWeight: 700 }}>PRODUK &amp; SKU</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', color: '#64748b', fontSize: 11, fontWeight: 700 }}>SISA (PCS)</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', color: '#64748b', fontSize: 11, fontWeight: 700 }}>NILAI SATUAN</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', color: '#64748b', fontSize: 11, fontWeight: 700 }}>SUBTOTAL VALUASI</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {remainingStocks.map((s: any) => (
-                    <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '6px 10px', fontWeight: 600, color: '#0f172a' }}>{s.product.name}</td>
-                      <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 800, color: '#2563eb' }}>{s.quantity} pcs</td>
-                    </tr>
-                  ))}
+                  {remainingStocks.map((s: any) => {
+                    const unitPrice = Number(s.product.base_price || 0);
+                    const subtotal = s.quantity * unitPrice;
+                    return (
+                      <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '8px 10px' }}>
+                          <div style={{ fontWeight: 700, color: '#0f172a' }}>{s.product.name}</div>
+                          <div style={{ fontSize: 10, color: '#94a3b8' }}>{s.product.sku}</div>
+                        </td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: '#2563eb' }}>{s.quantity} pcs</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#64748b' }}>{formatRp(unitPrice)}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: '#15803d' }}>{formatRp(subtotal)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
+                <tfoot>
+                  <tr style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0', fontWeight: 800 }}>
+                    <td style={{ padding: '8px 10px', color: '#0f172a' }}>TOTAL FISIK KEMBALI</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', color: '#2563eb' }}>{totalRemainingPcs} pcs</td>
+                    <td></td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', color: '#15803d' }}>{formatRp(totalValuation)}</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
@@ -706,14 +847,16 @@ function CompleteBoothModal({
 
         {/* Pilih Gudang Tujuan */}
         <div style={{ marginBottom: 14 }}>
-          <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Gudang Tujuan Pengembalian *</label>
+          <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Gudang Pusat Tujuan Pengembalian *</label>
           <select
             value={targetWarehouseId}
             onChange={e => setTargetWarehouseId(e.target.value)}
             style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', background: '#fff', boxSizing: 'border-box' }}
           >
             {warehouses.map(w => (
-              <option key={w.id} value={w.id}>{w.name} ({w.type})</option>
+              <option key={w.id} value={w.id}>
+                {w.name} {w.type === 'FACTORY' || w.type === 'STORAGE' ? '⭐ (Gudang Pusat)' : `(${w.type})`}
+              </option>
             ))}
           </select>
         </div>
@@ -762,10 +905,29 @@ function BoothDetailView({
   const [showBundleModal, setShowBundleModal] = useState(false);
   const [showSaleModal, setShowSaleModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [editingBundle, setEditingBundle] = useState<any>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const totalStockPcs = booth.stocks.reduce((sum: number, s: any) => sum + s.quantity, 0);
   const totalSalesPcs = booth.sales.reduce((sum: number, s: any) => sum + s.qty, 0);
   const isAktif = booth.status === 'AKTIF';
+
+  const handleDeleteBooth = async () => {
+    if (!confirm(`Konfirmasi HAPUS event booth "${booth.nama}"?\n\nPerhatian: Data booth akan dihapus. Jika masih ada sisa stok (${totalStockPcs} pcs), sistem akan otomatis mengembalikan stok ke Gudang Pusat.`)) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deleteEventBooth(booth.id);
+      alert(`Event booth "${booth.nama}" berhasil dihapus.`);
+      onRefresh();
+      onClose();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 90, padding: 16 }}>
@@ -790,6 +952,14 @@ function BoothDetailView({
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              onClick={handleDeleteBooth}
+              disabled={deleting}
+              style={{ padding: '7px 14px', borderRadius: 10, border: '1px solid #fecaca', background: '#fff', color: '#dc2626', fontSize: 12, fontWeight: 700, cursor: deleting ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
+              title="Hapus Event Booth"
+            >
+              {deleting ? 'Menghapus...' : '🗑️ Hapus Booth'}
+            </button>
             {isAktif && (
               <button
                 onClick={() => setShowCompleteModal(true)}
@@ -946,8 +1116,14 @@ function BoothDetailView({
                         </ul>
                       </div>
 
-                      {isAktif && (
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto' }}>
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 'auto' }}>
+                        <button
+                          onClick={() => setEditingBundle(b)}
+                          style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #c7d2fe', background: '#eef2ff', color: '#4338ca', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                        >
+                          ✏️ Edit Harga
+                        </button>
+                        {isAktif && (
                           <button
                             onClick={async () => {
                               if (confirm(`Hapus bundle "${b.nama}"?`)) {
@@ -959,8 +1135,8 @@ function BoothDetailView({
                           >
                             🗑️ Hapus
                           </button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1115,6 +1291,14 @@ KETERANGAN: Sisa booth pameran selesai`}
             onRefresh();
             onClose();
           }}
+        />
+      )}
+
+      {editingBundle && (
+        <EditBundlePriceModal
+          bundle={editingBundle}
+          onClose={() => setEditingBundle(null)}
+          onSaved={onRefresh}
         />
       )}
     </div>
@@ -1272,6 +1456,16 @@ export function BoothManager() {
         </div>
       </div>
 
+      {/* Informational Callout */}
+      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 14, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 12, color: '#166534', lineHeight: 1.5, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 18 }}>💡</span>
+          <span>
+            <b>Alur Data Event &amp; PIC Marketing:</b> Transaksi di modul ini adalah penjualan langsung di lokasi event/bazar. Saat PIC Marketing ditugaskan, omset event terhubung ke rekonsiliasi PIC tersebut, dan sisa stok fisik saat event selesai akan otomatis dikembalikan ke stok aktif <b>Gudang Pusat</b>.
+          </span>
+        </div>
+      </div>
+
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8, borderBottom: '1px solid #e2e8f0', paddingBottom: 8 }}>
         <button
@@ -1367,16 +1561,35 @@ export function BoothManager() {
                 </div>
 
                 {/* Footer Action */}
-                <div style={{ padding: '12px 20px', borderTop: '1px solid #f1f5f9', background: '#fafafa' }}>
+                <div style={{ padding: '12px 20px', borderTop: '1px solid #f1f5f9', background: '#fafafa', display: 'flex', gap: 8 }}>
                   <button
                     onClick={() => setSelectedBooth(booth)}
                     style={{
-                      width: '100%', padding: '9px', borderRadius: 10, border: 'none',
-                      background: isAktif ? 'linear-gradient(135deg, #0f172a, #1e293b)' : '#e2e8f0',
-                      color: isAktif ? '#fff' : '#475569', fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                      flex: 1, padding: '9px', borderRadius: 10, border: 'none',
+                      background: isAktif ? 'linear-gradient(135deg, #0f172a, #1e293b)' : '#334155',
+                      color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer'
                     }}
                   >
                     🔎 Kelola Booth &amp; Kasir
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (confirm(`Konfirmasi HAPUS booth "${booth.nama}"?\n\nJika booth masih memiliki sisa stok (${stockPcs} pcs), sisa stok akan dikembalikan ke Gudang Pusat.`)) {
+                        try {
+                          await deleteEventBooth(booth.id);
+                          mutate();
+                        } catch (err: any) {
+                          alert(err.message);
+                        }
+                      }
+                    }}
+                    style={{
+                      padding: '9px 12px', borderRadius: 10, border: '1px solid #fecaca',
+                      background: '#fff', color: '#dc2626', fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                    }}
+                    title="Hapus Booth"
+                  >
+                    🗑️
                   </button>
                 </div>
               </div>

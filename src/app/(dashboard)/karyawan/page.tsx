@@ -22,9 +22,11 @@ import {
   ChevronRight,
   Activity,
   Filter,
-  RotateCcw
+  RotateCcw,
+  Building2
 } from 'lucide-react';
 import { EmployeeManager } from './EmployeeManager';
+import { DistributorManager } from './DistributorManager';
 
 // Safe date formatting helpers to prevent any invalid time value or hydration mismatch
 function safeFormatDate(val: any): string {
@@ -87,7 +89,7 @@ export default function KaryawanPage() {
   const { data: currentUser } = useSWR('/api/auth/me');
   
   // 5. Active tab state
-  const [activeTab, setActiveTab] = useState<'karyawan' | 'presensi'>('karyawan');
+  const [activeTab, setActiveTab] = useState<'karyawan' | 'distributor' | 'presensi'>('karyawan');
   
   // 6. Filter states
   const [presensiSearch, setPresensiSearch] = useState('');
@@ -390,6 +392,23 @@ export default function KaryawanPage() {
         </button>
 
         <button
+          onClick={() => setActiveTab('distributor')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer select-none ${
+            activeTab === 'distributor'
+              ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'
+          }`}
+        >
+          <Building2 className="w-4 h-4" />
+          <span>Database Distributor</span>
+          <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+            activeTab === 'distributor' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
+          }`}>
+            {employees.filter((e: any) => (e?.role || '').toUpperCase() === 'DISTRIBUTOR').length}
+          </span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('presensi')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer select-none ${
             activeTab === 'presensi'
@@ -411,6 +430,13 @@ export default function KaryawanPage() {
       {activeTab === 'karyawan' && (
         <div className="animate-in fade-in duration-200">
           <EmployeeManager employees={employees} currentUser={currentUser} />
+        </div>
+      )}
+
+      {/* ── TAB CONTENT: DATABASE DISTRIBUTOR ── */}
+      {activeTab === 'distributor' && (
+        <div className="animate-in fade-in duration-200">
+          <DistributorManager employees={employees} currentUser={currentUser} />
         </div>
       )}
 

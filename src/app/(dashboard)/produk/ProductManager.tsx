@@ -109,7 +109,6 @@ export function ProductManager({ products, transactions }: { products: any[], tr
               <TableHead>Nama Produk</TableHead>
               <TableHead>Singkatan</TableHead>
               <TableHead className="text-right">Harga Dasar</TableHead>
-              <TableHead className="text-center">Stok Fisik</TableHead>
               <TableHead className="text-center">Status</TableHead>
               <TableHead className="text-right">Aksi</TableHead>
             </TableRow>
@@ -121,11 +120,6 @@ export function ProductManager({ products, transactions }: { products: any[], tr
                 <TableCell className="font-bold">{r.name}</TableCell>
                 <TableCell>{r.short_name}</TableCell>
                 <TableCell className="text-right">Rp {Number(r.base_price).toLocaleString('id-ID')}</TableCell>
-                <TableCell className="text-center">
-                  <span className={`px-2 py-1 rounded text-xs font-bold ${r.stok <= 10 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                    {r.stok} {r.unit}
-                  </span>
-                </TableCell>
                 <TableCell className="text-center">
                   <span className={`px-2 py-1 rounded text-xs font-bold ${r.is_active ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'}`}>
                     {r.is_active ? 'Aktif' : 'Nonaktif'}
@@ -140,7 +134,7 @@ export function ProductManager({ products, transactions }: { products: any[], tr
             ))}
             {products.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-gray-500 py-8">Belum ada data produk.</TableCell>
+                <TableCell colSpan={6} className="text-center text-gray-500 py-8">Belum ada data produk.</TableCell>
               </TableRow>
             )}
           </TableBody>
@@ -263,16 +257,10 @@ export function ProductManager({ products, transactions }: { products: any[], tr
                   <input required type="text" className="w-full border rounded p-2" placeholder="Cth: pcs" value={formData.unit || ''} onChange={e => setFormData({...formData, unit: e.target.value})} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Harga Dasar (Rp)</label>
-                  <input required type="number" className="w-full border rounded p-2" value={formData.base_price || ''} onChange={e => setFormData({...formData, base_price: e.target.value ? Number(e.target.value) : ''})} />
-                </div>
-                <div className="bg-blue-50 p-2 rounded border border-blue-100">
-                  <label className="block text-sm font-bold text-blue-900 mb-1">Stok Fisik Aktual</label>
-                  <input required type="number" className="w-full border-blue-200 rounded p-2 font-bold" value={formData.stok === undefined ? '' : formData.stok} onChange={e => setFormData({...formData, stok: e.target.value ? Number(e.target.value) : 0})} />
-                  {isEditing && <p className="text-xs text-blue-600 mt-1">Mengubah angka ini akan otomatis mencatat log "Penyesuaian Opname" di riwayat.</p>}
-                </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Harga Dasar (Rp)</label>
+                <input required type="number" className="w-full border rounded p-2 text-base font-semibold" placeholder="Contoh: 35000" value={formData.base_price || ''} onChange={e => setFormData({...formData, base_price: e.target.value ? Number(e.target.value) : ''})} />
+                <p className="text-xs text-gray-500 mt-1">Stok fisik produk dikelola dan dipantau melalui menu Gudang / Warehouse.</p>
               </div>
               <div className="flex items-center gap-2 pt-2">
                 <input type="checkbox" id="is_active" checked={formData.is_active} onChange={e => setFormData({...formData, is_active: e.target.checked})} className="w-4 h-4 text-blue-600 rounded" />

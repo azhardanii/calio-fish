@@ -33,6 +33,8 @@ export default async function DashboardLayout({
     role = 'PRODUKSI';
   } else if (role === 'STAFF MARKETING' || role === 'STAFF_MARKETING' || role.includes('MARKETING') || posisi.includes('MARKETING')) {
     role = 'MARKETING';
+  } else if (role.includes('DISTRIBUTOR') || posisi.includes('DISTRIBUTOR')) {
+    role = 'DISTRIBUTOR';
   } else if (role.includes('MITRA') || posisi.includes('MITRA')) {
     role = 'MITRA';
   } else if (role.includes('ADMIN') || posisi.includes('ADMIN')) {

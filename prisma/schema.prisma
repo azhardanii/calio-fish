@@ -212,6 +212,8 @@ model Outlet {
   updated_at   DateTime           @updatedAt
   pengelola_id String?
   pengelola    Employee?          @relation("OutletPengelola", fields: [pengelola_id], references: [id])
+  distributor_id String?
+  distributor    Employee?          @relation("DistributorOutlets", fields: [distributor_id], references: [id])
   shipments    OutboundShipment[]
   stocks       OutletStock[]
   transactions OutletTransaction[]
@@ -229,13 +231,15 @@ model OutletTransaction {
 }
 
 model Warehouse {
-  id         String           @id @default(uuid())
-  name       String
-  type       String
-  created_at DateTime         @default(now())
-  updated_at DateTime         @updatedAt
-  address    String?
-  stocks     WarehouseStock[]
+  id             String           @id @default(uuid())
+  name           String
+  type           String
+  created_at     DateTime         @default(now())
+  updated_at     DateTime         @updatedAt
+  address        String?
+  distributor_id String?
+  distributor    Employee?        @relation("DistributorWarehouse", fields: [distributor_id], references: [id])
+  stocks         WarehouseStock[]
 }
 
 model WarehouseStock {
@@ -277,6 +281,7 @@ model Employee {
   status_aktif       Boolean            @default(true)
   created_at         DateTime           @default(now())
   updated_at         DateTime           @updatedAt
+  wilayah            String?
   attendances                  Attendance[]
   distribusi_sample            DistribusiSample[]
   jadwal_kol                   JadwalKOL[]
@@ -290,6 +295,22 @@ model Employee {
   marketing_targets            MarketingTarget[]
   personal_buyer_transactions  PersonalBuyerTransaction[]
   managed_booths               EventBooth[]                 @relation("BoothPIC")
+  distributor_warehouses       Warehouse[]                  @relation("DistributorWarehouse")
+  distributor_outlets          Outlet[]                     @relation("DistributorOutlets")
+  expenses                     Expense[]
+}
+
+model Expense {
+  id          String    @id @default(uuid())
+  category    String    @default("OPERASIONAL")
+  title       String
+  amount      Decimal   @db.Decimal(14, 2)
+  date        DateTime  @db.Date
+  description String?
+  employee_id String?
+  employee    Employee? @relation(fields: [employee_id], references: [id], onDelete: SetNull)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
 }
 
 model Attendance {

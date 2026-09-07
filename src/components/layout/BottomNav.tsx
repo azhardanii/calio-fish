@@ -23,6 +23,7 @@ import {
   ChevronUp,
   Compass,
   Store,
+  ShoppingCart,
 } from "lucide-react";
 
 interface BottomNavProps {
@@ -44,6 +45,7 @@ export function BottomNav({ user }: BottomNavProps) {
   const isProduksi = isOwnerOrAdmin || role === "PRODUKSI" || role.includes("PRODUKSI");
   const isMarketing = isOwnerOrAdmin || role === "MARKETING" || role.includes("MARKETING");
   const isMitra = isOwnerOrAdmin || role === "MITRA" || role.includes("MITRA");
+  const isDistributor = isOwnerOrAdmin || role === "DISTRIBUTOR" || role.includes("DISTRIBUTOR");
 
   // Scroll detection: auto-hide on scroll down, auto-show on scroll up
   useEffect(() => {
@@ -172,6 +174,12 @@ export function BottomNav({ user }: BottomNavProps) {
         { name: "Booth", href: "/booth", icon: Store },
         { name: "Outlet", href: "/outlet", icon: MapPin },
       ]
+    : isDistributor
+    ? [
+        { name: "Gudang", href: "/warehouse", icon: WarehouseIcon },
+        { name: "Outlet", href: "/outlet", icon: MapPin },
+        { name: "Chat", href: "/chats", icon: MessageCircle },
+      ]
     : isMitra
     ? [
         { name: "Outlet", href: "/outlet", icon: MapPin },
@@ -185,13 +193,14 @@ export function BottomNav({ user }: BottomNavProps) {
   // Secondary items (shown in "More" drawer)
   const secondaryItems = [
     { name: "Produksi", href: "/produksi", icon: Factory, visible: isProduksi && !primaryItems.some(p => p.href === "/produksi") },
-    { name: "Marketing", href: "/marketing", icon: TrendingUp, visible: isMarketing && !primaryItems.some(p => p.href === "/marketing") },
+    { name: "Marketing Offline", href: "/marketing", icon: TrendingUp, visible: isMarketing && !primaryItems.some(p => p.href === "/marketing") },
+    { name: "E-Commerce", href: "/ecommerce", icon: ShoppingCart, visible: isMarketing || isOwnerOrAdmin },
     { name: "Event & Booth", href: "/booth", icon: Store, visible: (isMarketing || isOwnerOrAdmin) && !primaryItems.some(p => p.href === "/booth") },
     { name: "Database Produk", href: "/produk", icon: PackageCheck, visible: isOwnerOrAdmin },
-    { name: "Warehouse", href: "/warehouse", icon: WarehouseIcon, visible: (isOwnerOrAdmin || isProduksi || isMarketing) && !primaryItems.some(p => p.href === "/warehouse") },
+    { name: "Warehouse", href: "/warehouse", icon: WarehouseIcon, visible: (isOwnerOrAdmin || isProduksi || isMarketing || isDistributor) && !primaryItems.some(p => p.href === "/warehouse") },
     { name: "Karyawan", href: "/karyawan", icon: Users, visible: isOwnerOrAdmin || isMarketing || isProduksi },
-    { name: "Database Outlet", href: "/outlet", icon: MapPin, visible: (isOwnerOrAdmin || isMitra || isMarketing) && !primaryItems.some(p => p.href === "/outlet") },
-    { name: "Log Pengiriman", href: "/pengiriman", icon: Package, visible: (isOwnerOrAdmin || isMitra) && !primaryItems.some(p => p.href === "/pengiriman") },
+    { name: "Database Outlet", href: "/outlet", icon: MapPin, visible: (isOwnerOrAdmin || isMitra || isMarketing || isDistributor) && !primaryItems.some(p => p.href === "/outlet") },
+    { name: "Log Pengiriman", href: "/pengiriman", icon: Package, visible: (isOwnerOrAdmin || isMitra || isDistributor) && !primaryItems.some(p => p.href === "/pengiriman") },
     { name: "Affiliator", href: "/affiliator", icon: Network, visible: isOwnerOrAdmin },
     { name: "Chat Calio", href: "/chats", icon: MessageCircle, visible: !primaryItems.some(p => p.href === "/chats") },
     { name: "Pengaturan", href: "/settings", icon: Settings, visible: isOwnerOrAdmin },

@@ -41,6 +41,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
 
   const [wilayahFilter, setWilayahFilter] = useState<string>('');
   const [marketingFilter, setMarketingFilter] = useState<string>('');
+  const [distributorFilter, setDistributorFilter] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -59,6 +60,8 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const userRole = (currentUser?.role || '').toUpperCase();
   const isOwnerOrAdmin = userRole === 'OWNER' || userRole === 'ADMIN';
   const isMarketing = userRole === 'MARKETING' || userRole.includes('MARKETING');
+  const isDistributor = userRole === 'DISTRIBUTOR';
+  const canAddOutlet = isOwnerOrAdmin || isDistributor;
 
   // Keep selectedOutlet in sync with latest outlets data from SWR
   useEffect(() => {
@@ -101,6 +104,27 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
     return Array.from(listMap.values()).sort((a, b) => a.nama.localeCompare(b.nama));
   }, [employees, outlets]);
 
+  // List unique distributors (from employees with role DISTRIBUTOR or assigned outlet distributor)
+  const distributorList = useMemo(() => {
+    const listMap = new Map<string, { id: string; nama: string; wilayah?: string }>();
+
+    (employees || []).forEach(emp => {
+      if ((emp.role || '').toUpperCase() === 'DISTRIBUTOR') {
+        listMap.set(emp.id, { id: emp.id, nama: emp.nama, wilayah: emp.wilayah });
+      }
+    });
+
+    outlets.forEach(o => {
+      if (o.distributor && o.distributor.id) {
+        if (!listMap.has(o.distributor.id)) {
+          listMap.set(o.distributor.id, { id: o.distributor.id, nama: o.distributor.nama, wilayah: o.distributor.wilayah });
+        }
+      }
+    });
+
+    return Array.from(listMap.values()).sort((a, b) => a.nama.localeCompare(b.nama));
+  }, [employees, outlets]);
+
   const uniqueWilayah = Array.from(new Set(outlets.map((o) => o.wilayah).filter(Boolean))) as string[];
 
   const filteredOutlets = outlets.filter((o) => {
@@ -129,6 +153,15 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
       }
     }
 
+    // 4. Distributor Filter
+    if (distributorFilter) {
+      if (distributorFilter === 'direct') {
+        if (o.distributor_id) return false;
+      } else {
+        if (o.distributor_id !== distributorFilter) return false;
+      }
+    }
+
     return true;
   });
 
@@ -144,11 +177,15 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   };
 
   const openModal = (outlet?: any) => {
-    if (!isOwnerOrAdmin) {
-      alert('Akses ditolak: Hanya Owner atau Admin yang dapat menambah atau mengedit outlet.');
+    if (!canAddOutlet) {
+      alert('Akses ditolak: Hanya Owner, Admin, atau Distributor yang dapat menambah atau mengedit outlet.');
       return;
     }
     if (outlet) {
+      if (!isOwnerOrAdmin && (!isDistributor || outlet.distributor_id !== currentUser?.id)) {
+        alert('Akses ditolak: Anda hanya dapat mengedit outlet jaringan kemitraan Anda sendiri.');
+        return;
+      }
       setFormData(outlet);
       setIsEditing(true);
     } else {
@@ -158,8 +195,9 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
         tagihan: 0, 
         payment: 0, 
         sisa_tagihan: 0, 
-        wilayah: '', 
-        pengelola_id: '' 
+        wilayah: isDistributor ? (currentUser?.wilayah || '') : '', 
+        pengelola_id: '',
+        distributor_id: isDistributor ? currentUser?.id : ''
       });
       setIsEditing(false);
     }
@@ -175,8 +213,8 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
-    if (!isOwnerOrAdmin) {
-      alert('Akses ditolak: Hanya Owner atau Admin yang dapat menyimpan perubahan outlet.');
+    if (!canAddOutlet) {
+      alert('Akses ditolak: Hanya Owner, Admin, atau Distributor yang dapat menyimpan perubahan outlet.');
       return;
     }
     setIsSubmitting(true);
@@ -184,7 +222,10 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
       if (isEditing) {
         await updateOutlet(formData.id, formData);
       } else {
-        await createOutlet(formData);
+        await createOutlet({
+          ...formData,
+          distributor_id: isDistributor ? currentUser?.id : (formData.distributor_id || null)
+        });
       }
       await Promise.all([
         mutate('/api/data/outlets'),
@@ -201,8 +242,9 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
 
   const handleDelete = async (id: string) => {
     if (isDeleting) return false;
-    if (!isOwnerOrAdmin) {
-      alert('Akses ditolak: Hanya Owner atau Admin yang dapat menghapus outlet.');
+    const target = outlets.find((o: any) => o.id === id);
+    if (!isOwnerOrAdmin && (!isDistributor || target?.distributor_id !== currentUser?.id)) {
+      alert('Akses ditolak: Anda hanya dapat menghapus outlet jaringan kemitraan Anda sendiri.');
       return false;
     }
     if (!confirm('Yakin ingin menghapus outlet ini? Riwayat transaksi dan stok outlet ini akan terhapus.')) {
@@ -450,18 +492,35 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
           <div>
             <h2 className="text-xl font-bold text-gray-900">Daftar Outlet ({filteredOutlets.length})</h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Kelola kemitraan outlet, stok konsinyasi, dan penugasan tim marketing
+              {isDistributor
+                ? 'Kelola jaringan kemitraan outlet dan ketersediaan stok distributor Anda'
+                : 'Kelola kemitraan outlet, stok konsinyasi, jaringan distributor, dan penugasan marketing'}
             </p>
           </div>
-          {isOwnerOrAdmin && (
+          {canAddOutlet && (
             <button 
               onClick={() => openModal()} 
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm transition-all whitespace-nowrap self-start sm:self-auto flex items-center gap-1.5 cursor-pointer"
+              className={`${
+                isDistributor ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'
+              } text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm transition-all whitespace-nowrap self-start sm:self-auto flex items-center gap-1.5 cursor-pointer`}
             >
-              <span>+</span> Tambah Outlet
+              <span>+</span> {isDistributor ? 'Tambah Outlet Mitra' : 'Tambah Outlet'}
             </button>
           )}
         </div>
+
+        {/* Distributor Mode Banner */}
+        {isDistributor && (
+          <div className="bg-purple-50 border border-purple-200 text-purple-900 px-4 py-3 rounded-xl flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-sm">🚚 Mode Mitra Distributor:</span>
+              <span>Menampilkan jaringan outlet mitra Anda ({currentUser?.nama}). Anda dapat menambah outlet dan memantau stok secara mandiri.</span>
+            </div>
+            <span className="bg-purple-200/80 text-purple-800 font-extrabold px-2.5 py-1 rounded-lg shrink-0">
+              {filteredOutlets.length} Outlet
+            </span>
+          </div>
+        )}
 
         {/* Filter & Search Toolbar */}
         <div className="flex flex-wrap items-center gap-2.5 bg-gray-50 p-2.5 rounded-xl border border-gray-200">
@@ -521,12 +580,35 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
             </select>
           </div>
 
+          {/* Filter Distributor (Untuk Admin / Owner) */}
+          {!isDistributor && (
+            <div className="min-w-[190px]">
+              <select
+                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                value={distributorFilter}
+                onChange={e => setDistributorFilter(e.target.value)}
+              >
+                <option value="">🚚 Semua Distributor &amp; Pusat</option>
+                <option value="direct">🏢 Non-Distributor (Pusat / Direct)</option>
+                {distributorList.map(d => {
+                  const count = outlets.filter(o => o.distributor_id === d.id).length;
+                  return (
+                    <option key={d.id} value={d.id}>
+                      🚚 {d.nama} ({count} outlet)
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
+
           {/* Reset Button */}
-          {(marketingFilter || wilayahFilter || searchQuery) && (
+          {(marketingFilter || wilayahFilter || distributorFilter || searchQuery) && (
             <button
               onClick={() => {
                 setMarketingFilter('');
                 setWilayahFilter('');
+                setDistributorFilter('');
                 setSearchQuery('');
               }}
               className="text-xs text-red-600 hover:text-red-700 font-semibold px-2.5 py-1.5 bg-red-50 hover:bg-red-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
@@ -561,7 +643,14 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                 <TableRow key={o.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => openDetailModal(o)}>
                   <TableCell>
                     <div className="font-bold">{o.nama}</div>
-                    {o.wilayah && <div className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full inline-block mt-1 font-medium">{o.wilayah}</div>}
+                    <div className="flex flex-wrap items-center gap-1 mt-1">
+                      {o.wilayah && <div className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full inline-block font-medium">{o.wilayah}</div>}
+                      {o.distributor && (
+                        <div className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full inline-block font-medium">
+                          🚚 Mitra: {o.distributor.nama}
+                        </div>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="text-sm font-medium">{o.tlp || '-'}</div>
@@ -586,7 +675,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                     Rp {Number(o.sisa_tagihan).toLocaleString('id-ID')}
                   </TableCell>
                   <TableCell className="text-right space-x-2">
-                    {isOwnerOrAdmin ? (
+                    {isOwnerOrAdmin || (isDistributor && o.distributor_id === currentUser?.id) ? (
                       <button 
                         onClick={(e) => { e.stopPropagation(); openModal(o); }} 
                         className="text-blue-600 hover:text-blue-800 font-medium text-xs px-2.5 py-1 rounded-md hover:bg-blue-50 transition-colors cursor-pointer"
@@ -1382,15 +1471,37 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                 </div>
               </div>
               
-              {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN') && (
-                <div>
-                  <label className="block text-sm font-medium mb-1">Pengelola / Marketing</label>
-                  <select className="w-full border rounded p-2" value={formData.pengelola_id || ''} onChange={e => setFormData({...formData, pengelola_id: e.target.value})}>
-                    <option value="">-- Dikelola Pusat / Belum Ditugaskan --</option>
-                    {employees.filter(e => (e.role || '').toUpperCase().includes('MARKETING') || (e.posisi || '').toUpperCase().includes('MARKETING') || e.role === 'MITRA').map((emp) => (
-                      <option key={emp.id} value={emp.id}>{emp.nama} ({emp.role || emp.posisi || 'Marketing'})</option>
-                    ))}
-                  </select>
+              {isOwnerOrAdmin && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Pengelola / Marketing</label>
+                    <select className="w-full border rounded p-2 text-sm" value={formData.pengelola_id || ''} onChange={e => setFormData({...formData, pengelola_id: e.target.value})}>
+                      <option value="">-- Dikelola Pusat / Belum Ditugaskan --</option>
+                      {employees.filter(e => (e.role || '').toUpperCase().includes('MARKETING') || (e.posisi || '').toUpperCase().includes('MARKETING') || e.role === 'MITRA').map((emp) => (
+                        <option key={emp.id} value={emp.id}>{emp.nama} ({emp.role || emp.posisi || 'Marketing'})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Mitra Distributor (Opsional)</label>
+                    <select 
+                      className="w-full border rounded p-2 text-sm" 
+                      value={formData.distributor_id || ''} 
+                      onChange={e => setFormData({...formData, distributor_id: e.target.value})}
+                    >
+                      <option value="">-- Non-Distributor (Outlet Langsung CalioFish) --</option>
+                      {distributorList.map(d => (
+                        <option key={d.id} value={d.id}>🚚 Distributor: {d.nama} {d.wilayah ? `(${d.wilayah})` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
+
+              {isDistributor && (
+                <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 text-xs text-purple-900">
+                  <span className="font-bold">Kemitraan Distributor:</span> Outlet ini otomatis didaftarkan dalam jaringan kemitraan Anda (<b>{currentUser?.nama}</b>).
                 </div>
               )}
 

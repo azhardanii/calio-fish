@@ -30,6 +30,7 @@ export function Sidebar({ user }: { user: { id: string; role: string; nama: stri
   const isProduksi = isOwnerOrAdmin || role === 'PRODUKSI' || role.includes('PRODUKSI');
   const isMarketing = isOwnerOrAdmin || role === 'MARKETING' || role.includes('MARKETING');
   const isMitra = isOwnerOrAdmin || role === 'MITRA' || role.includes('MITRA');
+  const isDistributor = isOwnerOrAdmin || role === 'DISTRIBUTOR' || role.includes('DISTRIBUTOR');
 
   const navSections = [
     {
@@ -43,20 +44,21 @@ export function Sidebar({ user }: { user: { id: string; role: string; nama: stri
       title: "Reporting",
       visible: isMarketing || isProduksi,
       items: [
-        { name: "Marketing", href: "/marketing", icon: TrendingUp, visible: isMarketing },
+        { name: "Marketing Offline", href: "/marketing", icon: TrendingUp, visible: isMarketing },
+        { name: "E-Commerce", href: "/ecommerce", icon: ShoppingCart, visible: isMarketing || isOwnerOrAdmin },
         { name: "Event & Booth", href: "/booth", icon: Store, visible: isMarketing || isOwnerOrAdmin },
         { name: "Produksi", href: "/produksi", icon: Factory, visible: isProduksi },
       ]
     },
     {
       title: "Tim & Gudang",
-      visible: isOwnerOrAdmin || isMitra || isMarketing || isProduksi,
+      visible: isOwnerOrAdmin || isMitra || isMarketing || isProduksi || isDistributor,
       items: [
         { name: "Karyawan", href: "/karyawan", icon: Users, visible: isOwnerOrAdmin || isMarketing || isProduksi },
-        { name: "Database Outlet", href: "/outlet", icon: MapPin, visible: isOwnerOrAdmin || isMitra || isMarketing },
+        { name: "Database Outlet", href: "/outlet", icon: MapPin, visible: isOwnerOrAdmin || isMitra || isMarketing || isDistributor },
         { name: "Database Produk", href: "/produk", icon: PackageCheck, visible: isOwnerOrAdmin },
-        { name: "Warehouse", href: "/warehouse", icon: WarehouseIcon, visible: isOwnerOrAdmin || isProduksi || isMarketing },
-        { name: "Log Pengiriman", href: "/pengiriman", icon: Package, visible: isOwnerOrAdmin || isMitra },
+        { name: "Warehouse", href: "/warehouse", icon: WarehouseIcon, visible: isOwnerOrAdmin || isProduksi || isMarketing || isDistributor },
+        { name: "Log Pengiriman", href: "/pengiriman", icon: Package, visible: isOwnerOrAdmin || isMitra || isDistributor },
         { name: "Affiliator", href: "/affiliator", icon: Network, visible: isOwnerOrAdmin },
       ]
     },
@@ -82,6 +84,8 @@ export function Sidebar({ user }: { user: { id: string; role: string; nama: stri
     ? '/marketing'
     : role === 'PRODUKSI' || role.includes('PRODUKSI')
     ? '/produksi'
+    : role === 'DISTRIBUTOR' || role.includes('DISTRIBUTOR')
+    ? '/warehouse'
     : role === 'MITRA' || role.includes('MITRA')
     ? '/outlet'
     : '/overview';

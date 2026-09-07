@@ -35,6 +35,7 @@ export async function proxy(req: NextRequest) {
     const isProduksi = isOwnerOrAdmin || role === 'PRODUKSI' || role.includes('PRODUKSI') || posisi.includes('PRODUKSI');
     const isMarketing = isOwnerOrAdmin || role === 'MARKETING' || role.includes('MARKETING') || posisi.includes('MARKETING');
     const isMitra = isOwnerOrAdmin || role === 'MITRA' || role.includes('MITRA') || posisi.includes('MITRA');
+    const isDistributor = isOwnerOrAdmin || role === 'DISTRIBUTOR' || role.includes('DISTRIBUTOR') || posisi.includes('DISTRIBUTOR');
 
     // 1. Authenticated API requests: pass through with user headers (never redirect API calls to HTML pages!)
     if (pathname.startsWith('/api')) {
@@ -54,23 +55,25 @@ export async function proxy(req: NextRequest) {
     if (!isOwnerOrAdmin) {
       // Overview is strictly Owner / Admin only
       if (pathname === '/overview') {
-        const defaultHome = isMarketing ? '/marketing' : isProduksi ? '/produksi' : isMitra ? '/outlet' : '/login';
+        const defaultHome = isMarketing ? '/marketing' : isProduksi ? '/produksi' : isDistributor ? '/warehouse' : isMitra ? '/outlet' : '/login';
         return NextResponse.redirect(new URL(defaultHome, req.url));
       }
 
-      const isMarketingPath = pathname.startsWith('/marketing') || pathname.startsWith('/booth') || pathname.startsWith('/outlet') || pathname.startsWith('/warehouse') || pathname.startsWith('/pengiriman') || pathname.startsWith('/karyawan');
+      const isMarketingPath = pathname.startsWith('/marketing') || pathname.startsWith('/ecommerce') || pathname.startsWith('/booth') || pathname.startsWith('/outlet') || pathname.startsWith('/warehouse') || pathname.startsWith('/pengiriman') || pathname.startsWith('/karyawan');
       const isProduksiPath = pathname.startsWith('/produksi') || pathname.startsWith('/warehouse') || pathname.startsWith('/karyawan');
       const isMitraPath = pathname.startsWith('/outlet') || pathname.startsWith('/pengiriman');
+      const isDistributorPath = pathname.startsWith('/warehouse') || pathname.startsWith('/outlet') || pathname.startsWith('/pengiriman');
       const isCommonPath = pathname.startsWith('/chats') || pathname.startsWith('/karyawan');
 
       const isAllowed = 
         isCommonPath ||
         (isMarketing && isMarketingPath) ||
         (isProduksi && isProduksiPath) ||
+        (isDistributor && isDistributorPath) ||
         (isMitra && isMitraPath);
 
       if (!isAllowed) {
-        const fallback = isMarketing ? '/marketing' : isProduksi ? '/produksi' : isMitra ? '/outlet' : '/login';
+        const fallback = isMarketing ? '/marketing' : isProduksi ? '/produksi' : isDistributor ? '/warehouse' : isMitra ? '/outlet' : '/login';
         return NextResponse.redirect(new URL(fallback, req.url));
       }
     }

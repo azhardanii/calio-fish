@@ -1,0 +1,41 @@
+posisi role owner
+fitur marketing
+1. kasih pengeluaran di tiap detail marketing
+2. tanya billing outlet itu apa?
+3. di detail marketing tanya keterangan pembayaran disebelah mana?
+4. tanya target ini dari uang yang masuk apa total nilai nominal dari produk yang keluar
+5. tanya tagihan yang masuk (apakah sudah sinkron sama yang sudah ada di outlet)
+6. pindah e-commerce jadi fitur sendiri
+7. ganti nama marketing jadi marketing offline
+8. hapus report event n booth di fitur marketing
+9. tambahkan produk di dalam input personal buyer dan tambahkan jenis produk seperti di fitur event, kalau stok kurang transaksi gagal
+
+fitur event & booth
+1. kelola booth & kasir tambahkan tombol hapus dan edit harga
+fitur event
+2. tanya ketika ada report per event itu sudah sinkron sama data yang di masing2 tim marketing?
+3. ketika event diselesaikan, tambahkan rincian sisa stok yang dikirim balik ke gudang pusat
+
+fitur database produk
+1. database produk stok fisik dihapus saja, karena tidak sinkron sama yang keluar ke warehous dan ini sudah bisa dibaca di warehouse
+
+fitur log pengiriman tambahkan filter tanggal dan perbanyak log nya, karena cuma ke detect 7 informasi
+
+fitur overview
+1. tanya apa stelah ada pembayaran baru keluar kontribusi tim marketing?
+2. akumulasi total kas terkumpul tambahkan hasil dari distributor
+3. ringkasan ekosistem finansial tambahkan pengeluaran caliofish
+
+posisi role owner
+fitur warehouse 
+1. di dalam fitur warehouse tambahkan fitur distributor, jangan di gabung sama bagian gudang pusat dan cabang, sistemnya sama kayak warehouse cabang (ini nanti keluar di dashboard role distributor) tampilan sama kayak manajemen gudang, cuma diganti distributor dan tombol tambah distributor
+
+posisi reporting
+1. buatkan pengeluaran caliofish terhubung sama pengeluaran di overview
+2. di dalam fitur marketing buatkan fitur distributor
+   tampilan sama seperti fitur performance marketing (hapus total target dan omset booth) dan tambahkan filter per area
+
+di fitur outlet tambahkan sendiri daftar2 outlet per distributor dan di role distributor bisa tambah outlet sendiri
+
+- ditampilan distributor hanya bisa melihat report dan data distributor itu sendiri
+- fitur karyawan tambahkan database distributor untuk mendaftarkan distributor ke aplikasi

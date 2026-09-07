@@ -14,6 +14,7 @@ export async function GET(req: Request) {
     const role = (user.role || '').toUpperCase();
     const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
     const isMarketing = role === 'MARKETING' || role.includes('MARKETING');
+    const isDistributor = role === 'DISTRIBUTOR' || role.includes('DISTRIBUTOR');
 
     const { searchParams } = new URL(req.url);
     const startDateParam = searchParams.get('startDate');
@@ -39,7 +40,7 @@ export async function GET(req: Request) {
       periodEnd = new Date(currentYear, currentMonth, 0, 23, 59, 59, 999);
     }
 
-    // Fetch marketing employees with their outlets, targets, personal buyer txns
+    // 1. Fetch marketing employees with their outlets, targets, personal buyer txns, expenses
     const marketingEmployees = await prisma.employee.findMany({
       where: {
         OR: [
@@ -68,6 +69,10 @@ export async function GET(req: Request) {
             sales: { orderBy: { date: 'desc' } }
           }
         },
+        expenses: {
+          where: { date: { gte: periodStart, lte: periodEnd } },
+          orderBy: { date: 'desc' }
+        }
       },
       orderBy: { nama: 'asc' },
     });
@@ -84,6 +89,8 @@ export async function GET(req: Request) {
       let totalTagihanAll = 0;
       let totalPaymentAll = 0;
 
+      const outletPaymentsHistory: any[] = [];
+
       (emp.managed_outlets || []).forEach(outlet => {
         totalTagihanAll += Number(outlet.tagihan || 0);
         totalPaymentAll += Number(outlet.payment || 0);
@@ -97,10 +104,21 @@ export async function GET(req: Request) {
               totalBillingThisMonth += Number(tx.amount || 0);
             } else if (tx.type === 'PELUNASAN' || tx.type === 'PAYMENT') {
               totalPaymentThisMonth += Number(tx.amount || 0);
+              outletPaymentsHistory.push({
+                id: tx.id,
+                outlet_id: outlet.id,
+                outlet_nama: outlet.nama,
+                amount: Number(tx.amount || 0),
+                description: tx.description || 'Pelunasan Outlet',
+                date: tx.date,
+                sisa_tagihan_outlet: Number(outlet.sisa_tagihan || 0)
+              });
             }
           }
         });
       });
+
+      outletPaymentsHistory.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
       // Personal buyer omset in period
       const personalBuyerThisMonth = (emp.personal_buyer_transactions || [])
@@ -111,7 +129,7 @@ export async function GET(req: Request) {
         })
         .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
-      // Booth sales in period (where this marketing employee is PIC) -> Langsung masuk ke cashflow perusahaan
+      // Booth sales in period
       const boothSalesThisMonth = (emp.managed_booths || []).reduce((sum, b) => {
         const bMonthSales = (b.sales || [])
           .filter(s => {
@@ -123,8 +141,10 @@ export async function GET(req: Request) {
         return sum + bMonthSales;
       }, 0);
 
-      // Performa omset marketing: HANYA dari Outlet yang dikelola + Personal Buyer
-      // Transaksi Event/Booth tidak masuk ke omset performa staf, melainkan langsung ke cashflow perusahaan
+      // Total Expenses for this marketing employee
+      const totalExpensesThisMonth = (emp.expenses || []).reduce((sum, e) => sum + Number(e.amount || 0), 0);
+
+      // Performa omset marketing: Realisasi Pengiriman (Gross Billing) vs Kas Terkumpul (Cash Realized)
       const totalOmsetThisMonth = totalBillingThisMonth + personalBuyerThisMonth;
       const pencapaian = targetOmset > 0 ? (totalOmsetThisMonth / targetOmset) * 100 : 0;
       const gap = totalOmsetThisMonth - targetOmset;
@@ -159,6 +179,7 @@ export async function GET(req: Request) {
         personal_buyer_this_month: personalBuyerThisMonth,
         booth_sales_this_month: boothSalesThisMonth,
         total_omset_this_month: totalOmsetThisMonth,
+        total_expenses_this_month: totalExpensesThisMonth,
         pencapaian,
         gap,
         status,
@@ -167,6 +188,15 @@ export async function GET(req: Request) {
         total_outstanding_all: totalOutstandingAll,
         outlet_count: (emp.managed_outlets || []).length,
         booth_count: (emp.managed_booths || []).length,
+        expenses: (emp.expenses || []).map(e => ({
+          id: e.id,
+          title: e.title,
+          amount: Number(e.amount || 0),
+          date: e.date,
+          category: e.category,
+          description: e.description,
+        })),
+        outlet_payments_history: outletPaymentsHistory,
         personal_buyer_transactions: (emp.personal_buyer_transactions || [])
           .filter(t => {
             if (!t.date) return false;
@@ -183,22 +213,130 @@ export async function GET(req: Request) {
             description: t.description,
             date: t.date,
           })),
-        managed_booths: (emp.managed_booths || []).map(b => ({
-          id: b.id,
-          nama: b.nama,
-          lokasi: b.lokasi,
-          status: b.status,
-          total_penjualan: Number(b.total_penjualan || 0),
-          kas_masuk: Number(b.kas_masuk || 0),
-        })),
       };
     });
 
-    const products = await prisma.product.findMany({
-      where: { is_active: true },
-      select: { id: true, name: true, short_name: true },
-      orderBy: { name: 'asc' },
+    // 2. Fetch Distributors (Performa Distributor dengan filter area)
+    const distributorEmployees = await prisma.employee.findMany({
+      where: {
+        role: 'DISTRIBUTOR',
+        status_aktif: true,
+        ...(isDistributor && !isOwnerOrAdmin ? { id: user.id } : {})
+      },
+      include: {
+        distributor_warehouses: {
+          include: {
+            stocks: { include: { product: true } }
+          }
+        },
+        distributor_outlets: {
+          include: {
+            transactions: { orderBy: { date: 'desc' } }
+          }
+        },
+        managed_outlets: {
+          include: {
+            transactions: { orderBy: { date: 'desc' } }
+          }
+        },
+        expenses: {
+          where: { date: { gte: periodStart, lte: periodEnd } }
+        }
+      },
+      orderBy: { nama: 'asc' }
     });
+
+    const distributorPerformance = distributorEmployees.map(dist => {
+      const rawOutlets = [...(dist.distributor_outlets || []), ...(dist.managed_outlets || [])];
+      const uniqueOutlets = Array.from(new Map(rawOutlets.map(o => [o.id, o])).values());
+
+      let totalBilling = 0;
+      let totalPayment = 0;
+      let totalTagihan = 0;
+      let totalSisaTagihan = 0;
+
+      uniqueOutlets.forEach(o => {
+        totalTagihan += Number(o.tagihan || 0);
+        totalSisaTagihan += Number(o.sisa_tagihan || 0);
+
+        (o.transactions || []).forEach(tx => {
+          if (!tx.date) return;
+          const d = new Date(tx.date);
+          if (d >= periodStart && d <= periodEnd) {
+            if (tx.type === 'PIUTANG' || tx.type === 'BILLING' || tx.type === 'TAGIHAN') {
+              totalBilling += Number(tx.amount || 0);
+            } else if (tx.type === 'PELUNASAN' || tx.type === 'PAYMENT') {
+              totalPayment += Number(tx.amount || 0);
+            }
+          }
+        });
+      });
+
+      let totalStokGudang = 0;
+      (dist.distributor_warehouses || []).forEach(w => {
+        (w.stocks || []).forEach(s => {
+          totalStokGudang += (s.quantity || 0);
+        });
+      });
+
+      return {
+        id: dist.id,
+        nama: dist.nama,
+        no_hp: dist.no_hp,
+        wilayah: dist.wilayah || 'Umum',
+        outlet_count: uniqueOutlets.length,
+        total_stok_gudang: totalStokGudang,
+        total_billing_this_month: totalBilling,
+        total_payment_this_month: totalPayment,
+        total_sisa_tagihan: totalSisaTagihan,
+        warehouses: (dist.distributor_warehouses || []).map(w => ({
+          id: w.id,
+          name: w.name,
+          address: w.address,
+          total_stock: (w.stocks || []).reduce((acc: number, s: any) => acc + (s.quantity || 0), 0),
+          stocks: (w.stocks || []).map(s => ({
+            product_id: s.product_id,
+            product_name: s.product.name,
+            quantity: s.quantity,
+          }))
+        })),
+        outlets: uniqueOutlets.map(o => ({
+          id: o.id,
+          nama: o.nama,
+          wilayah: o.wilayah,
+          tagihan: Number(o.tagihan || 0),
+          payment: Number(o.payment || 0),
+          sisa_tagihan: Number(o.sisa_tagihan || 0)
+        }))
+      };
+    });
+
+    // 3. Products with stock & Warehouses for Personal Buyer Modal
+    const [products, warehouses] = await Promise.all([
+      prisma.product.findMany({
+        where: { is_active: true },
+        select: {
+          id: true,
+          sku: true,
+          name: true,
+          short_name: true,
+          base_price: true,
+          stok: true,
+          warehouse_stocks: {
+            select: {
+              warehouse_id: true,
+              quantity: true,
+              warehouse: { select: { id: true, name: true, type: true } }
+            }
+          }
+        },
+        orderBy: { name: 'asc' },
+      }),
+      prisma.warehouse.findMany({
+        select: { id: true, name: true, type: true, address: true },
+        orderBy: { name: 'asc' }
+      })
+    ]);
 
     // Base response
     const response: any = {
@@ -209,11 +347,12 @@ export async function GET(req: Request) {
       userRole: role,
       userId: user.id,
       products: products || [],
+      warehouses: warehouses || [],
+      distributorPerformance: distributorPerformance || [],
     };
 
     if (isOwnerOrAdmin) {
-      // Admin/Owner sees all marketing performance + legacy reports + event booths
-      const [offlineReports, onlineReports, globalShopeeTarget, globalTiktokTarget, totalOutlets, eventBooths] = await Promise.all([
+      const [offlineReports, onlineReports, globalShopeeTarget, globalTiktokTarget, totalOutlets] = await Promise.all([
         prisma.marketingOffline.findMany({
           where: { date: { gte: periodStart, lte: periodEnd } },
           orderBy: { date: 'desc' },
@@ -227,38 +366,7 @@ export async function GET(req: Request) {
         getOnlineTarget('shopee'),
         getOnlineTarget('tiktok'),
         prisma.outlet.count(),
-        prisma.eventBooth.findMany({
-          where: {
-            OR: [
-              { status: 'AKTIF' },
-              { tanggal_mulai: { lte: periodEnd }, tanggal_selesai: { gte: periodStart } },
-              { sales: { some: { date: { gte: periodStart, lte: periodEnd } } } }
-            ]
-          },
-          orderBy: [{ status: 'asc' }, { tanggal_mulai: 'desc' }],
-          include: {
-            pic: { select: { id: true, nama: true, role: true } },
-            sales: {
-              where: { date: { gte: periodStart, lte: periodEnd } },
-              orderBy: { date: 'desc' }
-            },
-          }
-        })
       ]);
-
-      const totalBoothSalesAll = (eventBooths || []).reduce((sum, b) => {
-        const bSales = (b.sales && b.sales.length > 0)
-          ? b.sales.reduce((sSum: number, s: any) => sSum + Number(s.total_price || 0), 0)
-          : (!startDateParam ? Number(b.total_penjualan || 0) : 0);
-        return sum + bSales;
-      }, 0);
-      const totalBoothKasAll = (eventBooths || []).reduce((sum, b) => {
-        const bKas = (b.sales && b.sales.length > 0)
-          ? b.sales.filter((s: any) => s.metode_pembayaran !== 'HUTANG').reduce((sSum: number, s: any) => sSum + Number(s.total_price || 0), 0)
-          : (!startDateParam ? Number(b.kas_masuk || 0) : 0);
-        return sum + bKas;
-      }, 0);
-      const activeBoothCount = (eventBooths || []).filter(b => b.status === 'AKTIF').length;
 
       const globalMarketingTarget = marketingPerformance.reduce((sum, p) => sum + p.target_omset, 0);
 
@@ -269,31 +377,7 @@ export async function GET(req: Request) {
       response.globalShopeeTarget = globalShopeeTarget;
       response.globalTiktokTarget = globalTiktokTarget;
       response.totalOutlets = totalOutlets;
-      response.eventBooths = (eventBooths || []).map(b => {
-        const bSales = (b.sales && b.sales.length > 0)
-          ? b.sales.reduce((sSum: number, s: any) => sSum + Number(s.total_price || 0), 0)
-          : (!startDateParam ? Number(b.total_penjualan || 0) : 0);
-        const bKas = (b.sales && b.sales.length > 0)
-          ? b.sales.filter((s: any) => s.metode_pembayaran !== 'HUTANG').reduce((sSum: number, s: any) => sSum + Number(s.total_price || 0), 0)
-          : (!startDateParam ? Number(b.kas_masuk || 0) : 0);
-        return {
-          id: b.id,
-          nama: b.nama,
-          lokasi: b.lokasi,
-          tanggal_mulai: b.tanggal_mulai,
-          tanggal_selesai: b.tanggal_selesai,
-          status: b.status,
-          pic: b.pic,
-          total_penjualan: bSales,
-          kas_masuk: bKas,
-          sales_count: (b.sales || []).length,
-        };
-      });
-      response.totalBoothSalesAll = totalBoothSalesAll;
-      response.totalBoothKasAll = totalBoothKasAll;
-      response.activeBoothCount = activeBoothCount;
     } else if (isMarketing && user) {
-      // Marketing user sees only their own data
       let myPerformance = marketingPerformance.find(p => p.id === user.id);
       if (!myPerformance) {
         myPerformance = {
@@ -308,6 +392,7 @@ export async function GET(req: Request) {
           personal_buyer_this_month: 0,
           booth_sales_this_month: 0,
           total_omset_this_month: 0,
+          total_expenses_this_month: 0,
           pencapaian: 0,
           gap: 0,
           status: 'on_track',
@@ -316,11 +401,14 @@ export async function GET(req: Request) {
           total_outstanding_all: 0,
           outlet_count: 0,
           booth_count: 0,
+          expenses: [],
+          outlet_payments_history: [],
           personal_buyer_transactions: [],
-          managed_booths: [],
         };
       }
       response.myPerformance = myPerformance;
+    } else if (isDistributor && user) {
+      response.myDistributor = distributorPerformance.find(d => d.id === user.id) || null;
     }
 
     return NextResponse.json(serializeDeep(response));

@@ -50,6 +50,8 @@ export async function verifySession() {
           r = 'PRODUKSI';
         } else if (r === 'STAFF MARKETING' || r === 'STAFF_MARKETING' || r.includes('MARKETING') || p.includes('MARKETING')) {
           r = 'MARKETING';
+        } else if (r.includes('DISTRIBUTOR') || p.includes('DISTRIBUTOR')) {
+          r = 'DISTRIBUTOR';
         } else if (r.includes('MITRA') || p.includes('MITRA')) {
           r = 'MITRA';
         } else if (r.includes('ADMIN') || p.includes('ADMIN')) {
