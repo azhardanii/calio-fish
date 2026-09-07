@@ -178,11 +178,17 @@ export default function EcommercePage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          <DateRangePicker
-            dateRange={dateRange}
-            onDateRangeChange={setDateRange}
-            onApply={() => setAppliedDateRange(dateRange)}
-            onReset={() => {
+          <DateRangePicker date={dateRange} setDate={setDateRange} />
+          <button
+            type="button"
+            onClick={() => setAppliedDateRange(dateRange)}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition shadow-sm"
+          >
+            Tampilkan
+          </button>
+          <button
+            type="button"
+            onClick={() => {
               const today = new Date();
               const def = {
                 from: new Date(today.getFullYear(), today.getMonth(), 1),
@@ -191,7 +197,10 @@ export default function EcommercePage() {
               setDateRange(def);
               setAppliedDateRange(def);
             }}
-          />
+            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium border border-slate-300 transition"
+          >
+            Reset Bulan Ini
+          </button>
           <PdfExportButton targetId="ecommerce-report" filename="laporan-ecommerce-caliofish" />
         </div>
       </div>

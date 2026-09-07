@@ -79,7 +79,7 @@ export async function createOutlet(data: any) {
   const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
   const isDistributor = role === 'DISTRIBUTOR';
 
-  if (!isOwnerOrAdmin && !isDistributor) {
+  if (!user || (!isOwnerOrAdmin && !isDistributor)) {
     throw new Error('Akses ditolak: Hanya OWNER, ADMIN, atau DISTRIBUTOR yang dapat menambah outlet.');
   }
 
@@ -89,7 +89,7 @@ export async function createOutlet(data: any) {
   if (data.sisa_tagihan !== undefined) data.sisa_tagihan = Number(data.sisa_tagihan);
 
   const assignedPengelolaId = isDistributor ? null : (data.pengelola_id || null);
-  const assignedDistributorId = isDistributor ? user.id : (data.distributor_id || null);
+  const assignedDistributorId = isDistributor ? user?.id : (data.distributor_id || null);
 
   // Anti-duplicate protection:
   // Cek apakah outlet dengan nama dan distributor yang sama baru saja dibuat dalam 10 detik terakhir
@@ -113,7 +113,7 @@ export async function createOutlet(data: any) {
       nama: trimmedNama,
       tlp: data.tlp,
       alamat: data.alamat,
-      wilayah: data.wilayah || (isDistributor ? user.wilayah : null),
+      wilayah: data.wilayah || (isDistributor ? user?.wilayah : null),
       status: data.status || 'Active',
       pic: data.pic,
       order_baru: data.order_baru || 0,
@@ -151,7 +151,7 @@ export async function updateOutlet(id: string, data: any) {
   if (!existingOutlet) throw new Error('Outlet tidak ditemukan');
 
   if (!isOwnerOrAdmin) {
-    if (!isDistributor || existingOutlet.distributor_id !== user.id) {
+    if (!isDistributor || !user || existingOutlet.distributor_id !== user.id) {
       throw new Error('Akses ditolak: Anda hanya dapat mengubah data outlet milik Anda sendiri.');
     }
   }
@@ -294,7 +294,7 @@ export async function deleteOutlet(id: string) {
   if (!existingOutlet) throw new Error('Outlet tidak ditemukan');
 
   if (!isOwnerOrAdmin) {
-    if (!isDistributor || existingOutlet.distributor_id !== user.id) {
+    if (!isDistributor || !user || existingOutlet.distributor_id !== user.id) {
       throw new Error('Akses ditolak: Anda hanya dapat menghapus outlet milik Anda sendiri.');
     }
   }

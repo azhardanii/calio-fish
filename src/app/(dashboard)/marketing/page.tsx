@@ -447,7 +447,7 @@ function MarketingDetailModal({ employee, onClose, onSaved }: { employee: any; o
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}>
       <div style={{ background: '#fff', borderRadius: 24, padding: 24, maxWidth: 760, width: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.2)' }}>
         {/* Modal Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', pb: 16, marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', paddingBottom: 16, marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 48, height: 48, borderRadius: 16, background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 20 }}>
               {employee.nama.charAt(0).toUpperCase()}
@@ -541,7 +541,7 @@ function MarketingDetailModal({ employee, onClose, onSaved }: { employee: any; o
                     <th style={{ padding: '8px 12px', textAlign: 'right' }}>SISA TAGIHAN</th>
                   </tr>
                 </thead>
-                <tbody style={{ divideY: '1px solid #f1f5f9' }}>
+                <tbody className="divide-y divide-slate-100">
                   {outlets.length === 0 ? (
                     <tr><td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>Belum ada outlet binaan</td></tr>
                   ) : outlets.map(o => (
@@ -1044,7 +1044,7 @@ function DistributorTab({ data }: { data: any }) {
       {selectedDistributorModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}>
           <div style={{ background: '#fff', borderRadius: 24, padding: 24, maxWidth: 650, width: '100%', maxHeight: '88vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', pb: 14, marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: 14, marginBottom: 14 }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: 18, fontWeight: 900, color: '#0f172a' }}>{selectedDistributorModal.nama}</h3>
                 <div style={{ fontSize: 12, color: '#64748b' }}>📍 Wilayah: {selectedDistributorModal.wilayah} • No HP: {selectedDistributorModal.no_hp || '-'}</div>

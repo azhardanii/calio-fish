@@ -63,7 +63,7 @@ export async function verifySession() {
       }
     }
 
-    return { ...payload, role } as { id: string; role: string; nama: string };
+    return { ...payload, role } as { id: string; role: string; nama: string; [key: string]: any };
   } catch (error) {
     return null;
   }
