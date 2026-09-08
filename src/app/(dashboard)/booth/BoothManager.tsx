@@ -417,7 +417,7 @@ function CreateBundleModal({
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 12 }}>
             <button type="button" onClick={onClose} style={{ padding: '8px 18px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#64748b' }}>Batal</button>
             <button type="submit" disabled={saving} style={{ padding: '8px 22px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}>
-              {saving ? 'Menyimpan...' : '💾 Simpan Paket'}
+              {saving ? 'Menyimpan...' : 'Simpan Paket'}
             </button>
           </div>
         </form>
@@ -600,7 +600,7 @@ function RecordSaleModal({
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 10 }}>
             <button type="button" onClick={onClose} style={{ padding: '8px 18px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#64748b' }}>Batal</button>
             <button type="submit" disabled={saving} style={{ padding: '8px 22px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #10b981, #059669)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}>
-              {saving ? 'Menyimpan...' : '✅ Simpan Penjualan'}
+              {saving ? 'Menyimpan...' : 'Simpan Penjualan'}
             </button>
           </div>
         </form>
@@ -641,7 +641,7 @@ function EditBundlePriceModal({
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, padding: 16 }}>
       <div style={{ background: '#fff', borderRadius: 20, padding: 26, maxWidth: 420, width: '100%', boxShadow: '0 25px 50px rgba(0,0,0,0.15)' }}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: '#0f172a' }}>✏️ Edit Harga Paket Bundling</h3>
+        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: '#0f172a' }}>Edit Harga Paket Bundling</h3>
         <p style={{ margin: '0 0 16px', fontSize: 13, color: '#64748b' }}>Sesuaikan harga jual paket: <b>{bundle.nama}</b></p>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -671,7 +671,7 @@ function EditBundlePriceModal({
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
             <button type="button" onClick={onClose} style={{ padding: '8px 18px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#64748b' }}>Batal</button>
             <button type="submit" disabled={saving} style={{ padding: '8px 22px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}>
-              {saving ? 'Menyimpan...' : '💾 Simpan Perubahan'}
+              {saving ? 'Menyimpan...' : 'Simpan Perubahan'}
             </button>
           </div>
         </form>
@@ -958,7 +958,7 @@ function BoothDetailView({
               style={{ padding: '7px 14px', borderRadius: 10, border: '1px solid #fecaca', background: '#fff', color: '#dc2626', fontSize: 12, fontWeight: 700, cursor: deleting ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
               title="Hapus Event Booth"
             >
-              {deleting ? 'Menghapus...' : '🗑️ Hapus Booth'}
+              {deleting ? 'Menghapus...' : 'Hapus Booth'}
             </button>
             {isAktif && (
               <button
@@ -1121,7 +1121,7 @@ function BoothDetailView({
                           onClick={() => setEditingBundle(b)}
                           style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #c7d2fe', background: '#eef2ff', color: '#4338ca', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
                         >
-                          ✏️ Edit Harga
+                          Edit Harga
                         </button>
                         {isAktif && (
                           <button
@@ -1133,7 +1133,7 @@ function BoothDetailView({
                             }}
                             style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
                           >
-                            🗑️ Hapus
+                            Hapus
                           </button>
                         )}
                       </div>

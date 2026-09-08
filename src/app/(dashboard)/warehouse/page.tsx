@@ -444,7 +444,7 @@ export default function WarehousePage() {
             <div className="flex justify-between items-center pb-3 border-b border-gray-100 mb-4">
               <div>
                 <h3 className="text-lg sm:text-xl font-bold text-gray-900">
-                  {isEditing ? '✏️ Edit Fasilitas Warehouse' : '🏢 Tambah Warehouse Baru'}
+                  {isEditing ? 'Edit Fasilitas Warehouse' : 'Tambah Warehouse Baru'}
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">
                   {isEditing ? 'Perbarui informasi nama, tipe, atau alamat fasilitas' : 'Daftarkan fasilitas gudang pabrik atau storage baru'}
@@ -666,7 +666,7 @@ export default function WarehousePage() {
                   disabled={isSubmittingDistributor} 
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
-                  {isSubmittingDistributor ? 'Mendaftarkan...' : '🚀 Simpan Distributor'}
+                  {isSubmittingDistributor ? 'Mendaftarkan...' : 'Simpan Distributor'}
                 </button>
               </div>
             </form>

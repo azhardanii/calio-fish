@@ -90,7 +90,7 @@ function SetEcommerceTargetModal({
               opacity: saving ? 0.7 : 1
             }}
           >
-            {saving ? '⏳ Menyimpan...' : '💾 Simpan Target'}
+            {saving ? 'Menyimpan...' : 'Simpan Target'}
           </button>
         </div>
       </div>
@@ -247,7 +247,7 @@ export default function EcommercePage() {
                   onClick={() => setTargetModalPlatform('shopee')}
                   className="text-xs bg-white text-orange-700 border border-orange-200 hover:bg-orange-50 px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer"
                 >
-                  ✏️ Edit
+                  Edit
                 </button>
               )}
             </div>
@@ -298,7 +298,7 @@ export default function EcommercePage() {
                   onClick={() => setTargetModalPlatform('tiktok')}
                   className="text-xs bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer"
                 >
-                  ✏️ Edit
+                  Edit
                 </button>
               )}
             </div>

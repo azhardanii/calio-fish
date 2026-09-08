@@ -602,7 +602,7 @@ export function EmployeeManager({ employees, currentUser }: EmployeeManagerProps
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-5 sm:p-6 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-4">
               <h3 className="text-lg font-bold text-gray-900">
-                {isEditing ? '✏️ Edit Data Karyawan' : '👤 Tambah Karyawan Baru'}
+                {isEditing ? 'Edit Data Karyawan' : 'Tambah Karyawan Baru'}
               </h3>
               <button
                 onClick={closeModal}

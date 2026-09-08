@@ -446,7 +446,7 @@ export function DistributorManager({ employees, currentUser }: DistributorManage
                   disabled={saving} 
                   className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
-                  {saving ? 'Mendaftarkan...' : '🚀 Simpan & Daftarkan'}
+                  {saving ? 'Mendaftarkan...' : 'Simpan & Daftarkan'}
                 </button>
               </div>
             </form>

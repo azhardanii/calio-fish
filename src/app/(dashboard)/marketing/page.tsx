@@ -82,7 +82,7 @@ function SetTargetModal({ employee, currentMonth, currentYear, onClose, onSaved 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ padding: '8px 18px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#64748b' }}>Batal</button>
           <button onClick={handleSave} disabled={saving} style={{ padding: '8px 20px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}>
-            {saving ? '⏳ Menyimpan...' : '💾 Simpan Target'}
+            {saving ? 'Menyimpan...' : 'Simpan Target'}
           </button>
         </div>
       </div>
@@ -376,7 +376,7 @@ function AddPersonalBuyerModal({ onClose, onSaved, products = [], warehouses = [
               opacity: saving ? 0.7 : 1
             }}
           >
-            {saving ? '⏳ Menyimpan...' : isStockInsufficient ? '❌ Stok Kurang' : '✅ Simpan Transaksi'}
+            {saving ? 'Menyimpan...' : isStockInsufficient ? 'Stok Kurang' : 'Simpan Transaksi'}
           </button>
         </div>
       </div>
@@ -614,7 +614,7 @@ function MarketingDetailModal({ employee, onClose, onSaved }: { employee: any; o
                   color: showAddExpense ? '#475569' : '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer'
                 }}
               >
-                {showAddExpense ? '✕ Batal' : '➕ Catat Pengeluaran'}
+                {showAddExpense ? 'Batal' : 'Catat Pengeluaran'}
               </button>
             </div>
 
@@ -693,9 +693,8 @@ function MarketingDetailModal({ employee, onClose, onSaved }: { employee: any; o
                         <button
                           onClick={() => handleDeleteExpense(e.id)}
                           style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', cursor: 'pointer', fontSize: 11 }}
-                          title="Hapus"
                         >
-                          🗑️
+                          Hapus
                         </button>
                       </td>
                     </tr>
@@ -1169,7 +1168,7 @@ function PersonalBuyerTab({ data, mutate }: { data: any; mutate: () => void }) {
             display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 2px 8px rgba(16,185,129,0.25)'
           }}
         >
-          ➕ Input Personal Buyer Baru
+          Input Personal Buyer Baru
         </button>
       </div>
 
@@ -1210,7 +1209,7 @@ function PersonalBuyerTab({ data, mutate }: { data: any; mutate: () => void }) {
                       style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', fontSize: 11, fontWeight: 600, cursor: deleting === t.id ? 'wait' : 'pointer' }}
                       title="Hapus Transaksi"
                     >
-                      {deleting === t.id ? '⏳' : '🗑️'}
+                      {deleting === t.id ? 'Loading...' : 'Hapus'}
                     </button>
                   </td>
                 </tr>
@@ -1350,7 +1349,7 @@ function MarketingMyDashboard({ data, mutate, filterLabel }: { data: any; mutate
             onClick={() => setShowAddModal(true)}
             style={{ padding: '7px 16px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #10b981, #059669)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
           >
-            ➕ Input Personal Buyer
+            Input Personal Buyer
           </button>
         </div>
         <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', overflow: 'hidden' }}>

@@ -164,7 +164,7 @@ export default function SettingsPage() {
                           background: '#fff', cursor: 'pointer', fontWeight: 500,
                         }}
                       >
-                        ✏️ Edit
+                        Edit
                       </button>
                     </>
                   )}
