@@ -23,7 +23,8 @@ import {
   DollarSign,
   Wallet,
   Receipt,
-  Boxes
+  Boxes,
+  ChevronDown
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -940,27 +941,48 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
             )}
 
             {/* List SKU Bar */}
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-1 no-scrollbar">
-              {allProducts.map((p: ProductStock, idx: number) => {
-                const maxStok = Math.max(...allProducts.map((x: ProductStock) => x.stok), 1);
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1 no-scrollbar">
+              {allProducts.map((p: any, idx: number) => {
+                const maxStok = Math.max(...allProducts.map((x: any) => x.stok), 1);
                 const pct = (p.stok / maxStok) * 100;
                 const isLow = p.stok <= 50;
 
                 return (
-                  <div key={idx} className="flex items-center gap-2 text-xs">
-                    <span className={`w-24 truncate font-bold ${isLow ? 'text-rose-600' : 'text-gray-700'}`}>
-                      {p.name}
-                    </span>
-                    <div className="flex-1 bg-gray-100 h-2 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full rounded-full ${isLow ? 'bg-rose-500' : 'bg-blue-600'}`}
-                        style={{ width: `${Math.max(pct, 5)}%` }}
-                      />
+                  <details key={idx} className="group cursor-pointer bg-white border border-gray-100 rounded-lg open:shadow-sm open:pb-2 transition-all">
+                    <summary className="flex items-center gap-2 text-xs list-none [&::-webkit-details-marker]:hidden p-2">
+                      <span className={`w-24 truncate font-bold ${isLow ? 'text-rose-600' : 'text-gray-700'}`}>
+                        {p.name}
+                      </span>
+                      <div className="flex-1 bg-gray-100 h-2 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full ${isLow ? 'bg-rose-500' : 'bg-blue-600'}`}
+                          style={{ width: `${Math.max(pct, 5)}%` }}
+                        />
+                      </div>
+                      <span className={`font-mono font-black w-14 text-right ${isLow ? 'text-rose-600' : 'text-gray-900'}`}>
+                        {p.stok} pcs
+                      </span>
+                      <ChevronDown className="w-4 h-4 text-gray-400 group-open:rotate-180 transition-transform duration-200" />
+                    </summary>
+                    <div className="mt-1 ml-[104px] mr-6 pl-3 border-l-2 border-gray-200 text-[10px] space-y-1.5 text-gray-600">
+                      <div className="flex justify-between items-center bg-gray-50 px-2 py-1 rounded">
+                        <span className="font-medium">🏭 Pabrik:</span> 
+                        <span className="font-bold text-gray-900">{p.locations?.factory || 0}</span>
+                      </div>
+                      <div className="flex justify-between items-center bg-gray-50 px-2 py-1 rounded">
+                        <span className="font-medium">📦 Gudang:</span> 
+                        <span className="font-bold text-gray-900">{p.locations?.storage || 0}</span>
+                      </div>
+                      <div className="flex justify-between items-center bg-gray-50 px-2 py-1 rounded">
+                        <span className="font-medium">🏪 Outlet:</span> 
+                        <span className="font-bold text-gray-900">{p.locations?.outlet || 0}</span>
+                      </div>
+                      <div className="flex justify-between items-center bg-gray-50 px-2 py-1 rounded">
+                        <span className="font-medium">🎪 Booth:</span> 
+                        <span className="font-bold text-gray-900">{p.locations?.booth || 0}</span>
+                      </div>
                     </div>
-                    <span className={`font-mono font-black w-14 text-right ${isLow ? 'text-rose-600' : 'text-gray-900'}`}>
-                      {p.stok} pcs
-                    </span>
-                  </div>
+                  </details>
                 );
               })}
             </div>

@@ -93,7 +93,8 @@ export async function GET(req: NextRequest) {
     // NEW: Pengeluaran Operasional CalioFish
     calioExpensesAgg, recentExpenses,
     // NEW: Tim Marketing Employees & Individual Targets
-    marketingEmployees
+    marketingEmployees,
+    boothStocks
   ] = await Promise.all([
     prisma.marketingOffline.findFirst({ where: { date: { gte: todayStart, lte: todayEnd } }, orderBy: { created_at: 'desc' } }),
     prisma.marketingOffline.aggregate({ _sum: { omset_harian: true, target_bulanan: true }, where: dateFilter ? { date: dateFilter } : {} }),
@@ -103,7 +104,7 @@ export async function GET(req: NextRequest) {
     prisma.marketingOnline.findMany({ where: dateFilter ? { date: dateFilter } : {}, orderBy: { date: 'asc' }, select: { date: true, omset_harian: true, platform: true } }),
     prisma.outlet.count(),
     prisma.outlet.aggregate({ _sum: { sisa_tagihan: true } }),
-    prisma.product.findMany({ where: { is_active: true }, select: { name: true, short_name: true, stok: true, base_price: true }, orderBy: { stok: 'asc' } }),
+    prisma.product.findMany({ where: { is_active: true }, select: { id: true, name: true, short_name: true, stok: true, base_price: true }, orderBy: { stok: 'asc' } }),
     prisma.warehouse.findMany({ include: { stocks: { include: { product: true } } } }),
     prisma.outlet.findMany({ include: { stocks: { include: { product: true } } } }),
     prisma.employee.count({ where: { status_aktif: true } }),
@@ -240,6 +241,7 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { nama: 'asc' },
     }),
+    prisma.boothStock.findMany({ where: { booth: { status: 'AKTIF' } } })
   ]);
 
   // Tim Marketing Evaluation & Performance
@@ -608,7 +610,37 @@ export async function GET(req: NextRequest) {
     hadirToday,
     attendanceTodayCount: attendanceToday.length,
     lowStockProducts: lowStockProducts.map(p => ({ name: p.short_name || p.name, stok: p.stok })),
-    allProducts: products.map(p => ({ name: p.short_name || p.name, stok: p.stok })),
+    allProducts: products.map(p => {
+      let factory = 0;
+      let storage = 0;
+      let outlet = 0;
+      let booth = 0;
+
+      warehouses.forEach(w => {
+        const s = w.stocks.find(st => st.product_id === p.id);
+        if (s) {
+          if (w.type === 'FACTORY') factory += s.quantity;
+          else storage += s.quantity;
+        }
+      });
+
+      outlets.forEach(o => {
+        const s = o.stocks.find(st => st.product_id === p.id);
+        if (s) outlet += s.quantity;
+      });
+
+      boothStocks.forEach(bs => {
+        if (bs.product_id === p.id) {
+          booth += bs.quantity;
+        }
+      });
+
+      return {
+        name: p.short_name || p.name,
+        stok: p.stok,
+        locations: { factory, storage, outlet, booth }
+      };
+    }),
 
     // Stock Ecosystem
     stockDistribution: { 
