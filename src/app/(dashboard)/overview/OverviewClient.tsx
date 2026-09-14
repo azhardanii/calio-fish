@@ -290,62 +290,42 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
       <div className="space-y-3 sm:space-y-4">
 
         {/* 1. STANDOUT HERO CARD: TOTAL KAS TERKUMPUL (HASIL KESELURUHAN OMSET PERUSAHAAN) */}
-        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-900 text-white p-5 sm:p-7 shadow-xl shadow-emerald-950/20 border-2 border-emerald-400/40">
+        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-900 text-white p-5 sm:p-6 shadow-xl shadow-emerald-950/20 border-2 border-emerald-400/40">
           <div className="absolute -right-10 -bottom-10 w-64 h-64 rounded-full bg-white/5 pointer-events-none blur-2xl" />
           <div className="absolute right-1/3 -top-12 w-48 h-48 rounded-full bg-emerald-300/10 pointer-events-none blur-xl" />
 
-          <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-            <div className="space-y-2 max-w-2xl">
+          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1.5">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="bg-emerald-400/20 text-emerald-100 border border-emerald-300/40 text-[11px] sm:text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5 shadow-xs">
                   <span className="text-sm">💎</span>
                   <span>Akumulasi Total Kas Terkumpul</span>
                 </span>
                 <span className="bg-white/10 text-emerald-100 text-[11px] font-bold px-2.5 py-0.5 rounded-full backdrop-blur-xs">
-                  Hasil Keseluruhan Omset Perusahaan
+                  {filterState.filterLabel}
                 </span>
               </div>
               <div className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white drop-shadow-sm">
                 {formatRp(totalKasMasuk)}
               </div>
-              <p className="text-xs sm:text-sm text-emerald-100/90 leading-relaxed font-medium">
-                Akumulasi seluruh dana kas riil yang terkumpul dan masuk ke kas perusahaan dari semua perputaran bisnis: Pelunasan Tagihan Outlet Mitra, Penjualan Event &amp; Booth, Transaksi Personal Buyer, serta E-Commerce (Shopee &amp; TikTok).
+              <p className="text-xs sm:text-sm text-emerald-100/80 leading-relaxed font-medium max-w-xl">
+                Dana riil masuk kas: Outlet Mitra + Distributor + Event Booth + Personal Buyer + E-Commerce
               </p>
             </div>
 
-            {/* Quick 4-Pillars Cash Inflow Breakdown */}
-            <div className="grid grid-cols-2 gap-2 sm:gap-2.5 w-full lg:w-auto shrink-0">
-              <div className="bg-emerald-950/40 border border-emerald-400/20 rounded-xl p-2.5 sm:p-3 backdrop-blur-xs">
-                <div className="text-[10px] text-emerald-200 font-bold uppercase flex items-center gap-1">
-                  <span>🏪</span> Pelunasan Outlet
-                </div>
-                <div className="text-sm sm:text-base font-black text-white mt-0.5">
-                  {formatRp(financials?.kasPelunasanOutlet ?? 0)}
-                </div>
+            {/* Quick stats inline */}
+            <div className="flex flex-col gap-2 sm:text-right shrink-0">
+              <div className="text-[11px] text-emerald-200 font-bold">
+                🏪 Outlet &amp; Dist: <span className="text-white">{formatRp((financials?.kasPelunasanOutlet ?? 0) + (financials?.kasDistributor ?? 0))}</span>
               </div>
-              <div className="bg-emerald-950/40 border border-emerald-400/20 rounded-xl p-2.5 sm:p-3 backdrop-blur-xs">
-                <div className="text-[10px] text-emerald-200 font-bold uppercase flex items-center gap-1">
-                  <span>🎪</span> Kas Event &amp; Booth
-                </div>
-                <div className="text-sm sm:text-base font-black text-white mt-0.5">
-                  {formatRp(financials?.kasBooth ?? 0)}
-                </div>
+              <div className="text-[11px] text-emerald-200 font-bold">
+                🎪 Booth: <span className="text-white">{formatRp(financials?.kasBooth ?? 0)}</span>
               </div>
-              <div className="bg-emerald-950/40 border border-emerald-400/20 rounded-xl p-2.5 sm:p-3 backdrop-blur-xs">
-                <div className="text-[10px] text-emerald-200 font-bold uppercase flex items-center gap-1">
-                  <span>👤</span> Personal Buyer (Semua)
-                </div>
-                <div className="text-sm sm:text-base font-black text-white mt-0.5">
-                  {formatRp(financials?.kasPersonalBuyer ?? 0)}
-                </div>
+              <div className="text-[11px] text-emerald-200 font-bold">
+                👤 Personal: <span className="text-white">{formatRp(financials?.kasPersonalBuyer ?? 0)}</span>
               </div>
-              <div className="bg-emerald-950/40 border border-emerald-400/20 rounded-xl p-2.5 sm:p-3 backdrop-blur-xs">
-                <div className="text-[10px] text-emerald-200 font-bold uppercase flex items-center gap-1">
-                  <span>🛒</span> E-Commerce Online
-                </div>
-                <div className="text-sm sm:text-base font-black text-white mt-0.5">
-                  {formatRp(financials?.kasEcommerce ?? 0)}
-                </div>
+              <div className="text-[11px] text-emerald-200 font-bold">
+                🛒 E-Commerce: <span className="text-white">{formatRp(financials?.kasEcommerce ?? 0)}</span>
               </div>
             </div>
           </div>
@@ -428,102 +408,52 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
         </div>
       </div>
 
-      {/* ── FINANCIAL FLOW CLARIFICATION BANNER ── */}
-      <div className="bg-gradient-to-br from-slate-900 to-blue-950 text-white rounded-2xl p-4 sm:p-6 shadow-md border border-slate-800">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-white/10">
-          <div>
-            <div className="flex items-center gap-2 text-blue-300 font-bold text-xs uppercase tracking-wider">
-              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>Ringkasan Ekosistem Finansial Calio Fish</span>
-            </div>
-            <div className="text-lg sm:text-xl font-black mt-1">
-              Hubungan Omset, Kas Masuk, &amp; Piutang Outlet
-            </div>
-            <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
-              Penjualan <b>Booth</b> dan <b>Personal Buyer</b> langsung menghasilkan <b>Kas Tunai/Transfer</b> tanpa piutang. Sedangkan pengiriman ke <b>Outlet Mitra</b> menerapkan tempo konsinyasi sehingga menjadi <b>Piutang Tagihan</b> sampai outlet melakukan pelunasan.
-            </p>
+      {/* ── FINANCIAL SNAPSHOT ROW (compact) ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Total Omset */}
+        <div className="bg-white rounded-xl border border-gray-200 p-3.5 shadow-xs flex flex-col gap-1.5">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-blue-600 uppercase tracking-wider">
+            <Receipt className="w-3.5 h-3.5" /> Total Omset
           </div>
+          <div className="text-lg sm:text-xl font-black text-blue-900">{formatRp(totalOmset)}</div>
+          <div className="text-[10px] text-gray-400">Semua jalur penjualan</div>
+        </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <Link 
-              href="/marketing" 
-              className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5"
-            >
-              <span>Halaman Marketing</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
-            <Link 
-              href="/booth" 
-              className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5"
-            >
-              <span>Modul Booth</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
+        {/* Total Kas Terkumpul */}
+        <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-3.5 shadow-xs flex flex-col gap-1.5">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
+            <Wallet className="w-3.5 h-3.5" /> Kas Terkumpul
+          </div>
+          <div className="text-lg sm:text-xl font-black text-emerald-800">{formatRp(totalKasMasuk)}</div>
+          <div className="text-[10px] text-emerald-600">
+            Dist: {formatRp((financials?.kasPelunasanOutlet ?? 0) + (financials?.kasDistributor ?? 0))} · Online: {formatRp(financials?.kasEcommerce ?? 0)}
           </div>
         </div>
 
-        {/* 4 Metric Pillars */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-4">
-          <div className="bg-white/5 border border-white/10 rounded-xl p-3 sm:p-4">
-            <div className="text-[11px] text-blue-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
-              <Receipt className="w-3.5 h-3.5 text-blue-400" />
-              <span>TOTAL OMSET PENJUALAN</span>
-            </div>
-            <div className="text-xl sm:text-2xl font-black text-white mt-1">{formatRp(totalOmset)}</div>
-            <div className="text-[11px] text-slate-400 mt-1">
-              Marketing ({formatRp(channels.find(c => c.name.includes('Marketing'))?.mtd || 0)}) + E-Commerce ({formatRp((channels.find(c => c.name.includes('Shopee'))?.mtd || 0) + (channels.find(c => c.name.includes('TikTok'))?.mtd || 0))}) + Booth &amp; PB
-            </div>
-          </div>
-
-          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 sm:p-4">
-            <div className="text-[11px] text-emerald-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
-              <Wallet className="w-3.5 h-3.5 text-emerald-400" />
-              <span>TOTAL KAS TERKUMPUL</span>
-            </div>
-            <div className="text-xl sm:text-2xl font-black text-emerald-300 mt-1">{formatRp(totalKasMasuk)}</div>
-            <div className="text-[11px] text-emerald-200/80 mt-1">
-              Outlet Reguler + Hasil Distributor ({formatRp(financials?.kasDistributor || 0)}) + Booth + PB + Online
-            </div>
-          </div>
-
-          <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 sm:p-4">
-            <div className="text-[11px] text-rose-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
-              <Boxes className="w-3.5 h-3.5 text-rose-400" />
-              <span>PENGELUARAN CALIOFISH</span>
-            </div>
-            <div className="text-xl sm:text-2xl font-black text-rose-300 mt-1">{formatRp(financials?.totalPengeluaranCalio || 0)}</div>
-            <div className="text-[11px] text-rose-200/80 mt-1">
-              Total biaya operasional, logistik &amp; dinas CalioFish terhubung langsung
-            </div>
-          </div>
-
-          <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-3 sm:p-4">
-            <div className="text-[11px] text-indigo-300 font-bold uppercase tracking-wider flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-              <span>ARUS KAS BERSIH (NET MARGIN)</span>
-            </div>
-            <div className={`text-xl sm:text-2xl font-black mt-1 ${
-              (financials?.netMargin ?? 0) >= 0 ? 'text-indigo-200' : 'text-rose-400'
-            }`}>
-              {formatRp(financials?.netMargin ?? (totalKasMasuk - (financials?.totalPengeluaranCalio || 0)))}
-            </div>
-            <div className="text-[11px] text-indigo-200/80 mt-1">
-              Akumulasi Kas Terkumpul dikurangi Pengeluaran Operasional CalioFish
-            </div>
-          </div>
+        {/* Pengeluaran */}
+        <div className="bg-rose-50 rounded-xl border border-rose-200 p-3.5 shadow-xs flex flex-col gap-1.5">
+          <Link href="/pengeluaran" className="flex items-center gap-1.5 text-[10px] font-bold text-rose-700 uppercase tracking-wider hover:underline">
+            <Boxes className="w-3.5 h-3.5" /> Pengeluaran <ArrowUpRight className="w-3 h-3 ml-auto" />
+          </Link>
+          <div className="text-lg sm:text-xl font-black text-rose-800">{formatRp(financials?.totalPengeluaranCalio || 0)}</div>
+          <div className="text-[10px] text-rose-500">Klik untuk lihat rincian</div>
         </div>
 
-        {/* Financial Sub-Row for Outstanding Receivables */}
-        <div className="mt-3 pt-3 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-2 text-amber-300">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-            <span>Sisa Piutang Konsinyasi Outlet &amp; Mitra: <b>{formatRp(totalSisaTagihan)}</b> ({totalOutlets} Outlet Terdaftar)</span>
+        {/* Net Margin */}
+        <div className={`rounded-xl border p-3.5 shadow-xs flex flex-col gap-1.5 ${(financials?.netMargin ?? 0) >= 0 ? 'bg-indigo-50 border-indigo-200' : 'bg-rose-50 border-rose-200'}`}>
+          <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${(financials?.netMargin ?? 0) >= 0 ? 'text-indigo-700' : 'text-rose-700'}`}>
+            <Sparkles className="w-3.5 h-3.5" /> Arus Kas Bersih
           </div>
-          <div className="text-slate-400 text-[11px]">
-            *Data kas dan tagihan tersinkronisasi otomatis dengan riwayat pembayaran outlet
+          <div className={`text-lg sm:text-xl font-black ${(financials?.netMargin ?? 0) >= 0 ? 'text-indigo-800' : 'text-rose-800'}`}>
+            {formatRp(financials?.netMargin ?? (totalKasMasuk - (financials?.totalPengeluaranCalio || 0)))}
+          </div>
+          <div className="text-[10px] text-gray-400 flex items-center gap-1.5">
+            <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
+            Piutang: {formatRp(totalSisaTagihan)}
           </div>
         </div>
       </div>
+
 
       {/* ── ROW 2: CHART + PROGRESS TARGET ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">

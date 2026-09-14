@@ -1141,6 +1141,29 @@ function PersonalBuyerTab({ data, mutate }: { data: any; mutate: () => void }) {
     }
   };
 
+  const exportToCsv = () => {
+    const headers = ['Tanggal', 'Buyer', 'Marketing', 'Produk', 'Qty', 'Harga Satuan', 'Total', 'Keterangan'];
+    const rows = filtered.map(t => [
+      new Date(t.date).toLocaleDateString('id-ID'),
+      `"${(t.buyer_name || '').replace(/"/g, '""')}"`,
+      t.marketing_name || '',
+      `"${(t.product_name || '').replace(/"/g, '""')}"`,
+      t.quantity || 1,
+      t.price_per_unit || '',
+      t.amount,
+      `"${(t.description || '').replace(/"/g, '""')}"`
+    ]);
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.setAttribute('download', `personal-buyer_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Header Actions */}
@@ -1169,6 +1192,17 @@ function PersonalBuyerTab({ data, mutate }: { data: any; mutate: () => void }) {
           }}
         >
           Input Personal Buyer Baru
+        </button>
+        <button
+          onClick={exportToCsv}
+          style={{
+            padding: '8px 18px', borderRadius: 10, border: '1.5px solid #d97706',
+            background: '#fffbeb',
+            color: '#92400e', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6
+          }}
+        >
+          📥 Export CSV/Excel
         </button>
       </div>
 

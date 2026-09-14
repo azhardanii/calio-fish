@@ -7,6 +7,7 @@ import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+import { Download, Edit2 } from 'lucide-react';
 
 interface Produksi {
   id: string;
@@ -186,6 +187,28 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, ex
   const [isMounted, setIsMounted] = React.useState(false);
   React.useEffect(() => setIsMounted(true), []);
 
+  const exportToCsv = () => {
+    const headers = ['Tanggal', 'Kegiatan', 'Bahan Baku (kg)', 'Bahan Jadi (kg)', 'Rendemen (%)', 'Hasil (pcs)', 'Diinput Oleh'];
+    const rows = filteredData.map(p => [
+      new Date(p.date).toLocaleDateString('id-ID'),
+      `"${p.kegiatan.replace(/"/g, '""')}"`,
+      p.bahan_baku ?? '',
+      p.bahan_jadi ?? '',
+      p.bahan_baku && p.bahan_jadi ? ((Number(p.bahan_jadi) / Number(p.bahan_baku)) * 100).toFixed(1) : '',
+      p.total_hasil_pcs ?? '',
+      p.employee_name || 'Sistem'
+    ]);
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.setAttribute('download', `produksi_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   if (!isMounted) return null;
 
   return (
@@ -220,6 +243,13 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, ex
             Tampilkan
           </button>
           
+          <button
+            onClick={exportToCsv}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-amber-400 bg-amber-50 text-amber-800 text-sm font-bold cursor-pointer hover:bg-amber-100 transition-colors"
+          >
+            <Download size={15} /> Export CSV
+          </button>
+
           {exportButton && (
             <div>
               {exportButton}
@@ -338,6 +368,7 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, ex
                 <TableHead>Rendemen</TableHead>
                 <TableHead>Total Hasil (pcs)</TableHead>
                 <TableHead>Diinput Oleh</TableHead>
+                <TableHead className="text-center">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -358,12 +389,21 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, ex
                     </TableCell>
                     <TableCell className="font-bold">{p.total_hasil_pcs ? `${p.total_hasil_pcs} pcs` : '-'}</TableCell>
                     <TableCell className="text-gray-600">{p.employee_name || 'Sistem'}</TableCell>
+                    <TableCell className="text-center">
+                      <button
+                        title="Edit via pesan WA atau sistem input"
+                        onClick={() => alert(`Untuk edit data produksi ${new Date(p.date).toLocaleDateString('id-ID')}, silakan gunakan format WA atau input manual melalui sistem.`)}
+                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                    </TableCell>
                   </TableRow>
                 );
               })}
               {filteredData.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-gray-500 py-8">Belum ada data produksi.</TableCell>
+                  <TableCell colSpan={8} className="text-center text-gray-500 py-8">Belum ada data produksi.</TableCell>
                 </TableRow>
               )}
             </TableBody>

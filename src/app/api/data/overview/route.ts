@@ -337,7 +337,7 @@ export async function GET(req: NextRequest) {
 
   // Target Gabungan: HANYA dari 3 jalur distribusi yang memiliki target (Tim Marketing + Shopee + TikTok)
   // Event & Booth serta Personal Buyer Direct DIKELUARKAN dari perhitungan target gabungan!
-  const targetChannelsOmset = offlineOmset + shopeeOmset + tiktokOmset;
+  const targetChannelsOmset = totalMarketingOmset + shopeeOmset + tiktokOmset;
   const totalTarget = marketingTarget + shopeeTarget + tiktokTarget;
   const totalGap = targetChannelsOmset - totalTarget;
   const totalPersentase = totalTarget > 0 ? (targetChannelsOmset / totalTarget) * 100 : 0;
@@ -538,10 +538,10 @@ export async function GET(req: NextRequest) {
     channels: [
       { 
         name: 'Tim Marketing', 
-        mtd: offlineOmset, 
+        mtd: totalMarketingOmset, 
         target: marketingTarget, 
         icon: '👥', 
-        pct: targetChannelsOmset > 0 ? Math.round((offlineOmset / targetChannelsOmset) * 100) : 0,
+        pct: targetChannelsOmset > 0 ? Math.round((totalMarketingOmset / targetChannelsOmset) * 100) : 0,
         staffCount: marketingStaffPerformance.length,
       },
       { 

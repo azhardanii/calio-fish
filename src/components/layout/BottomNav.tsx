@@ -24,6 +24,7 @@ import {
   Compass,
   Store,
   ShoppingCart,
+  Receipt
 } from "lucide-react";
 
 interface BottomNavProps {
@@ -196,6 +197,7 @@ export function BottomNav({ user }: BottomNavProps) {
     { name: "Marketing Offline", href: "/marketing", icon: TrendingUp, visible: isMarketing && !primaryItems.some(p => p.href === "/marketing") },
     { name: "E-Commerce", href: "/ecommerce", icon: ShoppingCart, visible: isMarketing || isOwnerOrAdmin },
     { name: "Event & Booth", href: "/booth", icon: Store, visible: (isMarketing || isOwnerOrAdmin) && !primaryItems.some(p => p.href === "/booth") },
+    { name: "Pengeluaran", href: "/pengeluaran", icon: Receipt, visible: isOwnerOrAdmin },
     { name: "Database Produk", href: "/produk", icon: PackageCheck, visible: isOwnerOrAdmin },
     { name: "Warehouse", href: "/warehouse", icon: WarehouseIcon, visible: (isOwnerOrAdmin || isProduksi || isMarketing || isDistributor) && !primaryItems.some(p => p.href === "/warehouse") },
     { name: "Karyawan", href: "/karyawan", icon: Users, visible: isOwnerOrAdmin || isMarketing || isProduksi },

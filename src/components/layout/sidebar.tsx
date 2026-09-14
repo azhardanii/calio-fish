@@ -18,7 +18,8 @@ import {
   Gauge,
   Warehouse as WarehouseIcon,
   Store,
-  LogOut
+  LogOut,
+  Receipt
 } from "lucide-react";
 
 export function Sidebar({ user }: { user: { id: string; role: string; nama: string } }) {
@@ -42,12 +43,13 @@ export function Sidebar({ user }: { user: { id: string; role: string; nama: stri
     },
     {
       title: "Reporting",
-      visible: isMarketing || isProduksi,
+      visible: isMarketing || isProduksi || isOwnerOrAdmin,
       items: [
         { name: "Marketing Offline", href: "/marketing", icon: TrendingUp, visible: isMarketing },
         { name: "E-Commerce", href: "/ecommerce", icon: ShoppingCart, visible: isMarketing || isOwnerOrAdmin },
         { name: "Event & Booth", href: "/booth", icon: Store, visible: isMarketing || isOwnerOrAdmin },
         { name: "Produksi", href: "/produksi", icon: Factory, visible: isProduksi },
+        { name: "Pengeluaran", href: "/pengeluaran", icon: Receipt, visible: isOwnerOrAdmin },
       ]
     },
     {
