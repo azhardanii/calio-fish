@@ -545,7 +545,11 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
             <div className="space-y-3">
               {channels.map((ch: Channel, i: number) => {
                 const targetBase = targetChannelsOmset ?? totalOmset;
-                const pct = targetBase > 0 ? Math.round((ch.mtd / targetBase) * 100) : 0;
+                const porsiPct = targetBase > 0 ? Math.round((ch.mtd / targetBase) * 100) : 0;
+                const hasTarget = (ch.target ?? 0) > 0;
+                const capaianPct = hasTarget ? Math.round((ch.mtd / ch.target) * 100) : porsiPct;
+                const progressWidth = Math.min(Math.max(capaianPct, 0), 100);
+
                 return (
                   <div key={i} className="p-2.5 bg-gray-50/70 border border-gray-100 rounded-xl">
                     <div className="flex items-center justify-between text-xs mb-1.5">
@@ -557,15 +561,36 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
                         {formatRp(ch.mtd)}
                       </span>
                     </div>
-                    <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
+                    <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
                       <div 
-                        className="bg-blue-600 h-full rounded-full transition-all" 
-                        style={{ width: `${Math.min(pct, 100)}%` }} 
+                        className={`h-full rounded-full transition-all duration-300 ${
+                          hasTarget
+                            ? capaianPct >= 100 
+                              ? 'bg-emerald-500' 
+                              : capaianPct >= 50 
+                                ? 'bg-blue-600' 
+                                : 'bg-amber-500'
+                            : 'bg-blue-500'
+                        }`} 
+                        style={{ width: `${progressWidth}%` }} 
                       />
                     </div>
-                    <div className="flex justify-between items-center text-[10px] text-gray-400 mt-1">
-                      <span>Porsi: <b>{pct}%</b> {ch.target > 0 ? `(Capaian: ${Math.round((ch.mtd / ch.target) * 100)}%)` : ''}</span>
-                      {ch.target > 0 && <span>Target: {formatRp(ch.target)}</span>}
+                    <div className="flex justify-between items-center text-[10px] text-gray-500 mt-1">
+                      <span>
+                        {hasTarget ? (
+                          <>
+                            Progress: <b className={capaianPct >= 100 ? 'text-emerald-600 font-bold' : capaianPct >= 50 ? 'text-blue-600 font-bold' : 'text-amber-600 font-bold'}>{capaianPct}%</b>
+                            <span className="text-gray-400 ml-1.5">(Porsi: {porsiPct}%)</span>
+                          </>
+                        ) : (
+                          <>Porsi Omset: <b>{porsiPct}%</b></>
+                        )}
+                      </span>
+                      {hasTarget ? (
+                        <span className="text-gray-500">Target: {formatRp(ch.target)}</span>
+                      ) : (
+                        <span className="text-gray-400 italic">Tanpa target</span>
+                      )}
                     </div>
                   </div>
                 );
@@ -776,7 +801,7 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
                         className={`h-full rounded-full transition-all ${
                           st.pencapaian >= 100 ? 'bg-emerald-500' : st.pencapaian >= 60 ? 'bg-blue-600' : 'bg-rose-500'
                         }`}
-                        style={{ width: `${Math.min(st.pencapaian, 100)}%` }}
+                        style={{ width: `${Math.min(Math.max(Number(st.pencapaian) || 0, 0), 100)}%` }}
                       />
                     </div>
                     <div className="flex justify-between text-[10px] text-gray-400">
