@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { verifySession } from '@/lib/auth';
 import { serializeDeep } from '@/lib/serialize';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   try {
     const session = await verifySession();
