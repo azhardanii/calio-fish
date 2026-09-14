@@ -23,13 +23,13 @@ export default function QuickInputPage() {
     );
   }
 
-  const { outlets = [], affiliates = [], products = [], employees = [] } = data || {};
+  const { outlets = [], affiliates = [], products = [], employees = [], distributors = [] } = data || {};
 
   const tabs = [
     {
       id: 'warehouse',
       label: 'Logistik & Pengiriman',
-      content: <WarehouseInputForm outlets={outlets} affiliates={affiliates} products={products} />
+      content: <WarehouseInputForm outlets={outlets} affiliates={affiliates} products={products} distributors={distributors} />
     },
     {
       id: 'karyawan',

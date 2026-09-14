@@ -6,7 +6,7 @@ import { PdfExportButton } from '@/components/ui/PdfExportButton';
 import { ProduksiClient } from './ProduksiClient';
 
 export default function ProduksiPage() {
-  const { data, isLoading } = useSWR('/api/data/production');
+  const { data, isLoading, mutate } = useSWR('/api/data/production');
 
   if (isLoading && !data) {
     return (
@@ -28,6 +28,7 @@ export default function ProduksiPage() {
           targetPcs={data?.targetPcs || 200} 
           targetKg={data?.targetKg || 50} 
           exportButton={<PdfExportButton targetId="produksi-report" filename="laporan-produksi" />}
+          mutate={mutate}
         />
       </div>
     </div>

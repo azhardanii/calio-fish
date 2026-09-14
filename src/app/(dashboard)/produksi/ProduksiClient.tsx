@@ -7,7 +7,8 @@ import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
-import { Download, Edit2 } from 'lucide-react';
+import { Download, Edit2, Plus, Trash2 } from 'lucide-react';
+import { createProduksiKegiatan, deleteProduksiKegiatan } from '@/app/actions';
 
 interface Produksi {
   id: string;
@@ -19,7 +20,20 @@ interface Produksi {
   employee_name?: string;
 }
 
-export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, exportButton }: { initialData: Produksi[], targetPcs?: number, targetKg?: number, exportButton?: React.ReactNode }) {
+export function ProduksiClient({ 
+  initialData, 
+  targetPcs = 200, 
+  targetKg = 50, 
+  exportButton,
+  mutate 
+}: { 
+  initialData: Produksi[], 
+  targetPcs?: number, 
+  targetKg?: number, 
+  exportButton?: React.ReactNode,
+  mutate?: () => void 
+}) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [filterKegiatan, setFilterKegiatan] = useState<string>('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
     const today = new Date();
@@ -244,6 +258,13 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, ex
           </button>
           
           <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold cursor-pointer transition-all shadow-sm active:scale-95"
+          >
+            <Plus size={16} /> Tambah Kegiatan
+          </button>
+
+          <button
             onClick={exportToCsv}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-amber-400 bg-amber-50 text-amber-800 text-sm font-bold cursor-pointer hover:bg-amber-100 transition-colors"
           >
@@ -390,13 +411,31 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, ex
                     <TableCell className="font-bold">{p.total_hasil_pcs ? `${p.total_hasil_pcs} pcs` : '-'}</TableCell>
                     <TableCell className="text-gray-600">{p.employee_name || 'Sistem'}</TableCell>
                     <TableCell className="text-center">
-                      <button
-                        title="Edit via pesan WA atau sistem input"
-                        onClick={() => alert(`Untuk edit data produksi ${new Date(p.date).toLocaleDateString('id-ID')}, silakan gunakan format WA atau input manual melalui sistem.`)}
-                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      >
-                        <Edit2 size={14} />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          title="Info input/edit via sistem & WA"
+                          onClick={() => alert(`Data produksi "${p.kegiatan}" tanggal ${new Date(p.date).toLocaleDateString('id-ID')}.\nUntuk memperbarui data, Anda bisa menambahkan kegiatan revisi atau input baru.`)}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          title="Hapus baris kegiatan produksi"
+                          onClick={async () => {
+                            if (confirm(`Hapus kegiatan produksi "${p.kegiatan}" tanggal ${new Date(p.date).toLocaleDateString('id-ID')}?`)) {
+                              try {
+                                await deleteProduksiKegiatan(p.id);
+                                if (mutate) mutate();
+                              } catch (err: any) {
+                                alert(err.message || 'Gagal menghapus kegiatan');
+                              }
+                            }
+                          }}
+                          className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -410,6 +449,185 @@ export function ProduksiClient({ initialData, targetPcs = 200, targetKg = 50, ex
           </Table>
         </CardContent>
       </Card>
+
+      {/* ── MODAL: TAMBAH KEGIATAN PRODUKSI ── */}
+      {isModalOpen && (
+        <TambahKegiatanModal
+          onClose={() => setIsModalOpen(false)}
+          onSaved={() => {
+            if (mutate) mutate();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function TambahKegiatanModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [kegiatan, setKegiatan] = useState('Pembersihan');
+  const [customKegiatan, setCustomKegiatan] = useState('');
+  const [jenisProduksi, setJenisProduksi] = useState('');
+  const [bahanBaku, setBahanBaku] = useState<string>('');
+  const [bahanJadi, setBahanJadi] = useState<string>('');
+  const [totalHasilPcs, setTotalHasilPcs] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const finalKegiatan = kegiatan === 'Lainnya' ? customKegiatan.trim() : kegiatan;
+    if (!finalKegiatan) {
+      alert('Pilih atau ketik nama kegiatan produksi');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await createProduksiKegiatan({
+        date,
+        kegiatan: finalKegiatan,
+        jenis_produksi: jenisProduksi.trim() || undefined,
+        bahan_baku: bahanBaku ? parseFloat(bahanBaku) : null,
+        bahan_jadi: bahanJadi ? parseFloat(bahanJadi) : null,
+        total_hasil_pcs: totalHasilPcs ? parseInt(totalHasilPcs, 10) : null,
+      });
+      alert(`✅ Kegiatan "${finalKegiatan}" berhasil ditambahkan!`);
+      onSaved();
+      onClose();
+    } catch (err: any) {
+      alert(err.message || 'Gagal menyimpan kegiatan produksi');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-[70] p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[92vh] overflow-y-auto">
+        <div className="flex justify-between items-center pb-3 border-b border-gray-100 mb-4">
+          <div>
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900 flex items-center gap-2">
+              <span>🏭</span> Tambah Kegiatan Produksi
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">Input riwayat operasional &amp; produksi langsung ke sistem</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg cursor-pointer">
+            ✕
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1">Tanggal Kegiatan *</label>
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              required
+              className="w-full p-2.5 border border-gray-300 rounded-lg text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1">Jenis Kegiatan *</label>
+            <select
+              value={kegiatan}
+              onChange={e => setKegiatan(e.target.value)}
+              className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white"
+            >
+              <option value="Pembersihan">Pembersihan (Kulit / Daging)</option>
+              <option value="Pemotongan">Pemotongan / Fillet</option>
+              <option value="Penggorengan">Penggorengan</option>
+              <option value="Penirisan Minyak">Penirisan Minyak (Spinner)</option>
+              <option value="Pemberian Bumbu">Pemberian Bumbu (Seasoning)</option>
+              <option value="Pengemasan">Pengemasan (Packing)</option>
+              <option value="Lainnya">Lainnya (Ketik Manual)</option>
+            </select>
+          </div>
+
+          {kegiatan === 'Lainnya' && (
+            <div>
+              <label className="text-xs font-bold text-gray-700 block mb-1">Nama Kegiatan Khusus *</label>
+              <input
+                type="text"
+                placeholder="Contoh: Pembuatan Abon Ikan"
+                value={customKegiatan}
+                onChange={e => setCustomKegiatan(e.target.value)}
+                required
+                className="w-full p-2.5 border border-gray-300 rounded-lg text-sm"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1">Varian Produk / SKU (Opsional)</label>
+            <input
+              type="text"
+              placeholder="Contoh: Kulit Crispy Original / Abon Pedas"
+              value={jenisProduksi}
+              onChange={e => setJenisProduksi(e.target.value)}
+              className="w-full p-2.5 border border-gray-300 rounded-lg text-sm"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-gray-700 block mb-1">Bahan Baku (Kg)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={bahanBaku}
+                onChange={e => setBahanBaku(e.target.value)}
+                className="w-full p-2.5 border border-gray-300 rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-700 block mb-1">Bahan Jadi (Kg)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={bahanJadi}
+                onChange={e => setBahanJadi(e.target.value)}
+                className="w-full p-2.5 border border-gray-300 rounded-lg text-sm"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-gray-700 block mb-1">Total Hasil Kemasan Jadi (Pcs)</label>
+            <input
+              type="number"
+              min="0"
+              placeholder="Contoh: 150"
+              value={totalHasilPcs}
+              onChange={e => setTotalHasilPcs(e.target.value)}
+              className="w-full p-2.5 border border-gray-300 rounded-lg text-sm"
+            />
+            <p className="text-[11px] text-gray-400 mt-1">Isi jika kegiatan menghasilkan kemasan siap jual (pcs).</p>
+          </div>
+
+          <div className="flex gap-2 pt-3 justify-end border-t border-gray-100">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-5 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
+            >
+              {loading ? 'Menyimpan...' : 'Simpan Kegiatan'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

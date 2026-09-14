@@ -328,8 +328,20 @@ export default function WarehousePage() {
                           </span>
                         </div>
                         {w.distributor && (
-                          <div className="text-xs font-bold text-emerald-800 mt-1">
-                            👤 Mitra: {w.distributor.nama} {w.distributor.no_hp ? `(${w.distributor.no_hp})` : ''} {w.distributor.wilayah ? `• Area: ${w.distributor.wilayah}` : ''}
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            <span className="text-xs font-bold text-emerald-800">
+                              👤 Mitra: {w.distributor.nama} {w.distributor.wilayah ? `• Area: ${w.distributor.wilayah}` : ''}
+                            </span>
+                            {w.distributor.no_hp && (
+                              <a
+                                href={`https://wa.me/${w.distributor.no_hp.replace(/\D/g, '').replace(/^0/, '62')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-[11px] text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded-md font-bold transition-colors"
+                              >
+                                <span>💬</span> Chat WA ({w.distributor.no_hp})
+                              </a>
+                            )}
                           </div>
                         )}
                         <div className="flex items-center gap-1.5 text-xs sm:text-sm text-gray-500 mt-1.5">
@@ -736,7 +748,36 @@ export default function WarehousePage() {
                 </div>
               )}
             </div>
-            <div className="p-4 border-t border-gray-100 bg-gray-50/60 flex justify-end">
+            <div className="p-4 border-t border-gray-100 bg-gray-50/60 flex justify-between items-center flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const dest = detailedShipment.destination_name || detailedShipment.destination_type || 'Penerima';
+                  const itemsList = detailedShipment.items?.map((it: any, idx: number) => 
+                    `${idx + 1}. ${it.product?.name || 'Produk'}: ${it.qty} pcs`
+                  ).join('\n') || '-';
+                  const totalQty = detailedShipment.items?.reduce((sum: number, it: any) => sum + it.qty, 0) || 0;
+                  
+                  const text = `*SURAT JALAN & PENGIRIMAN CALIOFISH*\n` +
+                    `📦 ID Pengiriman: #${detailedShipment.id.slice(0, 8)}\n` +
+                    `🗓️ Tanggal: ${new Date(detailedShipment.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}\n` +
+                    `🏢 Asal: ${detailedShipment.source_name || 'Gudang'}\n` +
+                    `🎯 Tujuan: ${dest}\n` +
+                    `📋 Kategori: ${detailedShipment.shipment_type || 'PENGIRIMAN'}\n` +
+                    `----------------------------------------\n` +
+                    `RINCIAN BARANG:\n${itemsList}\n` +
+                    `----------------------------------------\n` +
+                    `📦 TOTAL KUANTITAS: ${totalQty} pcs\n` +
+                    `📝 Catatan: ${detailedShipment.notes || '-'}\n\n` +
+                    `_Mohon konfirmasi jika barang sudah sampai dan sesuai. Terima kasih! 🙏_`;
+
+                  const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+                  window.open(waUrl, '_blank');
+                }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <span>💬</span> Chat WA Surat Jalan
+              </button>
               <button 
                 onClick={() => setDetailedShipment(null)} 
                 className="px-5 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-xl text-xs font-bold transition cursor-pointer"

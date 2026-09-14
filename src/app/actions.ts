@@ -1330,4 +1330,47 @@ export async function setOnlineTarget(platform: string, target: number) {
   return updated;
 }
 
+export async function createProduksiKegiatan(data: {
+  date: string;
+  kegiatan: string;
+  jenis_produksi?: string;
+  bahan_baku?: number | null;
+  bahan_jadi?: number | null;
+  total_hasil_pcs?: number | null;
+}) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  if (!data.kegiatan || !data.kegiatan.trim()) {
+    throw new Error('Nama kegiatan produksi wajib diisi');
+  }
+
+  const result = await prisma.produksi.create({
+    data: {
+      date: data.date ? new Date(data.date) : new Date(),
+      kegiatan: data.kegiatan.trim(),
+      jenis_produksi: data.jenis_produksi?.trim() || null,
+      bahan_baku: data.bahan_baku !== null && data.bahan_baku !== undefined && !isNaN(Number(data.bahan_baku)) ? Number(data.bahan_baku) : null,
+      bahan_jadi: data.bahan_jadi !== null && data.bahan_jadi !== undefined && !isNaN(Number(data.bahan_jadi)) ? Number(data.bahan_jadi) : null,
+      total_hasil_pcs: data.total_hasil_pcs && !isNaN(Number(data.total_hasil_pcs)) ? Number(data.total_hasil_pcs) : null,
+      employee_id: user.id,
+    }
+  });
+
+  revalidatePath('/produksi');
+  revalidatePath('/overview');
+  return result;
+}
+
+export async function deleteProduksiKegiatan(id: string) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  await prisma.produksi.delete({ where: { id } });
+
+  revalidatePath('/produksi');
+  revalidatePath('/overview');
+  return { success: true };
+}
+
 

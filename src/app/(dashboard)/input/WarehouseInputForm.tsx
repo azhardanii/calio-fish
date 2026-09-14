@@ -11,13 +11,17 @@ interface Props {
   outlets: Outlet[];
   affiliates: Affiliate[];
   products: Product[];
+  distributors?: any[];
 }
 
-export default function WarehouseInputForm({ outlets, affiliates, products }: Props) {
-  const [destinationType, setDestinationType] = useState('E-Commerce');
+export default function WarehouseInputForm({ outlets, affiliates, products, distributors = [] }: Props) {
+  const [destinationType, setDestinationType] = useState('Distributor');
   const [destinationName, setDestinationName] = useState('');
   const [outletId, setOutletId] = useState('');
   const [affiliateId, setAffiliateId] = useState('');
+  const [distributorId, setDistributorId] = useState('');
+  const [lastManifest, setLastManifest] = useState<string | null>(null);
+  const [distributorPhone, setDistributorPhone] = useState('');
   
   const [items, setItems] = useState([{ productId: '', qty: 1 }]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -48,6 +52,10 @@ export default function WarehouseInputForm({ outlets, affiliates, products }: Pr
       setMessage({ type: 'error', text: 'Pilih Outlet!' });
       setIsSubmitting(false); return;
     }
+    if (destinationType === 'Distributor' && !distributorId) {
+      setMessage({ type: 'error', text: 'Pilih Mitra Distributor!' });
+      setIsSubmitting(false); return;
+    }
     if (destinationType === 'Affiliate' && !affiliateId) {
       setMessage({ type: 'error', text: 'Pilih Affiliator!' });
       setIsSubmitting(false); return;
@@ -57,17 +65,39 @@ export default function WarehouseInputForm({ outlets, affiliates, products }: Pr
       setIsSubmitting(false); return;
     }
 
+    const selectedDist = distributors.find((d: any) => d.id === distributorId);
+    const resolvedDestName = destinationType === 'Distributor' 
+      ? (selectedDist?.nama || 'Distributor')
+      : destinationName;
+
     try {
       const res = await submitWarehouseInput({
         destinationType,
-        destinationName,
+        destinationName: resolvedDestName,
         outletId,
         affiliateId,
         items
       });
       
       if (res.success) {
-        setMessage({ type: 'success', text: 'Data pengiriman berhasil disimpan dan stok dipotong!' });
+        const productSummary = items.map(it => {
+          const prod = products.find(p => p.id === it.productId);
+          return `• ${prod?.name || 'Produk'}: ${it.qty} pcs`;
+        }).join('\n');
+        const totalPcs = items.reduce((sum, i) => sum + i.qty, 0);
+
+        const manifest = `*SURAT JALAN & PENGIRIMAN CALIOFISH*\n` +
+          `🗓️ Tanggal: ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}\n` +
+          `🎯 Tujuan: ${resolvedDestName} (${destinationType})\n` +
+          `----------------------------------------\n` +
+          `RINCIAN BARANG:\n${productSummary}\n` +
+          `----------------------------------------\n` +
+          `📦 TOTAL: ${totalPcs} pcs\n\n` +
+          `_Mohon konfirmasi jika barang sudah diterima dengan baik. Terima kasih! 🙏_`;
+
+        setLastManifest(manifest);
+        setDistributorPhone(selectedDist?.no_hp || '');
+        setMessage({ type: 'success', text: `Data pengiriman ke ${resolvedDestName} berhasil disimpan dan stok dipotong!` });
         setItems([{ productId: '', qty: 1 }]);
         setDestinationName('');
       } else {
@@ -82,8 +112,30 @@ export default function WarehouseInputForm({ outlets, affiliates, products }: Pr
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {message && (
-        <div className={`p-4 rounded-md ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-          {message.text}
+        <div className={`p-4 rounded-xl space-y-3 ${message.type === 'success' ? 'bg-emerald-50 text-emerald-900 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+          <div className="font-semibold">{message.text}</div>
+          {message.type === 'success' && lastManifest && (
+            <div className="pt-2 border-t border-emerald-200 flex items-center gap-2 flex-wrap">
+              <a
+                href={`https://wa.me/${distributorPhone ? distributorPhone.replace(/\D/g, '').replace(/^0/, '62') : ''}?text=${encodeURIComponent(lastManifest)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors"
+              >
+                <span>💬</span> Chat WA Pengiriman ke {destinationType === 'Distributor' ? 'Distributor' : 'Penerima'}
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(lastManifest);
+                  alert('Surat jalan berhasil disalin ke clipboard!');
+                }}
+                className="inline-flex items-center gap-1 px-3 py-2 bg-white text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold hover:bg-emerald-100/50"
+              >
+                📋 Salin Surat Jalan
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -93,32 +145,46 @@ export default function WarehouseInputForm({ outlets, affiliates, products }: Pr
           <select 
             value={destinationType} 
             onChange={e => setDestinationType(e.target.value)}
-            className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+            className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
           >
-            <option value="E-Commerce">E-Commerce (Shopee/TikTok)</option>
-            <option value="Outlet">Mitra Outlet</option>
-            <option value="Affiliate">Affiliator</option>
-            <option value="Influencer">Influencer</option>
-            <option value="Sample">Sample / Lainnya</option>
+            <option value="Distributor">🚚 Mitra Distributor</option>
+            <option value="Outlet">🏪 Mitra Outlet</option>
+            <option value="E-Commerce">🛒 E-Commerce (Shopee/TikTok)</option>
+            <option value="Affiliate">🌟 Affiliator</option>
+            <option value="Influencer">📸 Influencer</option>
+            <option value="Sample">🎁 Sample / Lainnya</option>
           </select>
         </div>
 
         <div className="space-y-2">
           <label className="text-sm font-medium text-gray-700">Tujuan Spesifik</label>
-          {destinationType === 'Outlet' ? (
-            <select value={outletId} onChange={e => setOutletId(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+          {destinationType === 'Distributor' ? (
+            <select 
+              value={distributorId} 
+              onChange={e => setDistributorId(e.target.value)} 
+              className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white"
+            >
+              <option value="">-- Pilih Mitra Distributor --</option>
+              {distributors.map((d: any) => (
+                <option key={d.id} value={d.id}>
+                  {d.nama} {d.wilayah ? `(${d.wilayah})` : ''} {d.no_hp ? `- ${d.no_hp}` : ''}
+                </option>
+              ))}
+            </select>
+          ) : destinationType === 'Outlet' ? (
+            <select value={outletId} onChange={e => setOutletId(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white">
               <option value="">-- Pilih Outlet --</option>
               {outlets.map(o => <option key={o.id} value={o.id}>{o.nama}</option>)}
             </select>
           ) : destinationType === 'Affiliate' ? (
-            <select value={affiliateId} onChange={e => setAffiliateId(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+            <select value={affiliateId} onChange={e => setAffiliateId(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white">
               <option value="">-- Pilih Affiliator --</option>
               {affiliates.map(a => <option key={a.id} value={a.id}>{a.nama}</option>)}
             </select>
           ) : (
             <input 
               type="text" 
-              placeholder={destinationType === 'E-Commerce' ? "Contoh: Shopee" : "Nama Tujuan"}
+              placeholder={destinationType === 'E-Commerce' ? "Contoh: Shopee Official" : "Nama Tujuan"}
               value={destinationName} 
               onChange={e => setDestinationName(e.target.value)}
               className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"

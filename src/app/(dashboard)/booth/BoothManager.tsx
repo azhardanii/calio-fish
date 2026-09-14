@@ -1331,6 +1331,7 @@ export function BoothManager() {
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedBooth, setSelectedBooth] = useState<any>(null);
+  const [completingBooth, setCompletingBooth] = useState<any>(null);
 
   const filterLabel = useMemo(() => {
     if (!appliedDateRange?.from) return 'Lifetime (Semua Waktu)';
@@ -1561,17 +1562,31 @@ export function BoothManager() {
                 </div>
 
                 {/* Footer Action */}
-                <div style={{ padding: '12px 20px', borderTop: '1px solid #f1f5f9', background: '#fafafa', display: 'flex', gap: 8 }}>
+                <div style={{ padding: '12px 20px', borderTop: '1px solid #f1f5f9', background: '#fafafa', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button
                     onClick={() => setSelectedBooth(booth)}
                     style={{
-                      flex: 1, padding: '9px', borderRadius: 10, border: 'none',
+                      flex: 1, minWidth: 120, padding: '9px', borderRadius: 10, border: 'none',
                       background: isAktif ? 'linear-gradient(135deg, #0f172a, #1e293b)' : '#334155',
                       color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer'
                     }}
                   >
                     🔎 Kelola Booth &amp; Kasir
                   </button>
+                  {isAktif && (
+                    <button
+                      onClick={() => setCompletingBooth(booth)}
+                      style={{
+                        padding: '9px 14px', borderRadius: 10, border: 'none',
+                        background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                        color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap'
+                      }}
+                      title="Selesaikan Event & Kembalikan Sisa Stok"
+                    >
+                      🏁 Selesaikan Event
+                    </button>
+                  )}
                   <button
                     onClick={async () => {
                       if (confirm(`Konfirmasi HAPUS booth "${booth.nama}"?\n\nJika booth masih memiliki sisa stok (${stockPcs} pcs), sisa stok akan dikembalikan ke Gudang Pusat.`)) {
@@ -1596,6 +1611,18 @@ export function BoothManager() {
             );
           })}
         </div>
+      )}
+
+      {completingBooth && (
+        <CompleteBoothModal
+          booth={completingBooth}
+          warehouses={warehouses}
+          onClose={() => setCompletingBooth(null)}
+          onSaved={() => {
+            mutate();
+            setCompletingBooth(null);
+          }}
+        />
       )}
 
       {showCreateModal && (
