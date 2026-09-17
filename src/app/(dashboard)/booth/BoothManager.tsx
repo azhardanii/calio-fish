@@ -733,12 +733,15 @@ function CompleteBoothModal({
 
     setSaving(true);
     try {
-      await completeEventBooth(booth.id, targetWarehouseId, notes);
+      const res = await completeEventBooth(booth.id, targetWarehouseId, notes);
+      if (res && !res.success) {
+        throw new Error(res.error || 'Gagal menyelesaikan event');
+      }
       alert(`Event "${booth.nama}" berhasil diselesaikan!\n\n${totalRemainingPcs} pcs produk telah resmi masuk kembali ke ${selectedWarehouse?.name || 'Gudang Pusat'}.`);
       onSaved();
       onClose();
     } catch (err: any) {
-      alert(err.message);
+      alert(err.message || 'Terjadi kendala saat menyelesaikan event.');
     } finally {
       setSaving(false);
     }

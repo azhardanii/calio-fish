@@ -628,12 +628,21 @@ export async function POST(req: Request) {
                 const names = ws.map(w => w.name).slice(0, 3).join(', ');
                 throw new Error(`AMBIGUOUS:Ada lebih dari 1 warehouse dengan kata kunci '${srcName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
               }
-              if (ws.length === 0) {
-                throw new Error(`AMBIGUOUS:Tidak dapat menemukan Gudang/Warehouse Asal dengan nama '${srcName}'. Pastikan nama sesuai dengan database.`);
-              }
               if (ws.length === 1) {
                 sourceId = ws[0].id;
                 resolvedSourceName = ws[0].name;
+              } else {
+                // Fallback to central warehouse if generic, not found, or affiliate shipment
+                const central = await tx.warehouse.findFirst({
+                  where: { OR: [{ type: 'FACTORY' }, { type: 'STORAGE' }, { name: { contains: 'Banyuwangi', mode: 'insensitive' } }] },
+                  orderBy: { created_at: 'asc' }
+                });
+                if (central) {
+                  sourceId = central.id;
+                  resolvedSourceName = central.name;
+                } else {
+                  throw new Error(`AMBIGUOUS:Tidak dapat menemukan Gudang/Warehouse Asal dengan nama '${srcName}'. Pastikan nama sesuai dengan database.`);
+                }
               }
             } else if (srcType === 'OUTLET') {
               const os = await tx.outlet.findMany({ where: { nama: { contains: srcName, mode: 'insensitive' }, OR: [{ status: 'Aktif' }, { status: 'Active' }, { status: null }] }});
@@ -691,13 +700,27 @@ export async function POST(req: Request) {
             } else if (destType === 'AFFILIATE') {
               const as = await tx.affiliate.findMany({ where: { nama: { contains: destName, mode: 'insensitive' } }});
               if (as.length > 1) {
-                const names = as.map(a => a.nama).slice(0, 3).join(', ');
-                throw new Error(`AMBIGUOUS:Ada lebih dari 1 affiliator dengan kata kunci '${destName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
+                const exact = as.find(a => a.nama.toLowerCase() === destName.toLowerCase());
+                if (exact) {
+                  affiliateId = exact.id;
+                } else {
+                  const names = as.map(a => a.nama).slice(0, 3).join(', ');
+                  throw new Error(`AMBIGUOUS:Ada lebih dari 1 affiliator dengan kata kunci '${destName}' (${names}). Mohon sebutkan nama yang lebih spesifik.`);
+                }
+              } else if (as.length === 1) {
+                affiliateId = as[0].id;
+              } else {
+                // Auto create affiliate record if not exists yet!
+                const isGeneric = !destName || ['affiliate', 'affiliator', '-', 'sample'].includes(destName.toLowerCase());
+                const affName = isGeneric ? 'Affiliate Umum' : destName;
+                const newAff = await tx.affiliate.create({
+                  data: {
+                    nama: affName,
+                    akun_medsos: `@${affName.toLowerCase().replace(/[^a-z0-9_]/g, '') || 'affiliate'}`
+                  }
+                });
+                affiliateId = newAff.id;
               }
-              if (as.length === 0) {
-                throw new Error(`AMBIGUOUS:Tidak dapat menemukan Affiliator dengan nama '${destName}'. Pastikan nama affiliator sesuai dengan database.`);
-              }
-              if (as.length === 1) affiliateId = as[0].id;
             } else if (destType === 'BOOTH') {
               const bs = await tx.eventBooth.findMany({ where: { nama: { contains: destName, mode: 'insensitive' }, status: 'AKTIF' }});
               if (bs.length > 1) {
@@ -874,8 +897,8 @@ export async function POST(req: Request) {
                      await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
                    }
                    
-                   const txType = kategori === 'RETUR' ? 'RETUR' : kategori === 'PENGEMBALIAN_BOOTH' ? 'PENGEMBALIAN_BOOTH' : destType === 'BOOTH' ? 'DISTRIBUSI_BOOTH' : 'DISTRIBUSI';
-                   const txFlow = kategori === 'PENGEMBALIAN_BOOTH' ? 'IN' : 'OUT';
+                    const txType = kategori === 'RETUR' ? 'RETUR' : kategori === 'PENGEMBALIAN_BOOTH' ? 'PENGEMBALIAN_BOOTH' : destType === 'BOOTH' ? 'DISTRIBUSI_BOOTH' : (destType === 'AFFILIATE' || kategori === 'SAMPLE') ? 'SAMPLE_AFFILIATE' : 'DISTRIBUSI';
+                    const txFlow = kategori === 'PENGEMBALIAN_BOOTH' ? 'IN' : 'OUT';
 
                    await tx.stockTransaction.create({
                      data: {
@@ -884,12 +907,12 @@ export async function POST(req: Request) {
                        flow: txFlow,
                        qty: item.qty,
                        balance: newBalance,
-                       description: kategori === 'RETUR' ? `Retur dari ${srcName} ke ${destName}` : kategori === 'PENGEMBALIAN_BOOTH' ? `Pengembalian sisa layak jual dari ${srcName} ke ${destName}` : `Dari ${srcName} ke ${destName}`,
+                       description: kategori === 'RETUR' ? `Retur dari ${resolvedSourceName} ke ${destName}` : kategori === 'PENGEMBALIAN_BOOTH' ? `Pengembalian sisa layak jual dari ${resolvedSourceName} ke ${destName}` : destType === 'AFFILIATE' ? `Kirim sample affiliate ke ${destName} dari ${resolvedSourceName}` : `Dari ${resolvedSourceName} ke ${destName}`,
                        date: parsedData.date ? new Date(parsedData.date) : new Date(),
                        source_type: srcType,
                        source_id: sourceId,
                        destination_type: kategori === 'RETUR' ? 'WAREHOUSE_RETURN' : destType,
-                       destination_id: destId,
+                       destination_id: destType === 'AFFILIATE' ? affiliateId : destId,
                        employee_id: employeeId
                      }
                    });

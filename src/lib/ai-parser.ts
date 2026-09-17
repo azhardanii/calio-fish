@@ -59,8 +59,18 @@ data: [
 **NOTE ON BOOTH LOGISTICS:**
 - If sending items from a warehouse to an event/booth: use kategori_logistik="PENGIRIMAN_BOOTH", destination_type="BOOTH".
 - If returning unsold good items from a booth/event to a warehouse: use kategori_logistik="PENGEMBALIAN_BOOTH", source_type="BOOTH", destination_type="WAREHOUSE". (This is DIFFERENT from "RETUR" which is for damaged/spoiled items).
-**IF source or destination is omitted or vague (e.g., just "kirim ke outlet A" without stating FROM WHERE), set is_ambiguous = true and ask: "Harap sebutkan dari mana barang dikirim (misal: dari Banyuwangi ke Outlet A)."**
-Map product names EXACTLY to these SKUs: ${productMappingStr}. Use these SKUs for product_key in ANY report type. It is CRITICAL to look at the weight/gram/size in the message and map it to the corresponding SKU correctly.
+
+**NOTE ON AFFILIATE & SAMPLE SHIPMENTS (CRITICAL):**
+- When user writes "kirim affiliate [produk]" (e.g., "kirim affiliate fs original", "kirim affiliate 2 pcs fs ori", "kirim sample affiliate Sarah 5 fs original"):
+  - report_type: "LOGISTIK_MULTI"
+  - kategori_logistik: "SAMPLE"
+  - destination_type: "AFFILIATE"
+  - destination_name: Name of the affiliator if mentioned (e.g., "Sarah"), or "Affiliate Umum" if not specified.
+  - source_type: "WAREHOUSE"
+  - source_name: "Banyuwangi" (Always default source to central warehouse "Banyuwangi" if not mentioned. DO NOT mark as ambiguous!)
+  - items: If quantity is not explicitly stated (e.g. "kirim affiliate fs original"), DEFAULT qty to 1.
+- For other shipments (e.g. antar gudang or ke outlet), IF source is completely omitted or vague, set is_ambiguous = true and ask: "Harap sebutkan dari mana barang dikirim (misal: dari Banyuwangi ke Outlet A)."
+Map product names EXACTLY to these SKUs: ${productMappingStr}. Use these SKUs for product_key in ANY report type. It is CRITICAL to look at the weight/gram/size in the message and map it to the corresponding SKU correctly. If size/gram is omitted for Fish Skin Original, default to 60g (FS-ORI-60).
 
 5. MARKETING_OFFLINE
 For physical store or B2B/B2C sales. If items sold are mentioned, include them to deduct stock.

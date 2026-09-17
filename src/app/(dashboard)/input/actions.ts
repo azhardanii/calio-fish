@@ -50,6 +50,12 @@ export async function submitWarehouseInput(input: WarehouseInput) {
         }
       });
 
+      // Resolve central warehouse for physical stock deduction
+      const centralWarehouse = await tx.warehouse.findFirst({
+        where: { OR: [{ type: 'FACTORY' }, { type: 'STORAGE' }] },
+        orderBy: { created_at: 'asc' }
+      });
+
       // Deduct stock for each item
       for (const item of input.items) {
         const product = await tx.product.findUnique({ where: { id: item.productId } });
@@ -65,15 +71,46 @@ export async function submitWarehouseInput(input: WarehouseInput) {
           data: { stok: newBalance }
         });
 
+        // Deduct from central warehouse stock as well
+        if (centralWarehouse) {
+          const ws = await tx.warehouseStock.findUnique({
+            where: { warehouse_id_product_id: { warehouse_id: centralWarehouse.id, product_id: item.productId } }
+          });
+          if (ws) {
+            await tx.warehouseStock.update({
+              where: { id: ws.id },
+              data: { quantity: { decrement: item.qty } }
+            });
+          }
+        }
+
         await tx.stockTransaction.create({
           data: {
             product_id: item.productId,
-            type: 'OUTBOUND',
+            type: input.destinationType === 'Affiliate' ? 'SAMPLE_AFFILIATE' : 'OUTBOUND',
             flow: 'OUT',
             qty: item.qty,
             balance: newBalance,
-            description: `Pengiriman ${input.destinationType} (ID: ${shipment.id})`,
-            date: new Date()
+            description: `Pengiriman ${input.destinationType} ke ${input.destinationName || 'Tujuan'} (ID: ${shipment.id})`,
+            date: new Date(),
+            source_type: 'WAREHOUSE',
+            source_id: centralWarehouse?.id,
+            destination_type: input.destinationType === 'Affiliate' ? 'AFFILIATE' : input.destinationType.toUpperCase(),
+            destination_id: input.destinationType === 'Affiliate' ? input.affiliateId : (input.destinationType === 'Outlet' ? input.outletId : null)
+          }
+        });
+      }
+
+      // If destination is Affiliate, also log to DistribusiSample
+      if (input.destinationType === 'Affiliate' && input.affiliateId) {
+        const aff = await tx.affiliate.findUnique({ where: { id: input.affiliateId } });
+        const totalPcs = input.items.reduce((s, it) => s + it.qty, 0);
+        await tx.distribusiSample.create({
+          data: {
+            date: new Date(),
+            jenis_sample: `Affiliate - ${aff?.nama || input.destinationName || 'Affiliate'}`,
+            total_produk: totalPcs,
+            biaya_ekspedisi: 0,
           }
         });
       }

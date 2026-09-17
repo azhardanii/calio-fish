@@ -1093,82 +1093,213 @@ export async function recordBoothSale(boothId: string, data: {
 }
 
 export async function completeEventBooth(boothId: string, targetWarehouseId: string, notes?: string) {
-  const user = await verifySession();
-  if (!user) throw new Error('Tidak terautentikasi');
+  try {
+    const user = await verifySession();
+    if (!user) return { success: false, error: 'Sesi login telah berakhir. Silakan login kembali.' };
 
-  const booth = await prisma.eventBooth.findUnique({
-    where: { id: boothId },
-    include: { stocks: { include: { product: true } } }
-  });
-  if (!booth) throw new Error('Booth tidak ditemukan');
-  if (booth.status === 'SELESAI') throw new Error('Booth ini sudah berstatus selesai sebelumnya.');
-
-  const targetWarehouse = await prisma.warehouse.findUnique({ where: { id: targetWarehouseId } });
-  if (!targetWarehouse) throw new Error('Gudang tujuan pengembalian tidak ditemukan.');
-
-  await prisma.$transaction(async (tx) => {
-    // 1. Process Return of good unsold inventory to active warehouse stock
-    const remainingStocks = booth.stocks.filter(s => s.quantity > 0);
-
-    for (const bs of remainingStocks) {
-      // Return quantity directly to active warehouse stock (Bukan retur rusak!)
-      await tx.warehouseStock.upsert({
-        where: { warehouse_id_product_id: { warehouse_id: targetWarehouseId, product_id: bs.product_id } },
-        update: { quantity: { increment: bs.quantity } },
-        create: {
-          warehouse_id: targetWarehouseId,
-          product_id: bs.product_id,
-          quantity: bs.quantity,
-        }
-      });
-
-      // Increment global product.stok back into available system inventory
-      const product = await tx.product.findUnique({ where: { id: bs.product_id } });
-      const newGlobalStock = (product?.stok || 0) + bs.quantity;
-      await tx.product.update({
-        where: { id: bs.product_id },
-        data: { stok: newGlobalStock }
-      });
-
-      // Create StockTransaction for audit trail
-      await tx.stockTransaction.create({
-        data: {
-          product_id: bs.product_id,
-          type: 'PENGEMBALIAN_BOOTH',
-          flow: 'IN',
-          qty: bs.quantity,
-          balance: newGlobalStock,
-          description: `Pengembalian Sisa Stok Layak Jual dari Booth ${booth.nama} ke ${targetWarehouse.name} (${notes || 'Event Selesai'})`,
-          date: new Date(),
-          source_type: 'BOOTH',
-          source_id: boothId,
-          destination_type: 'WAREHOUSE',
-          destination_id: targetWarehouseId,
-          employee_id: user.id,
-        }
-      });
-
-      // Clear remaining booth stock to 0
-      await tx.boothStock.update({
-        where: { id: bs.id },
-        data: { quantity: 0 }
-      });
-    }
-
-    // 2. Mark Booth as SELESAI
-    await tx.eventBooth.update({
+    const booth = await prisma.eventBooth.findUnique({
       where: { id: boothId },
-      data: {
-        status: 'SELESAI',
-        catatan: notes ? (booth.catatan ? `${booth.catatan} | ${notes}` : notes) : booth.catatan,
-      }
+      include: { stocks: { include: { product: true } } }
     });
-  });
+    if (!booth) return { success: false, error: 'Booth tidak ditemukan' };
+    if (booth.status === 'SELESAI') return { success: false, error: 'Booth ini sudah berstatus selesai sebelumnya.' };
 
-  revalidatePath('/booth');
-  revalidatePath('/marketing');
-  revalidatePath('/warehouse');
-  revalidatePath('/produk');
+    const targetWarehouse = await prisma.warehouse.findUnique({ where: { id: targetWarehouseId } });
+    if (!targetWarehouse) return { success: false, error: 'Gudang tujuan pengembalian tidak ditemukan.' };
+
+    const emp = user?.id ? await prisma.employee.findUnique({ where: { id: user.id }, select: { id: true } }) : null;
+    const validEmployeeId = emp ? emp.id : null;
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Process Return of good unsold inventory to active warehouse stock
+      const remainingStocks = booth.stocks.filter(s => s.quantity > 0);
+
+      for (const bs of remainingStocks) {
+        // Return quantity directly to active warehouse stock (Bukan retur rusak!)
+        await tx.warehouseStock.upsert({
+          where: { warehouse_id_product_id: { warehouse_id: targetWarehouseId, product_id: bs.product_id } },
+          update: { quantity: { increment: bs.quantity } },
+          create: {
+            warehouse_id: targetWarehouseId,
+            product_id: bs.product_id,
+            quantity: bs.quantity,
+          }
+        });
+
+        // Increment global product.stok back into available system inventory
+        const newGlobalStock = (bs.product?.stok || 0) + bs.quantity;
+        await tx.product.update({
+          where: { id: bs.product_id },
+          data: { stok: { increment: bs.quantity } }
+        });
+
+        // Create StockTransaction for audit trail
+        await tx.stockTransaction.create({
+          data: {
+            product_id: bs.product_id,
+            type: 'PENGEMBALIAN_BOOTH',
+            flow: 'IN',
+            qty: bs.quantity,
+            balance: newGlobalStock,
+            description: `Pengembalian Sisa Stok Layak Jual dari Booth ${booth.nama} ke ${targetWarehouse.name} (${notes || 'Event Selesai'})`,
+            date: new Date(),
+            source_type: 'BOOTH',
+            source_id: boothId,
+            destination_type: 'WAREHOUSE',
+            destination_id: targetWarehouseId,
+            employee_id: validEmployeeId,
+          }
+        });
+
+        // Clear remaining booth stock to 0
+        await tx.boothStock.update({
+          where: { id: bs.id },
+          data: { quantity: 0 }
+        });
+      }
+
+      // 2. Mark Booth as SELESAI
+      await tx.eventBooth.update({
+        where: { id: boothId },
+        data: {
+          status: 'SELESAI',
+          catatan: notes ? (booth.catatan ? `${booth.catatan} | ${notes}` : notes) : booth.catatan,
+        }
+      });
+    }, { timeout: 60000, maxWait: 15000 });
+
+    revalidatePath('/booth');
+    revalidatePath('/marketing');
+    revalidatePath('/warehouse');
+    revalidatePath('/produk');
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error completing event booth:', err);
+    return { success: false, error: err.message || 'Gagal menyelesaikan event booth.' };
+  }
+}
+
+export async function sendAffiliateSample(data: {
+  affiliateId: string;
+  warehouseId?: string;
+  items: { productId: string; qty: number }[];
+  notes?: string;
+  biayaEkspedisi?: number;
+}) {
+  const user = await verifySession();
+  if (!user) return { success: false, error: 'Sesi login telah berakhir' };
+
+  try {
+    // 1. Resolve Warehouse (default to Central/FACTORY or first warehouse)
+    let targetWhId = data.warehouseId;
+    if (!targetWhId) {
+      const central = await prisma.warehouse.findFirst({
+        where: { OR: [{ type: 'FACTORY' }, { type: 'STORAGE' }] },
+        orderBy: { created_at: 'asc' }
+      });
+      targetWhId = central?.id;
+    }
+    if (!targetWhId) return { success: false, error: 'Gudang pusat asal tidak ditemukan' };
+
+    const warehouse = await prisma.warehouse.findUnique({ where: { id: targetWhId } });
+    if (!warehouse) return { success: false, error: 'Gudang pusat tidak ditemukan' };
+
+    const affiliate = await prisma.affiliate.findUnique({ where: { id: data.affiliateId } });
+    if (!affiliate) return { success: false, error: 'Affiliator tidak ditemukan' };
+
+    const emp = user?.id ? await prisma.employee.findUnique({ where: { id: user.id }, select: { id: true } }) : null;
+    const validEmployeeId = emp ? emp.id : null;
+
+    await prisma.$transaction(async (tx) => {
+      // Create OutboundShipment
+      await tx.outboundShipment.create({
+        data: {
+          date: new Date(),
+          shipment_type: 'SAMPLE',
+          source_type: 'WAREHOUSE',
+          source_name: warehouse.name,
+          destination_type: 'AFFILIATE',
+          destination_name: affiliate.nama,
+          affiliate_id: affiliate.id,
+          status: 'SHIPPED',
+          employee_id: validEmployeeId,
+          notes: data.notes || `Sample Affiliate ke ${affiliate.nama}`,
+          items: {
+            create: data.items.map(it => ({
+              product_id: it.productId,
+              qty: it.qty,
+            }))
+          }
+        }
+      });
+
+      // Deduct warehouse stock & global stock
+      for (const it of data.items) {
+        const prod = await tx.product.findUnique({ where: { id: it.productId } });
+        if (!prod) throw new Error('Produk tidak ditemukan');
+
+        const ws = await tx.warehouseStock.findUnique({
+          where: { warehouse_id_product_id: { warehouse_id: warehouse.id, product_id: it.productId } }
+        });
+        const currentWsQty = ws ? ws.quantity : 0;
+        if (currentWsQty < it.qty) {
+          throw new Error(`Stok ${prod.name} di ${warehouse.name} tidak cukup (tersedia ${currentWsQty} pcs, diminta ${it.qty} pcs)`);
+        }
+
+        // Decrement warehouseStock
+        await tx.warehouseStock.update({
+          where: { id: ws!.id },
+          data: { quantity: { decrement: it.qty } }
+        });
+
+        // Decrement global product stok
+        const newBalance = Math.max(0, prod.stok - it.qty);
+        await tx.product.update({
+          where: { id: it.productId },
+          data: { stok: newBalance }
+        });
+
+        // Create StockTransaction
+        await tx.stockTransaction.create({
+          data: {
+            product_id: it.productId,
+            type: 'SAMPLE_AFFILIATE',
+            flow: 'OUT',
+            qty: it.qty,
+            balance: newBalance,
+            description: `Pengiriman Sample Affiliate ke ${affiliate.nama} (@${affiliate.akun_medsos}) dari ${warehouse.name}`,
+            date: new Date(),
+            source_type: 'WAREHOUSE',
+            source_id: warehouse.id,
+            destination_type: 'AFFILIATE',
+            destination_id: affiliate.id,
+            employee_id: validEmployeeId,
+          }
+        });
+      }
+
+      // Record to DistribusiSample
+      const totalPcs = data.items.reduce((s, it) => s + it.qty, 0);
+      await tx.distribusiSample.create({
+        data: {
+          date: new Date(),
+          jenis_sample: `Affiliate - ${affiliate.nama}`,
+          total_produk: totalPcs,
+          biaya_ekspedisi: data.biayaEkspedisi || 0,
+          employee_id: validEmployeeId
+        }
+      });
+    }, { timeout: 60000, maxWait: 15000 });
+
+    revalidatePath('/affiliator');
+    revalidatePath('/warehouse');
+    revalidatePath('/produk');
+    revalidatePath('/pengiriman');
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Gagal mengirim sample affiliate' };
+  }
 }
 
 export async function deleteEventBooth(boothId: string) {
