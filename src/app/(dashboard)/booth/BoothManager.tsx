@@ -748,142 +748,208 @@ function CompleteBoothModal({
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, padding: 16 }}>
-      <div style={{ background: '#fff', borderRadius: 24, padding: 28, maxWidth: 540, width: '100%', maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 25px 60px rgba(0,0,0,0.2)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-          <div>
-            <h3 style={{ margin: '0 0 4px', fontSize: 19, fontWeight: 800, color: '#0f172a' }}>🏁 Selesaikan Event &amp; Pengembalian Sisa Stok</h3>
-            <p style={{ margin: 0, fontSize: 13, color: '#64748b' }}>Tutup status booth <b>{booth.nama}</b> dan kembalikan sisa produk ke gudang pusat</p>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.65)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, padding: 16 }}>
+      <div style={{ background: '#fff', borderRadius: 20, padding: '24px 28px', maxWidth: 720, width: '100%', maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 25px 60px rgba(0,0,0,0.25)', boxSizing: 'border-box' }}>
+        
+        {/* Header: Icon + Clean One-Line Title & Subtitle + Close Button */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid #f1f5f9' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+            <div style={{ width: 42, height: 42, borderRadius: 12, background: '#fef2f2', border: '1px solid #fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
+              🏁
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap' }}>
+                  Selesaikan Event Booth
+                </h3>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#f1f5f9', color: '#475569', whiteSpace: 'nowrap' }}>
+                  {booth.nama}
+                </span>
+              </div>
+              <p style={{ margin: '3px 0 0', fontSize: 12, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                Tutup operasional booth dan kembalikan seluruh sisa produk fisik ke gudang pusat.
+              </p>
+            </div>
           </div>
           <button
             type="button"
-            onClick={copyReturnManifest}
-            style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#f8fafc', fontSize: 11, fontWeight: 700, color: '#334155', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
-            title="Salin Berita Acara ke WhatsApp"
+            onClick={onClose}
+            style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#64748b', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, marginLeft: 12 }}
+            title="Tutup Modal"
           >
-            📋 Salin WA
+            ✕
           </button>
         </div>
 
-        {/* Highlight perbedaan pengembalian vs retur */}
-        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '12px 14px', marginBottom: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#166534', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-            <span>💡</span> Pengembalian Sisa Layak Jual (Bukan Retur)
-          </div>
+        {/* Highlight Callout: Sisa Layak Jual (Bukan Retur Rusak) */}
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '10px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 16, flexShrink: 0 }}>💡</span>
           <div style={{ fontSize: 12, color: '#15803d', lineHeight: 1.4 }}>
-            Produk sisa booth ini berstatus <b>bagus &amp; layak jual</b>. Kuantitas akan otomatis dikembalikan ke <b>stok aktif</b> di gudang tujuan dan dapat segera didistribusikan / dijual kembali.
+            <b>Pengembalian Sisa Layak Jual:</b> Sisa produk booth otomatis dikembalikan ke <b>stok aktif</b> di gudang tujuan dan dapat langsung didistribusikan / dijual kembali.
           </div>
         </div>
 
-        {/* Ringkasan Keuangan */}
-        <div style={{ background: '#f8fafc', borderRadius: 12, padding: '12px 16px', border: '1px solid #e2e8f0', marginBottom: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', letterSpacing: 0.5, marginBottom: 8 }}>REKONSILIASI PENJUALAN BOOTH</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <span style={{ fontSize: 12, color: '#64748b' }}>Total Penjualan:</span>
-              <div style={{ fontWeight: 800, color: '#15803d', fontSize: 15 }}>{formatRp(Number(booth.total_penjualan))}</div>
-            </div>
-            <div>
-              <span style={{ fontSize: 12, color: '#64748b' }}>Kas Masuk Disetor:</span>
-              <div style={{ fontWeight: 800, color: '#0f172a', fontSize: 15 }}>{formatRp(Number(booth.kas_masuk))}</div>
-            </div>
-            <div>
-              <span style={{ fontSize: 12, color: '#64748b' }}>Sisa Fisik Kembali:</span>
-              <div style={{ fontWeight: 800, color: '#2563eb', fontSize: 15 }}>{totalRemainingPcs} pcs</div>
-            </div>
-            <div>
-              <span style={{ fontSize: 12, color: '#64748b' }}>Total Valuasi Sisa:</span>
-              <div style={{ fontWeight: 800, color: '#7c3aed', fontSize: 15 }}>{formatRp(totalValuation)}</div>
-            </div>
+        {/* 4-Pillar Financial & Stock Reconciliation */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 12px' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', whiteSpace: 'nowrap', marginBottom: 2 }}>TOTAL PENJUALAN</div>
+            <div style={{ fontWeight: 800, color: '#15803d', fontSize: 15, whiteSpace: 'nowrap' }}>{formatRp(Number(booth.total_penjualan))}</div>
+          </div>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 12px' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', whiteSpace: 'nowrap', marginBottom: 2 }}>KAS DISETOR</div>
+            <div style={{ fontWeight: 800, color: '#0f172a', fontSize: 15, whiteSpace: 'nowrap' }}>{formatRp(Number(booth.kas_masuk))}</div>
+          </div>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 12px' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', whiteSpace: 'nowrap', marginBottom: 2 }}>SISA FISIK KEMBALI</div>
+            <div style={{ fontWeight: 800, color: '#2563eb', fontSize: 15, whiteSpace: 'nowrap' }}>{totalRemainingPcs} pcs</div>
+          </div>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 12px' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', whiteSpace: 'nowrap', marginBottom: 2 }}>VALUASI SISA</div>
+            <div style={{ fontWeight: 800, color: '#7c3aed', fontSize: 15, whiteSpace: 'nowrap' }}>{formatRp(totalValuation)}</div>
           </div>
         </div>
 
         {/* Rincian Sisa Fisik yang Dikirim Balik */}
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>Rincian Sisa Produk Dikembalikan ({remainingStocks.length} SKU):</div>
-            <span style={{ fontSize: 11, color: '#2563eb', fontWeight: 700 }}>Total: {totalRemainingPcs} pcs</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', whiteSpace: 'nowrap' }}>
+              Rincian Sisa Produk ({remainingStocks.length} SKU):
+            </span>
+            <span style={{ fontSize: 11, color: '#2563eb', fontWeight: 700, background: '#eff6ff', border: '1px solid #bfdbfe', padding: '1px 8px', borderRadius: 999, whiteSpace: 'nowrap' }}>
+              Total: {totalRemainingPcs} pcs ({formatRp(totalValuation)})
+            </span>
           </div>
 
           {remainingStocks.length === 0 ? (
-            <div style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic', padding: 12, background: '#f8fafc', borderRadius: 10, textAlign: 'center' }}>Seluruh produk habis terjual (0 sisa).</div>
+            <div style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic', padding: 14, background: '#f8fafc', borderRadius: 10, textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              Seluruh stok produk habis terjual (0 pcs sisa kembali).
+            </div>
           ) : (
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
-              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                    <th style={{ padding: '8px 10px', textAlign: 'left', color: '#64748b', fontSize: 11, fontWeight: 700 }}>PRODUK &amp; SKU</th>
-                    <th style={{ padding: '8px 10px', textAlign: 'right', color: '#64748b', fontSize: 11, fontWeight: 700 }}>SISA (PCS)</th>
-                    <th style={{ padding: '8px 10px', textAlign: 'right', color: '#64748b', fontSize: 11, fontWeight: 700 }}>NILAI SATUAN</th>
-                    <th style={{ padding: '8px 10px', textAlign: 'right', color: '#64748b', fontSize: 11, fontWeight: 700 }}>SUBTOTAL VALUASI</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {remainingStocks.map((s: any) => {
-                    const unitPrice = Number(s.product.base_price || 0);
-                    const subtotal = s.quantity * unitPrice;
-                    return (
-                      <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '8px 10px' }}>
-                          <div style={{ fontWeight: 700, color: '#0f172a' }}>{s.product.name}</div>
-                          <div style={{ fontSize: 10, color: '#94a3b8' }}>{s.product.sku}</div>
-                        </td>
-                        <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: '#2563eb' }}>{s.quantity} pcs</td>
-                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#64748b' }}>{formatRp(unitPrice)}</td>
-                        <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: '#15803d' }}>{formatRp(subtotal)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0', fontWeight: 800 }}>
-                    <td style={{ padding: '8px 10px', color: '#0f172a' }}>TOTAL FISIK KEMBALI</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', color: '#2563eb' }}>{totalRemainingPcs} pcs</td>
-                    <td></td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', color: '#15803d' }}>{formatRp(totalValuation)}</td>
-                  </tr>
-                </tfoot>
-              </table>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                      <th style={{ padding: '8px 12px', color: '#64748b', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>PRODUK &amp; SKU</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'right', color: '#64748b', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>SISA KEMBALI</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'right', color: '#64748b', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>NILAI SATUAN</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'right', color: '#64748b', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>SUBTOTAL</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {remainingStocks.map((s: any) => {
+                      const unitPrice = Number(s.product.base_price || 0);
+                      const subtotal = s.quantity * unitPrice;
+                      return (
+                        <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '8px 12px' }}>
+                            <div style={{ fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap' }}>{s.product.name}</div>
+                            <div style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{s.product.sku}</div>
+                          </td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 800, color: '#2563eb', whiteSpace: 'nowrap' }}>
+                            {s.quantity} pcs
+                          </td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', color: '#64748b', whiteSpace: 'nowrap' }}>
+                            {formatRp(unitPrice)}
+                          </td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: '#15803d', whiteSpace: 'nowrap' }}>
+                            {formatRp(subtotal)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0', fontWeight: 800 }}>
+                      <td style={{ padding: '9px 12px', color: '#0f172a', whiteSpace: 'nowrap' }}>TOTAL FISIK KEMBALI</td>
+                      <td style={{ padding: '9px 12px', textAlign: 'right', color: '#2563eb', whiteSpace: 'nowrap' }}>{totalRemainingPcs} pcs</td>
+                      <td></td>
+                      <td style={{ padding: '9px 12px', textAlign: 'right', color: '#15803d', whiteSpace: 'nowrap' }}>{formatRp(totalValuation)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
           )}
         </div>
 
-        {/* Pilih Gudang Tujuan */}
-        <div style={{ marginBottom: 14 }}>
-          <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Gudang Pusat Tujuan Pengembalian *</label>
-          <select
-            value={targetWarehouseId}
-            onChange={e => setTargetWarehouseId(e.target.value)}
-            style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', background: '#fff', boxSizing: 'border-box' }}
-          >
-            {warehouses.map(w => (
-              <option key={w.id} value={w.id}>
-                {w.name} {w.type === 'FACTORY' || w.type === 'STORAGE' ? '⭐ (Gudang Pusat)' : `(${w.type})`}
-              </option>
-            ))}
-          </select>
+        {/* Pilih Gudang Tujuan & Catatan */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 4, display: 'block', whiteSpace: 'nowrap' }}>
+              Gudang Pusat Tujuan Pengembalian *
+            </label>
+            <select
+              value={targetWarehouseId}
+              onChange={e => setTargetWarehouseId(e.target.value)}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 10, border: '1.5px solid #cbd5e1', fontSize: 13, outline: 'none', background: '#fff', boxSizing: 'border-box' }}
+            >
+              {warehouses.map(w => (
+                <option key={w.id} value={w.id}>
+                  {w.name} {w.type === 'FACTORY' || w.type === 'STORAGE' ? '⭐ (Gudang Pusat)' : `(${w.type})`}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 4, display: 'block', whiteSpace: 'nowrap' }}>
+              Catatan Penutupan
+            </label>
+            <input
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 10, border: '1.5px solid #cbd5e1', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
         </div>
 
-        <div style={{ marginBottom: 18 }}>
-          <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Catatan Penutupan</label>
-          <input
-            value={notes}
-            onChange={e => setNotes(e.target.value)}
-            style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-          />
-        </div>
-
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} style={{ padding: '8px 18px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#64748b' }}>Batal</button>
+        {/* Action Buttons: Clean Left (WA Copy) & Right (Batal + Selesaikan) */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, paddingTop: 14, borderTop: '1px solid #f1f5f9' }}>
           <button
             type="button"
-            onClick={handleComplete}
-            disabled={saving}
-            style={{ padding: '8px 22px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}
+            onClick={copyReturnManifest}
+            style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#f8fafc', fontSize: 12, fontWeight: 700, color: '#334155', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
+            title="Salin Berita Acara ke WhatsApp"
           >
-            {saving ? 'Memproses...' : '🏁 Tutup & Kembalikan Sisa'}
+            <span>📋</span>
+            <span>Salin Berita Acara (WA)</span>
           </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#64748b', whiteSpace: 'nowrap' }}
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleComplete}
+              disabled={saving}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 22px',
+                borderRadius: 10,
+                border: 'none',
+                background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                color: '#fff',
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: saving ? 'wait' : 'pointer',
+                opacity: saving ? 0.7 : 1,
+                whiteSpace: 'nowrap',
+                boxShadow: '0 2px 8px rgba(239, 68, 68, 0.25)'
+              }}
+            >
+              {saving ? 'Memproses...' : '🏁 Selesaikan Event & Kembalikan Sisa'}
+            </button>
+          </div>
         </div>
+
       </div>
     </div>
   );
