@@ -45,10 +45,12 @@ export async function POST(req: Request) {
     if (!payload) return NextResponse.json({ status: 'ignored', reason: 'no payload' });
 
     const textBody = (payload.body || '').trim().toLowerCase();
+    const strippedBody = textBody.replace(/^[\/!#]?(lapor|laporkan)\s+/i, '').trim();
+
     const isLapor = textBody.startsWith('/lapor') || textBody.startsWith('!lapor') || textBody.startsWith('#lapor') || textBody.startsWith('lapor');
-    const isMasuk = textBody.startsWith('/masuk') || textBody.startsWith('!masuk') || textBody.startsWith('#masuk') || textBody.startsWith('masuk');
-    const isIzin = textBody.startsWith('/izin') || textBody.startsWith('!izin') || textBody.startsWith('#izin') || textBody.startsWith('izin');
-    const isSakit = textBody.startsWith('/sakit') || textBody.startsWith('!sakit') || textBody.startsWith('#sakit') || textBody.startsWith('sakit');
+    const isMasuk = textBody.startsWith('/masuk') || textBody.startsWith('!masuk') || textBody.startsWith('#masuk') || textBody === 'masuk' || textBody.startsWith('/hadir') || textBody.startsWith('!hadir') || textBody.startsWith('#hadir') || textBody === 'hadir' || strippedBody.startsWith('masuk') || strippedBody.startsWith('hadir');
+    const isIzin = textBody.startsWith('/izin') || textBody.startsWith('!izin') || textBody.startsWith('#izin') || textBody.startsWith('izin') || strippedBody.startsWith('izin');
+    const isSakit = textBody.startsWith('/sakit') || textBody.startsWith('!sakit') || textBody.startsWith('#sakit') || textBody.startsWith('sakit') || strippedBody.startsWith('sakit');
     
     // Support structured reports and operational messages even without explicit /lapor prefix
     const structuredKeywords = [
@@ -56,7 +58,8 @@ export async function POST(req: Request) {
       'laporan penjualan booth', 'laporan marketing', 'laporan shopee', 'laporan tiktok',
       'pembayaran outlet', 'pelunasan outlet', 'piutang outlet', 'bon outlet',
       'produksi', 'mengemas', 'pembersihan kulit', 'jadwal kol', 'affiliate',
-      'booth', 'pameran', 'pengembalian'
+      'booth', 'pameran', 'pengembalian',
+      'pengeluaran', 'biaya', 'beban', 'personal buyer', 'distributor', 'iklan', 'ads'
     ];
     const isStructuredReport = structuredKeywords.some(kw => textBody.includes(kw));
 
@@ -143,9 +146,11 @@ export async function POST(req: Request) {
         
         let status: 'HADIR' | 'IZIN' | 'SAKIT' = isMasuk ? 'HADIR' : isSakit ? 'SAKIT' : 'IZIN';
         let notes = isSakit 
-          ? (payload.body || '').replace(/^[\/!#]?sakit\s*/i, '').trim()
+          ? (payload.body || '').replace(/^[\/!#]?(lapor|laporkan)?\s*[\/!#]?sakit\s*/i, '').trim()
           : isIzin 
-          ? (payload.body || '').replace(/^[\/!#]?izin\s*/i, '').trim() 
+          ? (payload.body || '').replace(/^[\/!#]?(lapor|laporkan)?\s*[\/!#]?izin\s*/i, '').trim() 
+          : isMasuk
+          ? (payload.body || '').replace(/^[\/!#]?(lapor|laporkan)?\s*[\/!#]?(masuk|hadir)\s*/i, '').trim()
           : '';
         
         await prisma.attendance.create({
@@ -157,7 +162,7 @@ export async function POST(req: Request) {
             }
         });
         
-        await sendMessage(payload.chat_id, `✅ Terima kasih ${employee?.nama}, presensi *${status}* hari ini berhasil dicatat!`, payload.id);
+        await sendMessage(payload.chat_id, `✅ Terima kasih ${employee?.nama}, presensi *${status}* hari ini berhasil dicatat!` + (notes ? `\n📝 Keterangan: ${notes}` : ''), payload.id);
         return NextResponse.json({ status: 'success', reason: 'presensi recorded' });
     }
 
@@ -184,7 +189,171 @@ export async function POST(req: Request) {
     const data = parsedData.data;
 
     try {
-      if (parsedData.report_type === 'PRODUKSI_HASIL') {
+      if (parsedData.report_type === 'PRESENSI') {
+        if (!employeeId) {
+          throw new Error('AMBIGUOUS:Nomor WhatsApp Anda belum terdaftar di Database Karyawan. Silakan hubungi admin untuk mendaftarkan nomor Anda.');
+        }
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        const existingPresensi = await prisma.attendance.findFirst({
+          where: { employee_id: employeeId, date: { gte: today } }
+        });
+        if (existingPresensi) {
+          replyMsg = `Halo ${employee?.nama}, Anda sudah tercatat melakukan presensi hari ini (${existingPresensi.status_kehadiran}).`;
+        } else {
+          const status = (data.status_kehadiran || 'HADIR').toUpperCase() as 'HADIR' | 'IZIN' | 'SAKIT';
+          await prisma.attendance.create({
+            data: {
+              employee_id: employeeId,
+              date: new Date(),
+              status_kehadiran: status,
+              alasan: data.alasan || null
+            }
+          });
+          replyMsg = `✅ Terima kasih ${employee?.nama}, presensi *${status}* hari ini berhasil dicatat!` + (data.alasan ? `\n📝 Keterangan: ${data.alasan}` : '');
+        }
+
+      } else if (parsedData.report_type === 'PENGELUARAN') {
+        const nominal = Number(data.nominal) || 0;
+        if (nominal <= 0) {
+          throw new Error('AMBIGUOUS:Nominal pengeluaran harus lebih besar dari 0.');
+        }
+
+        const category = (data.kategori || 'OPERASIONAL').toUpperCase();
+        const title = data.judul || 'Pengeluaran Operasional';
+        const desc = data.keterangan || (employee ? `Diajukan oleh: ${employee.nama}` : 'Laporan WhatsApp');
+        const expenseDate = parsedData.date ? new Date(parsedData.date) : new Date();
+
+        const expense = await prisma.expense.create({
+          data: {
+            category,
+            title,
+            amount: nominal,
+            date: expenseDate,
+            description: desc,
+            employee_id: employeeId
+          }
+        });
+
+        replyMsg = `✅ *Pengeluaran ${expense.category}* tanggal ${parsedData.date} berhasil dicatat!\n` +
+                   `📌 Keperluan: ${expense.title}\n` +
+                   `💰 Nominal: Rp ${nominal.toLocaleString('id-ID')}\n` +
+                   `👤 Pengaju: ${employee?.nama || 'Petugas'}` +
+                   (expense.description ? `\n📝 Catatan: ${expense.description}` : '');
+
+      } else if (parsedData.report_type === 'PERSONAL_BUYER') {
+        const buyerName = data.buyer_name || 'Pembeli Personal';
+        const nominal = Number(data.nominal) || 0;
+        const items = Array.isArray(data.items) ? data.items : [];
+        const srcName = data.source_warehouse || 'Banyuwangi';
+
+        let totalQty = 0;
+        let firstProductName = 'Produk Calio';
+
+        await prisma.$transaction(async (tx) => {
+          const w = await tx.warehouse.findFirst({
+            where: { name: { contains: srcName, mode: 'insensitive' } }
+          }) || await tx.warehouse.findFirst({
+            where: { OR: [{ type: 'FACTORY' }, { type: 'STORAGE' }] },
+            orderBy: { created_at: 'asc' }
+          });
+
+          if (w && items.length > 0) {
+            const insufficient: string[] = [];
+            for (const it of items) {
+              if (it.product_key && it.qty > 0) {
+                const prod = await tx.product.findUnique({ where: { sku: it.product_key } });
+                if (!prod) {
+                  insufficient.push(`• *${it.product_key}* (SKU tidak ditemukan)`);
+                  continue;
+                }
+                const ws = await tx.warehouseStock.findUnique({
+                  where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: prod.id } }
+                });
+                const avail = ws?.quantity || 0;
+                if (avail < it.qty) {
+                  insufficient.push(`• *${prod.name}* (Tersedia di ${w.name}: ${avail} pcs, Diminta: ${it.qty} pcs)`);
+                }
+              }
+            }
+
+            if (insufficient.length > 0) {
+              throw new Error(
+                `BATAL:Stok di ${w.name} tidak mencukupi untuk transaksi Personal Buyer:\n` +
+                insufficient.join('\n') +
+                `\n\nTransaksi Personal Buyer dibatalkan agar stok fisik tidak minus.`
+              );
+            }
+
+            for (const it of items) {
+              if (it.product_key && it.qty > 0) {
+                const prod = await tx.product.findUnique({ where: { sku: it.product_key } });
+                if (prod) {
+                  totalQty += it.qty;
+                  firstProductName = prod.name;
+                  const ws = await tx.warehouseStock.findUnique({
+                    where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: prod.id } }
+                  });
+                  if (ws) {
+                    await tx.warehouseStock.update({
+                      where: { id: ws.id },
+                      data: { quantity: ws.quantity - it.qty }
+                    });
+                  }
+                  const newBal = prod.stok - it.qty;
+                  await tx.product.update({
+                    where: { id: prod.id },
+                    data: { stok: newBal }
+                  });
+
+                  await tx.stockTransaction.create({
+                    data: {
+                      product_id: prod.id,
+                      type: 'PENJUALAN',
+                      flow: 'OUT',
+                      qty: it.qty,
+                      balance: newBal,
+                      description: `Personal Buyer: ${buyerName} (${data.keterangan || 'Penjualan Langsung WA'})`,
+                      date: parsedData.date ? new Date(parsedData.date) : new Date(),
+                      source_type: 'WAREHOUSE',
+                      source_id: w.id,
+                      destination_type: 'ENDUSER',
+                      employee_id: employeeId
+                    }
+                  });
+                }
+              }
+            }
+          }
+
+          let fallbackEmpId = employeeId;
+          if (!fallbackEmpId) {
+            const owner = await tx.employee.findFirst({ where: { role: 'OWNER' } });
+            fallbackEmpId = owner?.id || null;
+          }
+
+          if (fallbackEmpId) {
+            await tx.personalBuyerTransaction.create({
+              data: {
+                employee_id: fallbackEmpId,
+                buyer_name: buyerName,
+                product_name: items.length > 1 ? `${items.length} Macam Produk` : firstProductName,
+                quantity: totalQty || 1,
+                amount: nominal,
+                description: data.keterangan || 'Laporan Penjualan Personal Buyer via WA',
+                date: parsedData.date ? new Date(parsedData.date) : new Date(),
+              }
+            });
+          }
+        }, { maxWait: 10000, timeout: 60000 });
+
+        replyMsg = `✅ *Penjualan Personal Buyer* tanggal ${parsedData.date} berhasil dicatat!\n` +
+                   `👤 Pembeli: ${buyerName}\n` +
+                   `💰 Total Nominal: Rp ${nominal.toLocaleString('id-ID')}\n` +
+                   (totalQty > 0 ? `📦 Total Produk: ${totalQty} pcs (Stok dipotong dari ${srcName})\n` : '') +
+                   `👤 PIC: ${employee?.nama || 'Petugas'}`;
+
+      } else if (parsedData.report_type === 'PRODUKSI_HASIL') {
         const activities = Array.isArray(data) ? data : [data];
         let totalStokAdded = 0;
         let lastProductShortName = '';
@@ -196,15 +365,16 @@ export async function POST(req: Request) {
                 date: new Date(parsedData.date),
                 kegiatan: activity.kegiatan || 'Produksi',
                 jenis_produksi: activity.jenis_produksi || null,
-                bahan_baku: activity.bahan_baku_kg || null,
-                bahan_jadi: activity.hasil_kg || null,
-                total_hasil_pcs: activity.hasil_pcs || null,
-                hpp_batch: activity.hpp_batch || null,
+                bahan_baku: activity.bahan_baku_kg ? Number(activity.bahan_baku_kg) : null,
+                bahan_jadi: activity.hasil_kg ? Number(activity.hasil_kg) : null,
+                total_hasil_pcs: activity.hasil_pcs ? Number(activity.hasil_pcs) : null,
+                hpp_batch: activity.hpp_batch ? Number(activity.hpp_batch) : null,
                 employee_id: employeeId
               },
             });
 
-            if (activity.kegiatan === 'Mengemas' && activity.hasil_pcs > 0 && activity.product_key) {
+            const isPacking = activity.kegiatan && /mengemas|kemas|pengemasan|packing/i.test(activity.kegiatan);
+            if (isPacking && activity.hasil_pcs > 0 && activity.product_key) {
                const product = await tx.product.findUnique({ where: { sku: activity.product_key } });
                if (product) {
                  const newBalance = product.stok + activity.hasil_pcs;
@@ -616,17 +786,30 @@ export async function POST(req: Request) {
             const srcType = route.source_type?.toUpperCase() || 'WAREHOUSE';
             const srcName = route.source_name || '-';
             const destType = route.destination_type?.toUpperCase() || 'LAINNYA';
-            const destName = route.destination_name || '-';
+            let destName = route.destination_name || '-';
             const items = route.items || [];
             
             // 1. Resolve Source
             let sourceId = null;
             let resolvedSourceName = srcName;
-            if (srcType === 'WAREHOUSE') {
-              const ws = await tx.warehouse.findMany({ where: { name: { contains: srcName, mode: 'insensitive' } }});
+            if (srcType === 'WAREHOUSE' || srcType === 'DISTRIBUTOR') {
+              let ws = await tx.warehouse.findMany({ where: { name: { contains: srcName, mode: 'insensitive' } }});
+              if (ws.length === 0) {
+                const cleanSrc = srcName.replace(/^(gudang\s+distributor|distributor|gudang)\s*[-:]?\s*/i, '').trim();
+                if (cleanSrc) {
+                  ws = await tx.warehouse.findMany({
+                    where: {
+                      OR: [
+                        { name: { contains: cleanSrc, mode: 'insensitive' } },
+                        { distributor: { nama: { contains: cleanSrc, mode: 'insensitive' } } }
+                      ]
+                    }
+                  });
+                }
+              }
               if (ws.length > 1) {
                 const names = ws.map(w => w.name).slice(0, 3).join(', ');
-                throw new Error(`AMBIGUOUS:Ada lebih dari 1 warehouse dengan kata kunci '${srcName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
+                throw new Error(`AMBIGUOUS:Ada lebih dari 1 warehouse/distributor dengan kata kunci '${srcName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
               }
               if (ws.length === 1) {
                 sourceId = ws[0].id;
@@ -677,16 +860,32 @@ export async function POST(req: Request) {
             let outletId = null;
             let affiliateId = null;
             let boothId = null;
-            if (destType === 'WAREHOUSE') {
-              const ws = await tx.warehouse.findMany({ where: { name: { contains: destName, mode: 'insensitive' } }});
+            if (destType === 'WAREHOUSE' || destType === 'DISTRIBUTOR') {
+              let ws = await tx.warehouse.findMany({ where: { name: { contains: destName, mode: 'insensitive' } }});
+              if (ws.length === 0) {
+                const cleanDest = destName.replace(/^(gudang\s+distributor|distributor|gudang)\s*[-:]?\s*/i, '').trim();
+                if (cleanDest) {
+                  ws = await tx.warehouse.findMany({
+                    where: {
+                      OR: [
+                        { name: { contains: cleanDest, mode: 'insensitive' } },
+                        { distributor: { nama: { contains: cleanDest, mode: 'insensitive' } } }
+                      ]
+                    }
+                  });
+                }
+              }
               if (ws.length > 1) {
                 const names = ws.map(w => w.name).slice(0, 3).join(', ');
-                throw new Error(`AMBIGUOUS:Ada lebih dari 1 warehouse dengan kata kunci '${destName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
+                throw new Error(`AMBIGUOUS:Ada lebih dari 1 warehouse/distributor dengan kata kunci '${destName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
               }
               if (ws.length === 0) {
-                throw new Error(`AMBIGUOUS:Tidak dapat menemukan Gudang/Warehouse Tujuan dengan nama '${destName}'. Pastikan nama sesuai dengan database.`);
+                throw new Error(`AMBIGUOUS:Tidak dapat menemukan Gudang/Distributor Tujuan dengan nama '${destName}'. Pastikan nama sesuai dengan database.`);
               }
-              if (ws.length === 1) destId = ws[0].id;
+              if (ws.length === 1) {
+                destId = ws[0].id;
+                destName = ws[0].name;
+              }
             } else if (destType === 'OUTLET') {
               const os = await tx.outlet.findMany({ where: { nama: { contains: destName, mode: 'insensitive' }, OR: [{ status: 'Aktif' }, { status: 'Active' }, { status: null }] }});
               if (os.length > 1) {
@@ -696,19 +895,25 @@ export async function POST(req: Request) {
               if (os.length === 0) {
                 throw new Error(`AMBIGUOUS:Tidak dapat menemukan Outlet Tujuan dengan nama '${destName}'. Pastikan nama outlet sudah benar dan aktif.`);
               }
-              if (os.length === 1) { destId = os[0].id; outletId = os[0].id; }
+              if (os.length === 1) {
+                destId = os[0].id;
+                outletId = os[0].id;
+                destName = os[0].nama;
+              }
             } else if (destType === 'AFFILIATE') {
               const as = await tx.affiliate.findMany({ where: { nama: { contains: destName, mode: 'insensitive' } }});
               if (as.length > 1) {
                 const exact = as.find(a => a.nama.toLowerCase() === destName.toLowerCase());
                 if (exact) {
                   affiliateId = exact.id;
+                  destName = exact.nama;
                 } else {
                   const names = as.map(a => a.nama).slice(0, 3).join(', ');
                   throw new Error(`AMBIGUOUS:Ada lebih dari 1 affiliator dengan kata kunci '${destName}' (${names}). Mohon sebutkan nama yang lebih spesifik.`);
                 }
               } else if (as.length === 1) {
                 affiliateId = as[0].id;
+                destName = as[0].nama;
               } else {
                 // Auto create affiliate record if not exists yet!
                 const isGeneric = !destName || ['affiliate', 'affiliator', '-', 'sample'].includes(destName.toLowerCase());
@@ -720,6 +925,7 @@ export async function POST(req: Request) {
                   }
                 });
                 affiliateId = newAff.id;
+                destName = newAff.nama;
               }
             } else if (destType === 'BOOTH') {
               const bs = await tx.eventBooth.findMany({ where: { nama: { contains: destName, mode: 'insensitive' }, status: 'AKTIF' }});
@@ -730,7 +936,11 @@ export async function POST(req: Request) {
               if (bs.length === 0) {
                 throw new Error(`AMBIGUOUS:Tidak dapat menemukan Booth Tujuan yang aktif dengan nama '${destName}'.`);
               }
-              if (bs.length === 1) { destId = bs[0].id; boothId = bs[0].id; }
+              if (bs.length === 1) {
+                destId = bs[0].id;
+                boothId = bs[0].id;
+                destName = bs[0].nama;
+              }
             }
 
             // 3. Pre-validate Stock Availability at Source (BATALKAN jika stok tidak cukup)
@@ -743,7 +953,7 @@ export async function POST(req: Request) {
                   continue;
                 }
 
-                if (srcType === 'WAREHOUSE' && sourceId) {
+                if ((srcType === 'WAREHOUSE' || srcType === 'DISTRIBUTOR') && sourceId) {
                   const ws = await tx.warehouseStock.findUnique({
                     where: { warehouse_id_product_id: { warehouse_id: sourceId, product_id: product.id } }
                   });
@@ -790,7 +1000,7 @@ export async function POST(req: Request) {
                 date: parsedData.date ? new Date(parsedData.date) : new Date(),
                 shipment_type: kategori,
                 source_type: srcType,
-                source_name: srcName,
+                source_name: resolvedSourceName || srcName,
                 destination_type: destType,
                 destination_name: destName,
                 outlet_id: outletId,
@@ -842,7 +1052,7 @@ export async function POST(req: Request) {
                    }
 
                    // Increment Destination Stock (If internal transfer)
-                   if (destType === 'WAREHOUSE' && destId) {
+                   if ((destType === 'WAREHOUSE' || destType === 'DISTRIBUTOR') && destId) {
                      const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: destId, product_id: product.id } }});
                      if (ws) {
                        // If RETUR, add to returned_qty. If PENGEMBALIAN_BOOTH, add to healthy active quantity!
@@ -892,7 +1102,16 @@ export async function POST(req: Request) {
                      // Good stock returning from booth to warehouse increases central stock
                      newBalance += item.qty;
                      await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
-                   } else if (!['WAREHOUSE', 'OUTLET'].includes(destType) || kategori === 'RETUR') {
+                     if (sourceId && srcType === 'BOOTH') {
+                       const isFinished = /selesai|tutup|berakhir/i.test(payload.body || '');
+                       if (isFinished) {
+                         await tx.eventBooth.update({
+                           where: { id: sourceId },
+                           data: { status: 'SELESAI' }
+                         });
+                       }
+                     }
+                   } else if (!['WAREHOUSE', 'OUTLET', 'DISTRIBUTOR'].includes(destType) || kategori === 'RETUR') {
                      newBalance -= item.qty;
                      await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
                    }
@@ -949,19 +1168,39 @@ export async function POST(req: Request) {
 
       } else if (parsedData.report_type === 'KEUANGAN_OUTLET') {
         const outletName = data.outlet_name || '-';
-        const os = await prisma.outlet.findMany({ 
+        const cleanOutletName = outletName.replace(/^(distributor|outlet|toko)\s*[-:]?\s*/i, '').trim();
+        let os = await prisma.outlet.findMany({ 
           where: { 
             nama: { contains: outletName, mode: 'insensitive' }, 
             OR: [{ status: 'Aktif' }, { status: 'Active' }, { status: null }] 
           }
         });
+
+        if (os.length === 0 && cleanOutletName) {
+          os = await prisma.outlet.findMany({ 
+            where: { 
+              nama: { contains: cleanOutletName, mode: 'insensitive' }, 
+              OR: [{ status: 'Aktif' }, { status: 'Active' }, { status: null }] 
+            }
+          });
+        }
+
+        if (os.length === 0) {
+          const dist = await prisma.employee.findFirst({
+            where: { role: 'DISTRIBUTOR', nama: { contains: cleanOutletName || outletName, mode: 'insensitive' } },
+            include: { distributor_outlets: true }
+          });
+          if (dist && dist.distributor_outlets.length > 0) {
+            os = [dist.distributor_outlets[0]];
+          }
+        }
         
         if (os.length > 1) {
           const names = os.map(o => o.nama).slice(0, 3).join(', ');
-          throw new Error(`AMBIGUOUS:Ada lebih dari 1 outlet aktif dengan kata kunci '${outletName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
+          throw new Error(`AMBIGUOUS:Ada lebih dari 1 outlet/distributor aktif dengan kata kunci '${outletName}' (${names}). Mohon copy-paste dan kirim ulang laporan Anda dengan nama yang lebih spesifik.`);
         }
         if (os.length === 0) {
-          throw new Error(`AMBIGUOUS:Tidak dapat menemukan Outlet dengan nama '${outletName}'. Pastikan nama outlet sudah benar dan aktif.`);
+          throw new Error(`AMBIGUOUS:Tidak dapat menemukan Outlet/Distributor dengan nama '${outletName}'. Pastikan nama outlet atau distributor sudah benar dan aktif.`);
         }
 
         const outlet = os[0];
@@ -995,7 +1234,8 @@ export async function POST(req: Request) {
               data: { payment: newPayment, sisa_tagihan: newSisa }
             })
           ]);
-          replyMsg = `✅ *Pembayaran Outlet* ${outlet.nama} sebesar Rp ${nominal.toLocaleString('id-ID')} berhasil dicatat!\nSisa Tagihan saat ini: Rp ${newSisa.toLocaleString('id-ID')}`;
+          const isDistributorOutlet = !!outlet.distributor_id;
+          replyMsg = `✅ *Pembayaran ${isDistributorOutlet ? 'Distributor / Outlet' : 'Outlet'}* ${outlet.nama} sebesar Rp ${nominal.toLocaleString('id-ID')} berhasil dicatat!\nSisa Tagihan saat ini: Rp ${newSisa.toLocaleString('id-ID')}`;
         } else {
           const newTagihan = Number(outlet.tagihan) + nominal;
           const newSisa = newTagihan - Number(outlet.payment);
