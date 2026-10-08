@@ -3,10 +3,21 @@ import { prisma } from '@/lib/prisma';
 import { serializeDeep } from '@/lib/serialize';
 
 export async function GET() {
-  const produksiList = await prisma.produksi.findMany({
-    orderBy: { date: 'desc' },
-    include: { employee: true },
-  });
+  const [produksiList, products, warehouses] = await Promise.all([
+    prisma.produksi.findMany({
+      orderBy: { date: 'desc' },
+      include: { employee: true },
+    }),
+    prisma.product.findMany({
+      where: { is_active: true },
+      select: { id: true, name: true, short_name: true, sku: true, stok: true },
+      orderBy: { name: 'asc' }
+    }),
+    prisma.warehouse.findMany({
+      select: { id: true, name: true, type: true },
+      orderBy: { created_at: 'asc' }
+    })
+  ]);
 
   const data = produksiList.map(p => ({
     id: p.id,
@@ -29,5 +40,5 @@ export async function GET() {
     if (s.key === 'target_produksi_kg') targetKg = Number(s.value);
   }
 
-  return NextResponse.json(serializeDeep({ data, targetPcs, targetKg }));
+  return NextResponse.json(serializeDeep({ data, targetPcs, targetKg, products, warehouses }));
 }

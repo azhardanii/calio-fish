@@ -29,6 +29,8 @@ export default function ProduksiPage() {
           targetKg={data?.targetKg || 50} 
           exportButton={<PdfExportButton targetId="produksi-report" filename="laporan-produksi" />}
           mutate={mutate}
+          products={data?.products || []}
+          warehouses={data?.warehouses || []}
         />
       </div>
     </div>

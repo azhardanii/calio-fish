@@ -214,12 +214,22 @@ export async function GET(req: NextRequest) {
     // Tim Marketing Employees & Individual Targets
     prisma.employee.findMany({
       where: {
+        status_aktif: true,
         OR: [
           { role: 'MARKETING' },
-          { role: { contains: 'MARKETING' } },
-          { posisi: { contains: 'Marketing', mode: 'insensitive' } },
+          {
+            AND: [
+              { role: 'STAFF' },
+              { posisi: { contains: 'Marketing', mode: 'insensitive' } },
+            ]
+          }
         ],
-        status_aktif: true,
+        NOT: {
+          OR: [
+            { role: { in: ['ADMIN', 'OWNER', 'PRODUKSI', 'DISTRIBUTOR'] } },
+            { posisi: { in: ['Admin', 'Owner', 'Staff Produksi', 'Produksi', 'Distributor'], mode: 'insensitive' } }
+          ]
+        },
       },
       include: {
         managed_outlets: {
@@ -343,7 +353,7 @@ export async function GET(req: NextRequest) {
   const totalPersentase = totalTarget > 0 ? (targetChannelsOmset / totalTarget) * 100 : 0;
 
   // Total Omset Keseluruhan Perusahaan (Seluruh Jalur: Tim Marketing + Shopee + TikTok + Personal Buyer Direct Pusat + Event Booth)
-  const totalOmset = offlineOmset + shopeeOmset + tiktokOmset + personalBuyerDirectOmset + boothOmset;
+  const totalOmset = totalMarketingOmset + shopeeOmset + tiktokOmset + personalBuyerDirectOmset + boothOmset;
 
   // Kas Masuk (Dana Cair / Kas Terkumpul)
   // Akumulasi total kas yang terkumpul mencakup: Outlet Reguler + Hasil Distributor + Booth + Personal + E-Commerce!
@@ -357,8 +367,29 @@ export async function GET(req: NextRequest) {
   const netMargin = totalKasMasuk - totalPengeluaranCalio;
   const totalSisaTagihan = toNum(outletTagihanAgg._sum.sisa_tagihan);
 
-  // Omset Hari Ini
-  const omsetHariIni = toNum(offlineToday?.omset_harian) + 
+  // Omset Hari Ini: Dari Tim Marketing (billing outlet + personal buyer), online, direct personal, dan booth
+  let marketingTodayOmset = 0;
+  (marketingEmployees as any[]).forEach((emp: any) => {
+    (emp.managed_outlets || []).forEach((outlet: any) => {
+      (outlet.transactions || []).forEach((tx: any) => {
+        const txDate = new Date(tx.date);
+        if (txDate >= todayStart && txDate <= todayEnd) {
+          if (tx.type === 'PIUTANG' || tx.type === 'BILLING' || tx.type === 'TAGIHAN' || tx.type === 'ORDER') {
+            marketingTodayOmset += Number(tx.amount || 0);
+          }
+        }
+      });
+    });
+    (emp.personal_buyer_transactions || []).forEach((t: any) => {
+      const d = new Date(t.date);
+      if (d >= todayStart && d <= todayEnd) {
+        marketingTodayOmset += Number(t.amount || 0);
+      }
+    });
+  });
+
+  const omsetHariIni = marketingTodayOmset + 
+    toNum(offlineToday?.omset_harian) + 
     toNum(onlineTodayAgg._sum.omset_harian) + 
     personalBuyerDirectTodayOmset + 
     boothTodayOmset;
@@ -376,6 +407,26 @@ export async function GET(req: NextRequest) {
     entry.total += amount;
     chartMap.set(key, entry);
   };
+
+  // Populate Marketing Daily from Outlet Billing & Marketing Personal Buyer transactions
+  (marketingEmployees as any[]).forEach((emp: any) => {
+    (emp.managed_outlets || []).forEach((outlet: any) => {
+      (outlet.transactions || []).forEach((tx: any) => {
+        const txDate = new Date(tx.date);
+        const matchDate = dateFilter ? (txDate >= startDate! && txDate <= endDate!) : true;
+        if (matchDate && (tx.type === 'PIUTANG' || tx.type === 'BILLING' || tx.type === 'TAGIHAN' || tx.type === 'ORDER')) {
+          addChartPoint(txDate, 'offline', Number(tx.amount || 0));
+        }
+      });
+    });
+    (emp.personal_buyer_transactions || []).forEach((t: any) => {
+      const d = new Date(t.date);
+      const matchDate = dateFilter ? (d >= startDate! && d <= endDate!) : true;
+      if (matchDate) {
+        addChartPoint(d, 'offline', Number(t.amount || 0));
+      }
+    });
+  });
 
   for (const r of offlineDaily) addChartPoint(new Date(r.date), 'offline', toNum(r.omset_harian));
   for (const r of onlineDaily) addChartPoint(new Date(r.date), 'online', toNum(r.omset_harian));

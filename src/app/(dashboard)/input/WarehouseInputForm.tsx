@@ -12,14 +12,16 @@ interface Props {
   affiliates: Affiliate[];
   products: Product[];
   distributors?: any[];
+  warehouses?: any[];
 }
 
-export default function WarehouseInputForm({ outlets, affiliates, products, distributors = [] }: Props) {
+export default function WarehouseInputForm({ outlets, affiliates, products, distributors = [], warehouses = [] }: Props) {
   const [destinationType, setDestinationType] = useState('Distributor');
   const [destinationName, setDestinationName] = useState('');
   const [outletId, setOutletId] = useState('');
   const [affiliateId, setAffiliateId] = useState('');
   const [distributorId, setDistributorId] = useState('');
+  const [warehouseId, setWarehouseId] = useState(warehouses[0]?.id || '');
   const [lastManifest, setLastManifest] = useState<string | null>(null);
   const [distributorPhone, setDistributorPhone] = useState('');
   
@@ -76,7 +78,8 @@ export default function WarehouseInputForm({ outlets, affiliates, products, dist
         destinationName: resolvedDestName,
         outletId,
         affiliateId,
-        items
+        items,
+        warehouseId: warehouseId || undefined
       });
       
       if (res.success) {
@@ -139,7 +142,26 @@ export default function WarehouseInputForm({ outlets, affiliates, products, dist
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">Gudang Asal Barang *</label>
+          <select 
+            value={warehouseId} 
+            onChange={e => setWarehouseId(e.target.value)}
+            className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white font-medium text-gray-800"
+          >
+            {warehouses.length === 0 ? (
+              <option value="">Gudang Utama (Banyuwangi)</option>
+            ) : (
+              warehouses.map((w: any) => (
+                <option key={w.id} value={w.id}>
+                  🏬 {w.name} ({w.type === 'FACTORY' ? 'Pabrik' : 'Penyimpanan'})
+                </option>
+              ))
+            )}
+          </select>
+        </div>
+
         <div className="space-y-2">
           <label className="text-sm font-medium text-gray-700">Jenis Tujuan</label>
           <select 

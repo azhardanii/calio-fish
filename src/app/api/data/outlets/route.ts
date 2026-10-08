@@ -5,15 +5,21 @@ import { verifySession } from '@/lib/auth';
 
 export async function GET() {
   const user = await verifySession();
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   
-  let whereClause = {};
+  let whereClause: any = {};
   const role = (user?.role || '').toUpperCase();
   const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
 
-  if (!isOwnerOrAdmin && user && (role === 'MARKETING' || role.includes('MARKETING') || role === 'MITRA')) {
-    whereClause = { pengelola_id: user.id };
-  } else if (!isOwnerOrAdmin && user && role === 'DISTRIBUTOR') {
-    whereClause = { distributor_id: user.id };
+  if (!isOwnerOrAdmin) {
+    if (role === 'DISTRIBUTOR') {
+      whereClause = { distributor_id: user.id };
+    } else {
+      // Marketing, Mitra, and any non-admin staff
+      whereClause = { pengelola_id: user.id };
+    }
   }
 
   const outlets = await prisma.outlet.findMany({

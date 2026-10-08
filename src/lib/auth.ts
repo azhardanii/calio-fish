@@ -44,22 +44,23 @@ export async function verifySession() {
         select: { role: true, posisi: true }
       });
       if (dbUser) {
-        let r = (dbUser.role || '').toUpperCase();
+        const r = (dbUser.role || '').toUpperCase();
         const p = (dbUser.posisi || '').toUpperCase();
-        if (r === 'STAFF PRODUKSI' || r === 'STAFF_PRODUKSI' || r.includes('PRODUKSI') || p.includes('PRODUKSI')) {
-          r = 'PRODUKSI';
-        } else if (r === 'STAFF MARKETING' || r === 'STAFF_MARKETING' || r.includes('MARKETING') || p.includes('MARKETING')) {
-          r = 'MARKETING';
+        if (r === 'OWNER' || r.includes('OWNER') || p.includes('OWNER')) {
+          role = 'OWNER';
+        } else if (r === 'ADMIN' || r.includes('ADMIN') || p.includes('ADMIN')) {
+          role = 'ADMIN';
         } else if (r.includes('DISTRIBUTOR') || p.includes('DISTRIBUTOR')) {
-          r = 'DISTRIBUTOR';
+          role = 'DISTRIBUTOR';
+        } else if (r === 'STAFF MARKETING' || r === 'STAFF_MARKETING' || r.includes('MARKETING') || p.includes('MARKETING')) {
+          role = 'MARKETING';
+        } else if (r === 'STAFF PRODUKSI' || r === 'STAFF_PRODUKSI' || r.includes('PRODUKSI') || p.includes('PRODUKSI')) {
+          role = 'PRODUKSI';
         } else if (r.includes('MITRA') || p.includes('MITRA')) {
-          r = 'MITRA';
-        } else if (r.includes('ADMIN') || p.includes('ADMIN')) {
-          r = 'ADMIN';
-        } else if (r.includes('OWNER') || p.includes('OWNER')) {
-          r = 'OWNER';
+          role = 'MITRA';
+        } else {
+          role = r || 'STAFF';
         }
-        role = r || (dbUser.role || '').toUpperCase() || 'STAFF';
       }
     }
 

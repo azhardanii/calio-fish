@@ -27,12 +27,25 @@ interface WarehouseInput {
   outletId: string;
   affiliateId: string;
   items: { productId: string; qty: number }[];
+  warehouseId?: string;
 }
 
 export async function submitWarehouseInput(input: WarehouseInput) {
   try {
     // Start transaction
     await prisma.$transaction(async (tx) => {
+      // Resolve source warehouse for physical stock deduction
+      let sourceWarehouse: any = null;
+      if (input.warehouseId) {
+        sourceWarehouse = await tx.warehouse.findUnique({ where: { id: input.warehouseId } });
+      }
+      if (!sourceWarehouse) {
+        sourceWarehouse = await tx.warehouse.findFirst({
+          where: { OR: [{ type: 'FACTORY' }, { type: 'STORAGE' }] },
+          orderBy: { created_at: 'asc' }
+        });
+      }
+
       const shipment = await tx.outboundShipment.create({
         data: {
           date: new Date(),
@@ -40,6 +53,8 @@ export async function submitWarehouseInput(input: WarehouseInput) {
           destination_name: ['E-Commerce', 'Influencer', 'Sample'].includes(input.destinationType) ? input.destinationName : null,
           outlet_id: input.destinationType === 'Outlet' ? input.outletId : null,
           affiliate_id: input.destinationType === 'Affiliate' ? input.affiliateId : null,
+          source_type: 'WAREHOUSE',
+          source_name: sourceWarehouse?.name || 'Gudang Utama',
           status: 'SHIPPED',
           items: {
             create: input.items.map(item => ({
@@ -50,39 +65,31 @@ export async function submitWarehouseInput(input: WarehouseInput) {
         }
       });
 
-      // Resolve central warehouse for physical stock deduction
-      const centralWarehouse = await tx.warehouse.findFirst({
-        where: { OR: [{ type: 'FACTORY' }, { type: 'STORAGE' }] },
-        orderBy: { created_at: 'asc' }
-      });
-
       // Deduct stock for each item
       for (const item of input.items) {
         const product = await tx.product.findUnique({ where: { id: item.productId } });
         if (!product) throw new Error(`Product ${item.productId} not found`);
-        if (product.stok < item.qty) {
-          throw new Error(`Stok tidak mencukupi untuk ${product.name} (Tersedia: ${product.stok} pcs, Diminta: ${item.qty} pcs).`);
+
+        // Check stock in the selected source warehouse
+        if (sourceWarehouse) {
+          const ws = await tx.warehouseStock.findUnique({
+            where: { warehouse_id_product_id: { warehouse_id: sourceWarehouse.id, product_id: item.productId } }
+          });
+          const avail = ws ? ws.quantity : 0;
+          if (avail < item.qty) {
+            throw new Error(`Stok produk "${product.name}" di gudang "${sourceWarehouse.name}" tidak mencukupi (Tersedia: ${avail} pcs, Diminta: ${item.qty} pcs).`);
+          }
+          await tx.warehouseStock.update({
+            where: { id: ws!.id },
+            data: { quantity: { decrement: item.qty } }
+          });
         }
         
-        const newBalance = product.stok - item.qty;
-        
+        const newBalance = Math.max(0, product.stok - item.qty);
         await tx.product.update({
           where: { id: item.productId },
           data: { stok: newBalance }
         });
-
-        // Deduct from central warehouse stock as well
-        if (centralWarehouse) {
-          const ws = await tx.warehouseStock.findUnique({
-            where: { warehouse_id_product_id: { warehouse_id: centralWarehouse.id, product_id: item.productId } }
-          });
-          if (ws) {
-            await tx.warehouseStock.update({
-              where: { id: ws.id },
-              data: { quantity: { decrement: item.qty } }
-            });
-          }
-        }
 
         await tx.stockTransaction.create({
           data: {
@@ -91,10 +98,10 @@ export async function submitWarehouseInput(input: WarehouseInput) {
             flow: 'OUT',
             qty: item.qty,
             balance: newBalance,
-            description: `Pengiriman ${input.destinationType} ke ${input.destinationName || 'Tujuan'} (ID: ${shipment.id})`,
+            description: `Pengiriman ${input.destinationType} ke ${input.destinationName || 'Tujuan'} dari ${sourceWarehouse?.name || 'Gudang'} (ID: ${shipment.id.slice(0, 8)})`,
             date: new Date(),
             source_type: 'WAREHOUSE',
-            source_id: centralWarehouse?.id,
+            source_id: sourceWarehouse?.id,
             destination_type: input.destinationType === 'Affiliate' ? 'AFFILIATE' : input.destinationType.toUpperCase(),
             destination_id: input.destinationType === 'Affiliate' ? input.affiliateId : (input.destinationType === 'Outlet' ? input.outletId : null)
           }

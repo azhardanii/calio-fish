@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { DateRange } from "react-day-picker";
 import { format } from "date-fns";
 import { DateRangePicker } from '@/components/ui/date-range-picker';
@@ -25,13 +25,17 @@ export function ProduksiClient({
   targetPcs = 200, 
   targetKg = 50, 
   exportButton,
-  mutate 
+  mutate,
+  products = [],
+  warehouses = []
 }: { 
   initialData: Produksi[], 
   targetPcs?: number, 
   targetKg?: number, 
   exportButton?: React.ReactNode,
-  mutate?: () => void 
+  mutate?: () => void,
+  products?: any[],
+  warehouses?: any[]
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filterKegiatan, setFilterKegiatan] = useState<string>('all');
@@ -161,7 +165,7 @@ export function ProduksiClient({
       }));
   }, [filteredData, appliedDateRange]);
 
-  const defaultKegiatan = ['Pembersihan', 'Menggoreng', 'Menjemur', 'Menimbang', 'Mengemas'];
+  const defaultKegiatan = ['Pembersihan', 'Pengemasan'];
   const uniqueKegiatan = Array.from(new Set([...defaultKegiatan, ...initialData.map(p => p.kegiatan)]));
 
   const filterLabel = useMemo(() => {
@@ -457,41 +461,66 @@ export function ProduksiClient({
           onSaved={() => {
             if (mutate) mutate();
           }}
+          products={products}
+          warehouses={warehouses}
         />
       )}
     </div>
   );
 }
 
-function TambahKegiatanModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function TambahKegiatanModal({ 
+  onClose, 
+  onSaved,
+  products = [],
+  warehouses = []
+}: { 
+  onClose: () => void; 
+  onSaved: () => void;
+  products?: any[];
+  warehouses?: any[];
+}) {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [kegiatan, setKegiatan] = useState('Pembersihan');
-  const [customKegiatan, setCustomKegiatan] = useState('');
-  const [jenisProduksi, setJenisProduksi] = useState('');
+  const [kegiatan, setKegiatan] = useState<'Pembersihan' | 'Pengemasan'>('Pembersihan');
   const [bahanBaku, setBahanBaku] = useState<string>('');
   const [bahanJadi, setBahanJadi] = useState<string>('');
+  const [selectedProductId, setSelectedProductId] = useState<string>(products[0]?.id || '');
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>(warehouses[0]?.id || '');
   const [totalHasilPcs, setTotalHasilPcs] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (products.length > 0 && !selectedProductId) setSelectedProductId(products[0].id);
+    if (warehouses.length > 0 && !selectedWarehouseId) setSelectedWarehouseId(warehouses[0].id);
+  }, [products, warehouses, selectedProductId, selectedWarehouseId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const finalKegiatan = kegiatan === 'Lainnya' ? customKegiatan.trim() : kegiatan;
-    if (!finalKegiatan) {
-      alert('Pilih atau ketik nama kegiatan produksi');
-      return;
+    if (kegiatan === 'Pengemasan') {
+      if (!totalHasilPcs || parseInt(totalHasilPcs, 10) <= 0) {
+        alert('Masukkan jumlah hasil kemasan jadi (pcs) yang valid.');
+        return;
+      }
+      if (!selectedProductId) {
+        alert('Pilih varian produk jadi.');
+        return;
+      }
     }
 
     setLoading(true);
     try {
+      const selectedProduct = products.find(p => p.id === selectedProductId);
       await createProduksiKegiatan({
         date,
-        kegiatan: finalKegiatan,
-        jenis_produksi: jenisProduksi.trim() || undefined,
+        kegiatan,
+        jenis_produksi: kegiatan === 'Pengemasan' ? (selectedProduct?.name || selectedProduct?.short_name) : undefined,
         bahan_baku: bahanBaku ? parseFloat(bahanBaku) : null,
-        bahan_jadi: bahanJadi ? parseFloat(bahanJadi) : null,
-        total_hasil_pcs: totalHasilPcs ? parseInt(totalHasilPcs, 10) : null,
+        bahan_jadi: kegiatan === 'Pembersihan' ? (bahanJadi ? parseFloat(bahanJadi) : null) : null,
+        total_hasil_pcs: kegiatan === 'Pengemasan' && totalHasilPcs ? parseInt(totalHasilPcs, 10) : null,
+        product_id: kegiatan === 'Pengemasan' ? selectedProductId : undefined,
+        warehouse_id: kegiatan === 'Pengemasan' ? (selectedWarehouseId || warehouses[0]?.id) : undefined,
       });
-      alert(`✅ Kegiatan "${finalKegiatan}" berhasil ditambahkan!`);
+      alert(`✅ Kegiatan "${kegiatan}" berhasil dicatat!${kegiatan === 'Pengemasan' ? ' Stok produk & gudang telah bertambah.' : ''}`);
       onSaved();
       onClose();
     } catch (err: any) {
@@ -507,9 +536,9 @@ function TambahKegiatanModal({ onClose, onSaved }: { onClose: () => void; onSave
         <div className="flex justify-between items-center pb-3 border-b border-gray-100 mb-4">
           <div>
             <h3 className="text-lg sm:text-xl font-bold text-gray-900 flex items-center gap-2">
-              <span>🏭</span> Tambah Kegiatan Produksi
+              <span>🏭</span> Tambah Laporan Produksi
             </h3>
-            <p className="text-xs text-gray-500 mt-0.5">Input riwayat operasional &amp; produksi langsung ke sistem</p>
+            <p className="text-xs text-gray-500 mt-0.5">Pencatatan pembersihan &amp; penambahan stok dari pengemasan</p>
           </div>
           <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg cursor-pointer">
             ✕
@@ -524,7 +553,7 @@ function TambahKegiatanModal({ onClose, onSaved }: { onClose: () => void; onSave
               value={date}
               onChange={e => setDate(e.target.value)}
               required
-              className="w-full p-2.5 border border-gray-300 rounded-lg text-sm"
+              className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white"
             />
           </div>
 
@@ -532,83 +561,121 @@ function TambahKegiatanModal({ onClose, onSaved }: { onClose: () => void; onSave
             <label className="text-xs font-bold text-gray-700 block mb-1">Jenis Kegiatan *</label>
             <select
               value={kegiatan}
-              onChange={e => setKegiatan(e.target.value)}
-              className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white"
+              onChange={e => setKegiatan(e.target.value as 'Pembersihan' | 'Pengemasan')}
+              className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white font-semibold text-gray-800"
             >
-              <option value="Pembersihan">Pembersihan (Kulit / Daging)</option>
-              <option value="Pemotongan">Pemotongan / Fillet</option>
-              <option value="Penggorengan">Penggorengan</option>
-              <option value="Penirisan Minyak">Penirisan Minyak (Spinner)</option>
-              <option value="Pemberian Bumbu">Pemberian Bumbu (Seasoning)</option>
-              <option value="Pengemasan">Pengemasan (Packing)</option>
-              <option value="Lainnya">Lainnya (Ketik Manual)</option>
+              <option value="Pembersihan">🐟 Pembersihan (Bahan Beku → Bahan Kering)</option>
+              <option value="Pengemasan">📦 Pengemasan (Bahan Kering → Bahan Jadi Masuk Stok)</option>
             </select>
           </div>
 
-          {kegiatan === 'Lainnya' && (
-            <div>
-              <label className="text-xs font-bold text-gray-700 block mb-1">Nama Kegiatan Khusus *</label>
-              <input
-                type="text"
-                placeholder="Contoh: Pembuatan Abon Ikan"
-                value={customKegiatan}
-                onChange={e => setCustomKegiatan(e.target.value)}
-                required
-                className="w-full p-2.5 border border-gray-300 rounded-lg text-sm"
-              />
+          {/* MODE 1: PEMBERSIHAN (HANYA PENCATATAN, TIDAK MASUK STOK) */}
+          {kegiatan === 'Pembersihan' && (
+            <div className="space-y-3 bg-amber-50/60 p-3.5 rounded-xl border border-amber-200">
+              <div className="text-xs text-amber-900 font-medium leading-relaxed">
+                <span className="font-bold">📝 Catatan Alur:</span> Pembersihan (bahan beku → bahan kering) hanya bersifat pencatatan konversi berat dan <u>tidak menambah stok kemasan</u>.
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Bahan Beku (Kg) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    value={bahanBaku}
+                    onChange={e => setBahanBaku(e.target.value)}
+                    required
+                    className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Bahan Kering (Kg) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    value={bahanJadi}
+                    onChange={e => setBahanJadi(e.target.value)}
+                    required
+                    className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white font-bold text-emerald-700"
+                  />
+                </div>
+              </div>
             </div>
           )}
 
-          <div>
-            <label className="text-xs font-bold text-gray-700 block mb-1">Varian Produk / SKU (Opsional)</label>
-            <input
-              type="text"
-              placeholder="Contoh: Kulit Crispy Original / Abon Pedas"
-              value={jenisProduksi}
-              onChange={e => setJenisProduksi(e.target.value)}
-              className="w-full p-2.5 border border-gray-300 rounded-lg text-sm"
-            />
-          </div>
+          {/* MODE 2: PENGEMASAN (MASUK KE STOK PRODUK & GUDANG) */}
+          {kegiatan === 'Pengemasan' && (
+            <div className="space-y-3 bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200">
+              <div className="text-xs text-emerald-900 font-medium leading-relaxed">
+                <span className="font-bold">📦 Masuk ke Stok:</span> Hasil pengemasan akan otomatis menambahkan stok produk siap jual dan tercatat masuk ke stok gudang yang dipilih.
+              </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-bold text-gray-700 block mb-1">Bahan Baku (Kg)</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                value={bahanBaku}
-                onChange={e => setBahanBaku(e.target.value)}
-                className="w-full p-2.5 border border-gray-300 rounded-lg text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-bold text-gray-700 block mb-1">Bahan Jadi (Kg)</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                value={bahanJadi}
-                onChange={e => setBahanJadi(e.target.value)}
-                className="w-full p-2.5 border border-gray-300 rounded-lg text-sm"
-              />
-            </div>
-          </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Produk Jadi (SKU) *</label>
+                  <select
+                    value={selectedProductId}
+                    onChange={e => setSelectedProductId(e.target.value)}
+                    required
+                    className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white font-semibold text-gray-800"
+                  >
+                    {products.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.short_name || p.name} (Stok: {p.stok} pcs)
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-          <div>
-            <label className="text-xs font-bold text-gray-700 block mb-1">Total Hasil Kemasan Jadi (Pcs)</label>
-            <input
-              type="number"
-              min="0"
-              placeholder="Contoh: 150"
-              value={totalHasilPcs}
-              onChange={e => setTotalHasilPcs(e.target.value)}
-              className="w-full p-2.5 border border-gray-300 rounded-lg text-sm"
-            />
-            <p className="text-[11px] text-gray-400 mt-1">Isi jika kegiatan menghasilkan kemasan siap jual (pcs).</p>
-          </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Gudang Tujuan Masuk Stok *</label>
+                  <select
+                    value={selectedWarehouseId}
+                    onChange={e => setSelectedWarehouseId(e.target.value)}
+                    required
+                    className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white font-semibold text-gray-800"
+                  >
+                    {warehouses.map(w => (
+                      <option key={w.id} value={w.id}>
+                        🏬 {w.name} ({w.type === 'FACTORY' ? 'Pabrik' : 'Penyimpanan'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Bahan Kering Terpakai (Kg)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    value={bahanBaku}
+                    onChange={e => setBahanBaku(e.target.value)}
+                    className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Hasil Jadi Kemasan (Pcs) *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Contoh: 150"
+                    value={totalHasilPcs}
+                    onChange={e => setTotalHasilPcs(e.target.value)}
+                    required
+                    className="w-full p-2.5 border border-emerald-400 rounded-lg text-sm bg-white font-black text-emerald-700"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex gap-2 pt-3 justify-end border-t border-gray-100">
             <button
@@ -623,7 +690,7 @@ function TambahKegiatanModal({ onClose, onSaved }: { onClose: () => void; onSave
               disabled={loading}
               className="px-5 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
             >
-              {loading ? 'Menyimpan...' : 'Simpan Kegiatan'}
+              {loading ? 'Menyimpan...' : 'Simpan Laporan Produksi'}
             </button>
           </div>
         </form>

@@ -59,7 +59,7 @@ export async function proxy(req: NextRequest) {
         return NextResponse.redirect(new URL(defaultHome, req.url));
       }
 
-      const isMarketingPath = pathname.startsWith('/marketing') || pathname.startsWith('/ecommerce') || pathname.startsWith('/booth') || pathname.startsWith('/outlet') || pathname.startsWith('/warehouse') || pathname.startsWith('/pengiriman') || pathname.startsWith('/karyawan');
+      const isMarketingPath = pathname.startsWith('/marketing') || pathname.startsWith('/booth') || pathname.startsWith('/outlet') || pathname.startsWith('/warehouse') || pathname.startsWith('/pengiriman') || pathname.startsWith('/karyawan');
       const isProduksiPath = pathname.startsWith('/produksi') || pathname.startsWith('/warehouse') || pathname.startsWith('/karyawan');
       const isMitraPath = pathname.startsWith('/outlet') || pathname.startsWith('/pengiriman');
       const isDistributorPath = pathname.startsWith('/warehouse') || pathname.startsWith('/outlet') || pathname.startsWith('/pengiriman');

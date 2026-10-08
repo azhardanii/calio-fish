@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { createOutlet, updateOutlet, deleteOutlet, addPiutang, addPelunasan, adjustOutletStock, resetOutletFinance } from '@/app/actions';
-import { mutate } from 'swr';
+import useSWR, { mutate } from 'swr';
 import { updateOutletProductPrice } from './actions';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { 
@@ -38,6 +38,23 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const [editingStockId, setEditingStockId] = useState<string | null>(null);
   const [newStockQty, setNewStockQty] = useState<number>(0);
   const [stockNote, setStockNote] = useState<string>('');
+
+  // SWR for warehouses & products (stok gudang sync)
+  const { data: warehouseData } = useSWR('/api/data/warehouses');
+  const { data: productData } = useSWR('/api/data/products');
+  const warehouses = warehouseData?.warehouses || [];
+  const products = productData?.products || [];
+
+  const [stockWarehouseId, setStockWarehouseId] = useState<string>('');
+  const [initialStocks, setInitialStocks] = useState<Record<string, number>>({});
+  const [outletWarehouseId, setOutletWarehouseId] = useState<string>('');
+
+  useEffect(() => {
+    if (warehouses.length > 0) {
+      if (!stockWarehouseId) setStockWarehouseId(warehouses[0].id);
+      if (!outletWarehouseId) setOutletWarehouseId(warehouses[0].id);
+    }
+  }, [warehouses, stockWarehouseId, outletWarehouseId]);
 
   const [wilayahFilter, setWilayahFilter] = useState<string>('');
   const [marketingFilter, setMarketingFilter] = useState<string>('');
@@ -88,14 +105,18 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
     (employees || []).forEach(emp => {
       const r = (emp.role || '').toUpperCase();
       const p = (emp.posisi || '').toLowerCase();
-      if (r === 'MARKETING' || r.includes('MARKETING') || p.includes('marketing')) {
+      // Exclude Admin, Owner, Produksi, Distributor from Marketing list
+      if (['ADMIN', 'OWNER', 'PRODUKSI', 'DISTRIBUTOR'].includes(r)) return;
+      if (p.includes('admin') || p.includes('owner') || p.includes('produksi') || p.includes('distributor')) return;
+      if (r === 'MARKETING' || p.includes('marketing')) {
         listMap.set(emp.id, { id: emp.id, nama: emp.nama, role: emp.role });
       }
     });
 
     outlets.forEach(o => {
       if (o.pengelola && o.pengelola.id) {
-        if (!listMap.has(o.pengelola.id)) {
+        const pr = (o.pengelola.role || '').toUpperCase();
+        if (!['ADMIN', 'OWNER', 'PRODUKSI', 'DISTRIBUTOR'].includes(pr) && !listMap.has(o.pengelola.id)) {
           listMap.set(o.pengelola.id, { id: o.pengelola.id, nama: o.pengelola.nama });
         }
       }
@@ -128,6 +149,16 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const uniqueWilayah = Array.from(new Set(outlets.map((o) => o.wilayah).filter(Boolean))) as string[];
 
   const filteredOutlets = outlets.filter((o) => {
+    // 0. Strict Role Isolation: Non-admin can ONLY see their assigned outlets
+    if (!isOwnerOrAdmin) {
+      if (isDistributor) {
+        if (o.distributor_id !== currentUser?.id) return false;
+      } else {
+        // Marketing staff or other non-admin
+        if (o.pengelola_id !== currentUser?.id) return false;
+      }
+    }
+
     // 1. Search Query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -199,6 +230,8 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
         pengelola_id: '',
         distributor_id: isDistributor ? currentUser?.id : ''
       });
+      setInitialStocks({});
+      setOutletWarehouseId(warehouses[0]?.id || '');
       setIsEditing(false);
     }
     setIsModalOpen(true);
@@ -208,6 +241,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
     if (isSubmitting) return;
     setIsModalOpen(false);
     setFormData({});
+    setInitialStocks({});
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -222,14 +256,24 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
       if (isEditing) {
         await updateOutlet(formData.id, formData);
       } else {
-        await createOutlet({
-          ...formData,
-          distributor_id: isDistributor ? currentUser?.id : (formData.distributor_id || null)
-        });
+        const stockItems = Object.entries(initialStocks)
+          .filter(([_, qty]) => Number(qty) > 0)
+          .map(([productId, qty]) => ({ product_id: productId, qty: Number(qty) }));
+
+        await createOutlet(
+          {
+            ...formData,
+            distributor_id: isDistributor ? currentUser?.id : (formData.distributor_id || null)
+          },
+          stockItems.length > 0 ? stockItems : undefined,
+          stockItems.length > 0 ? (outletWarehouseId || warehouses[0]?.id) : undefined
+        );
       }
       await Promise.all([
         mutate('/api/data/outlets'),
-        mutate('/api/data/employees')
+        mutate('/api/data/employees'),
+        mutate('/api/data/warehouses'),
+        mutate('/api/data/products'),
       ]);
       closeModal();
       if (isDetailModalOpen) closeDetailModal();
@@ -382,7 +426,8 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
     }
     setIsSavingStock(true);
     try {
-      await adjustOutletStock(stock.id, newStockQty, stockNote);
+      const selectedWId = Number(newStockQty) > Number(stock.quantity) ? (stockWarehouseId || warehouses[0]?.id) : undefined;
+      await adjustOutletStock(stock.id, newStockQty, stockNote, selectedWId);
 
       const targetOutletId = selectedOutlet.id;
       const targetQty = Number(newStockQty);
@@ -417,7 +462,10 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
       );
 
       // 3. Revalidate from server
-      await mutate('/api/data/outlets');
+      await Promise.all([
+        mutate('/api/data/outlets'),
+        mutate('/api/data/warehouses')
+      ]);
       setEditingStockId(null);
     } catch (err: any) {
       alert(err.message || 'Gagal mengubah stok');
@@ -544,27 +592,29 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
             )}
           </div>
 
-          {/* Filter User Marketing */}
-          <div className="min-w-[180px]">
-            <select
-              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-              value={marketingFilter}
-              onChange={e => setMarketingFilter(e.target.value)}
-            >
-              <option value="">👤 Semua Marketing ({outlets.length})</option>
-              {marketingList.map(m => {
-                const count = outlets.filter(o => o.pengelola_id === m.id).length;
-                return (
-                  <option key={m.id} value={m.id}>
-                    {m.nama} ({count} outlet)
-                  </option>
-                );
-              })}
-              <option value="unassigned">
-                🏢 Dikelola Pusat ({outlets.filter(o => !o.pengelola_id).length})
-              </option>
-            </select>
-          </div>
+          {/* Filter User Marketing (Owner / Admin Only) */}
+          {isOwnerOrAdmin && (
+            <div className="min-w-[180px]">
+              <select
+                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                value={marketingFilter}
+                onChange={e => setMarketingFilter(e.target.value)}
+              >
+                <option value="">👤 Semua Marketing ({outlets.length})</option>
+                {marketingList.map(m => {
+                  const count = outlets.filter(o => o.pengelola_id === m.id).length;
+                  return (
+                    <option key={m.id} value={m.id}>
+                      {m.nama} ({count} outlet)
+                    </option>
+                  );
+                })}
+                <option value="unassigned">
+                  🏢 Dikelola Pusat ({outlets.filter(o => !o.pengelola_id).length})
+                </option>
+              </select>
+            </div>
+          )}
 
           {/* Filter Wilayah */}
           <div className="min-w-[140px]">
@@ -1039,6 +1089,24 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                                           onChange={e => setStockNote(e.target.value)} 
                                         />
                                       </div>
+                                      {newStockQty > stock.quantity && (
+                                        <div className="pt-0.5">
+                                          <div className="text-[10px] text-blue-700 font-semibold mb-0.5">
+                                            Ambil tambahan {newStockQty - stock.quantity} pcs dari gudang:
+                                          </div>
+                                          <select
+                                            value={stockWarehouseId}
+                                            onChange={e => setStockWarehouseId(e.target.value)}
+                                            className="w-full text-xs p-1 border border-blue-300 rounded bg-white font-medium text-slate-800"
+                                          >
+                                            {warehouses.map((w: any) => (
+                                              <option key={w.id} value={w.id}>
+                                                🏬 {w.name} ({w.type === 'FACTORY' ? 'Pabrik' : 'Penyimpanan'})
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                      )}
                                       <div className="flex gap-2 pt-0.5">
                                         <button 
                                           disabled={isSavingStock}
@@ -1060,7 +1128,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                                   ) : (
                                     <div className="mb-3">
                                       <button 
-                                        onClick={() => { setEditingStockId(stock.id); setNewStockQty(stock.quantity); setStockNote(''); }} 
+                                        onClick={() => { setEditingStockId(stock.id); setNewStockQty(stock.quantity); setStockNote(''); setStockWarehouseId(warehouses[0]?.id || ''); }} 
                                         className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 cursor-pointer"
                                       >
                                         <Pencil size={11} />
@@ -1477,7 +1545,13 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                     <label className="block text-sm font-medium mb-1">Pengelola / Marketing</label>
                     <select className="w-full border rounded p-2 text-sm" value={formData.pengelola_id || ''} onChange={e => setFormData({...formData, pengelola_id: e.target.value})}>
                       <option value="">-- Dikelola Pusat / Belum Ditugaskan --</option>
-                      {employees.filter(e => (e.role || '').toUpperCase().includes('MARKETING') || (e.posisi || '').toUpperCase().includes('MARKETING') || e.role === 'MITRA').map((emp) => (
+                      {employees.filter(e => {
+                        const r = (e.role || '').toUpperCase();
+                        const p = (e.posisi || '').toLowerCase();
+                        if (['ADMIN', 'OWNER', 'PRODUKSI', 'DISTRIBUTOR'].includes(r)) return false;
+                        if (p.includes('admin') || p.includes('owner') || p.includes('produksi') || p.includes('distributor')) return false;
+                        return r === 'MARKETING' || p.includes('marketing') || r === 'MITRA';
+                      }).map((emp) => (
                         <option key={emp.id} value={emp.id}>{emp.nama} ({emp.role || emp.posisi || 'Marketing'})</option>
                       ))}
                     </select>
@@ -1519,6 +1593,55 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                 <label className="block text-sm font-medium mb-1">Alamat</label>
                 <textarea className="w-full border rounded p-2 text-sm" value={formData.alamat || ''} onChange={e => setFormData({...formData, alamat: e.target.value})} placeholder="Alamat lengkap outlet..." rows={3} />
               </div>
+
+              {!isEditing && isOwnerOrAdmin && (
+                <div className="border border-blue-200 bg-blue-50/50 rounded-xl p-3.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-blue-900">📦 Input Stok Awal Outlet Langsung (Opsional)</span>
+                    <span className="text-[10px] text-blue-600 font-medium">Potong stok gudang</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold mb-1 text-slate-700">Stok Diambil dari Gudang Mana: *</label>
+                    <select 
+                      className="w-full border border-slate-300 rounded-lg p-2 text-xs bg-white font-medium"
+                      value={outletWarehouseId}
+                      onChange={e => setOutletWarehouseId(e.target.value)}
+                    >
+                      {warehouses.map((w: any) => (
+                        <option key={w.id} value={w.id}>
+                          🏬 {w.name} ({w.type === 'FACTORY' ? 'Pabrik' : 'Penyimpanan'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-slate-700">Jumlah Stok Produk Awal:</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {products.map((p: any) => (
+                        <div key={p.id} className="bg-white p-2 rounded-lg border border-slate-200 flex flex-col justify-between">
+                          <span className="text-xs font-bold text-slate-800 truncate">{p.short_name || p.name}</span>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <input 
+                              type="number" 
+                              min="0"
+                              placeholder="0"
+                              className="w-full border rounded px-2 py-1 text-xs font-bold text-slate-800"
+                              value={initialStocks[p.id] || ''}
+                              onChange={e => setInitialStocks({
+                                ...initialStocks,
+                                [p.id]: parseInt(e.target.value) || 0
+                              })}
+                            />
+                            <span className="text-[10px] text-slate-400 font-bold shrink-0">pcs</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
               
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
                 <button type="button" onClick={closeModal} disabled={isSubmitting} className="px-4 py-2 border rounded text-sm hover:bg-gray-50 transition-colors disabled:opacity-50">Batal</button>

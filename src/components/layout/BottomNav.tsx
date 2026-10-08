@@ -195,7 +195,7 @@ export function BottomNav({ user }: BottomNavProps) {
   const secondaryItems = [
     { name: "Produksi", href: "/produksi", icon: Factory, visible: isProduksi && !primaryItems.some(p => p.href === "/produksi") },
     { name: "Marketing Offline", href: "/marketing", icon: TrendingUp, visible: isMarketing && !primaryItems.some(p => p.href === "/marketing") },
-    { name: "E-Commerce", href: "/ecommerce", icon: ShoppingCart, visible: isMarketing || isOwnerOrAdmin },
+    { name: "E-Commerce", href: "/ecommerce", icon: ShoppingCart, visible: isOwnerOrAdmin },
     { name: "Event & Booth", href: "/booth", icon: Store, visible: (isMarketing || isOwnerOrAdmin) && !primaryItems.some(p => p.href === "/booth") },
     { name: "Pengeluaran", href: "/pengeluaran", icon: Receipt, visible: isOwnerOrAdmin },
     { name: "Database Produk", href: "/produk", icon: PackageCheck, visible: isOwnerOrAdmin },

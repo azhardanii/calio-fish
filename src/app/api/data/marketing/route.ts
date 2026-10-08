@@ -43,13 +43,22 @@ export async function GET(req: Request) {
     // 1. Fetch marketing employees with their outlets, targets, personal buyer txns, expenses
     const marketingEmployees = await prisma.employee.findMany({
       where: {
+        status_aktif: true,
         OR: [
           { role: 'MARKETING' },
-          { role: { contains: 'MARKETING', mode: 'insensitive' } },
-          { posisi: { contains: 'Marketing', mode: 'insensitive' } },
-          { id: user.id },
+          {
+            AND: [
+              { role: 'STAFF' },
+              { posisi: { contains: 'Marketing', mode: 'insensitive' } },
+            ]
+          }
         ],
-        status_aktif: true,
+        NOT: {
+          OR: [
+            { role: { in: ['ADMIN', 'OWNER', 'PRODUKSI', 'DISTRIBUTOR'] } },
+            { posisi: { in: ['Admin', 'Owner', 'Staff Produksi', 'Produksi', 'Distributor'], mode: 'insensitive' } }
+          ]
+        },
       },
       include: {
         managed_outlets: {
