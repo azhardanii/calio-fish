@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { GowaPayload, sendMessage, sendChatPresence, readMessage } from '@/lib/whatsapp';
 import { parseWhatsAppReport } from '@/lib/ai-parser';
 import { prisma } from '@/lib/prisma';
+import { recalculateOutletFinance } from '@/app/actions';
 
 const ADMIN_PHONE = process.env.WA_ADMIN_PHONE || '6285157991798';
 const TARGET_GROUP_ID = process.env.WA_GROUP_ID || '120363293055467760@g.us';
@@ -1145,8 +1146,6 @@ export async function POST(req: Request) {
                  await tx.outlet.update({
                    where: { id: destId },
                    data: {
-                     tagihan: Number(outlet.tagihan) + totalBilling,
-                     sisa_tagihan: Number(outlet.sisa_tagihan) + totalBilling,
                      order_baru: outlet.order_baru + 1
                    }
                  });
@@ -1159,6 +1158,7 @@ export async function POST(req: Request) {
                      date: parsedData.date ? new Date(parsedData.date) : new Date()
                    }
                  });
+                 await recalculateOutletFinance(tx, destId);
                }
              }
           }

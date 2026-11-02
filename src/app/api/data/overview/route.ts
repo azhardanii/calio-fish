@@ -234,11 +234,15 @@ export async function GET(req: NextRequest) {
       include: {
         managed_outlets: {
           include: {
+            stocks: { include: { product: true } },
             transactions: { orderBy: { date: 'desc' } },
           }
         },
         marketing_targets: {
-          where: { bulan: targetMonth, tahun: targetYear }
+          orderBy: [
+            { tahun: 'desc' },
+            { bulan: 'desc' }
+          ]
         },
         personal_buyer_transactions: {
           orderBy: { date: 'desc' },
@@ -256,23 +260,33 @@ export async function GET(req: NextRequest) {
 
   // Tim Marketing Evaluation & Performance
   const marketingStaffPerformance = (marketingEmployees as any[]).map((emp: any) => {
-    const target = emp.marketing_targets[0];
+    const targetThisMonth = emp.marketing_targets?.find((t: any) => t.bulan === targetMonth && t.tahun === targetYear);
+    const target = targetThisMonth || emp.marketing_targets?.[0];
     const targetOmset = target ? Number(target.target_omset) : 0;
 
     let totalBillingThisMonth = 0;
     let totalPaymentThisMonth = 0;
     let totalOutstandingAll = 0;
+    let totalStockValuation = 0;
 
     emp.managed_outlets.forEach((outlet: any) => {
-      totalOutstandingAll += Number(outlet.sisa_tagihan);
-      outlet.transactions.forEach((tx: any) => {
+      totalOutstandingAll += Number(outlet.sisa_tagihan || 0);
+
+      (outlet.stocks || []).forEach((s: any) => {
+        const unitPrice = (s.harga_beli !== null && s.harga_beli !== undefined)
+          ? Number(s.harga_beli)
+          : Number(s.product?.base_price || 0);
+        totalStockValuation += (Number(s.quantity || 0) * unitPrice);
+      });
+
+      (outlet.transactions || []).forEach((tx: any) => {
         const txDate = new Date(tx.date);
         const matchDate = dateFilter ? (txDate >= startDate! && txDate <= endDate!) : true;
         if (matchDate) {
           if (tx.type === 'PIUTANG' || tx.type === 'BILLING' || tx.type === 'TAGIHAN' || tx.type === 'ORDER') {
-            totalBillingThisMonth += Number(tx.amount);
+            totalBillingThisMonth += Number(tx.amount || 0);
           } else if (tx.type === 'PELUNASAN' || tx.type === 'PAYMENT') {
-            totalPaymentThisMonth += Number(tx.amount);
+            totalPaymentThisMonth += Number(tx.amount || 0);
           }
         }
       });
@@ -283,7 +297,7 @@ export async function GET(req: NextRequest) {
         const d = new Date(t.date);
         return dateFilter ? (d >= startDate! && d <= endDate!) : true;
       })
-      .reduce((sum: number, t: any) => sum + Number(t.amount), 0);
+      .reduce((sum: number, t: any) => sum + Number(t.amount || 0), 0);
 
     const boothSalesThisMonth = emp.managed_booths.reduce((sum: number, b: any) => {
       const bSales = b.sales
@@ -291,15 +305,19 @@ export async function GET(req: NextRequest) {
           const d = new Date(s.date);
           return dateFilter ? (d >= startDate! && d <= endDate!) : true;
         })
-        .reduce((sSum: number, s: any) => sSum + Number(s.total_price), 0);
+        .reduce((sSum: number, s: any) => sSum + Number(s.total_price || 0), 0);
       return sum + bSales;
     }, 0);
 
-    // Performa omset marketing: HANYA dari Outlet yang dikelola + Personal Buyer
-    // Transaksi Event/Booth tidak masuk ke omset performa staf, melainkan langsung ke cashflow perusahaan
-    const totalOmsetThisMonth = totalBillingThisMonth + personalBuyerThisMonth;
-    const pencapaian = targetOmset > 0 ? (totalOmsetThisMonth / targetOmset) * 100 : 0;
-    const gap = totalOmsetThisMonth - targetOmset;
+    // Kas Masuk Nyata (Pembayaran yang disetor outlet + personal buyer)
+    const totalKasMasukPaid = totalPaymentThisMonth + personalBuyerThisMonth;
+
+    // Omset marketing: Valuasi stok di outlet + sisa piutang outlet
+    const totalOmsetThisMonth = totalStockValuation + totalOutstandingAll;
+
+    // Pencapaian target marketing: Sesuai apa yang sudah dibayarkan (Kas Masuk Nyata)
+    const pencapaian = targetOmset > 0 ? (totalKasMasukPaid / targetOmset) * 100 : 0;
+    const gap = totalKasMasukPaid - targetOmset;
 
     let status: 'on_track' | 'behind' | 'critical' = 'on_track';
     if (targetOmset > 0) {
@@ -318,6 +336,8 @@ export async function GET(req: NextRequest) {
       target_omset: targetOmset,
       total_billing_this_month: totalBillingThisMonth,
       total_payment_this_month: totalPaymentThisMonth,
+      total_stock_valuation: totalStockValuation,
+      total_kas_masuk_paid: totalKasMasukPaid,
       personal_buyer_this_month: personalBuyerThisMonth,
       booth_sales_this_month: boothSalesThisMonth,
       total_omset_this_month: totalOmsetThisMonth,

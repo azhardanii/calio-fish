@@ -44,10 +44,30 @@ export async function GET() {
     orderBy: { created_at: 'desc' }
   });
 
-  const outletsWithHistory = outlets.map(o => ({
-    ...o,
-    stock_history: stockTransactions.filter(st => st.destination_id === o.id)
-  }));
+  const outletsWithHistory = outlets.map(o => {
+    // Dynamic stock valuation based on custom outlet prices
+    const stockValuation = (o.stocks || []).reduce((sum, s) => {
+      const price = (s.harga_beli !== null && s.harga_beli !== undefined)
+        ? Number(s.harga_beli)
+        : Number(s.product?.base_price || 0);
+      return sum + (Number(s.quantity || 0) * price);
+    }, 0);
+
+    const manualPiutang = (o.transactions || [])
+      .filter(t => t.type === 'PIUTANG')
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
+    const currentPayment = Number(o.payment || 0);
+    const dynamicTagihan = stockValuation + manualPiutang;
+    const dynamicSisaTagihan = Math.max(0, dynamicTagihan - currentPayment);
+
+    return {
+      ...o,
+      tagihan: dynamicTagihan,
+      sisa_tagihan: dynamicSisaTagihan,
+      stock_history: stockTransactions.filter(st => st.destination_id === o.id)
+    };
+  });
 
   return NextResponse.json(serializeDeep(outletsWithHistory));
 }

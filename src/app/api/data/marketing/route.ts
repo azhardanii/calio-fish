@@ -68,7 +68,10 @@ export async function GET(req: Request) {
           }
         },
         marketing_targets: {
-          where: { bulan: currentMonth, tahun: currentYear }
+          orderBy: [
+            { tahun: 'desc' },
+            { bulan: 'desc' }
+          ]
         },
         personal_buyer_transactions: {
           orderBy: { date: 'desc' },
@@ -88,7 +91,8 @@ export async function GET(req: Request) {
 
     // Build performance summary for each marketing user
     const marketingPerformance = marketingEmployees.map(emp => {
-      const target = emp.marketing_targets?.[0];
+      const targetThisMonth = emp.marketing_targets?.find(t => t.bulan === currentMonth && t.tahun === currentYear);
+      const target = targetThisMonth || emp.marketing_targets?.[0];
       const targetOmset = target ? Number(target.target_omset || 0) : 0;
 
       // Calculate outlet-based omset in period from OutletTransactions
@@ -97,6 +101,7 @@ export async function GET(req: Request) {
       let totalOutstandingAll = 0;
       let totalTagihanAll = 0;
       let totalPaymentAll = 0;
+      let totalStockValuation = 0;
 
       const outletPaymentsHistory: any[] = [];
 
@@ -104,6 +109,13 @@ export async function GET(req: Request) {
         totalTagihanAll += Number(outlet.tagihan || 0);
         totalPaymentAll += Number(outlet.payment || 0);
         totalOutstandingAll += Number(outlet.sisa_tagihan || 0);
+
+        (outlet.stocks || []).forEach((s: any) => {
+          const unitPrice = (s.harga_beli !== null && s.harga_beli !== undefined)
+            ? Number(s.harga_beli)
+            : Number(s.product?.base_price || 0);
+          totalStockValuation += (Number(s.quantity || 0) * unitPrice);
+        });
 
         (outlet.transactions || []).forEach(tx => {
           if (!tx.date) return;
@@ -153,10 +165,15 @@ export async function GET(req: Request) {
       // Total Expenses for this marketing employee
       const totalExpensesThisMonth = (emp.expenses || []).reduce((sum, e) => sum + Number(e.amount || 0), 0);
 
-      // Performa omset marketing: Realisasi Pengiriman (Gross Billing) vs Kas Terkumpul (Cash Realized)
-      const totalOmsetThisMonth = totalBillingThisMonth + personalBuyerThisMonth;
-      const pencapaian = targetOmset > 0 ? (totalOmsetThisMonth / targetOmset) * 100 : 0;
-      const gap = totalOmsetThisMonth - targetOmset;
+      // Kas Masuk Nyata (Pembayaran yang sudah diterima)
+      const totalKasMasukPaid = totalPaymentThisMonth + personalBuyerThisMonth;
+
+      // Kasus 3: Total Omset Marketing di fitur Marketing Offline = Valuasi Stok Outlet + Sisa Piutang
+      const totalOmsetThisMonth = totalStockValuation + totalOutstandingAll;
+
+      // Kasus 1: Pencapaian target marketing dihitung dari apa yang sudah dibayarkan (Kas Masuk Nyata)
+      const pencapaian = targetOmset > 0 ? (totalKasMasukPaid / targetOmset) * 100 : 0;
+      const gap = totalKasMasukPaid - targetOmset;
 
       // Determine status
       let status: 'on_track' | 'behind' | 'critical' = 'on_track';
@@ -185,6 +202,8 @@ export async function GET(req: Request) {
         target_omset: targetOmset,
         total_billing_this_month: totalBillingThisMonth,
         total_payment_this_month: totalPaymentThisMonth,
+        total_stock_valuation: totalStockValuation,
+        total_kas_masuk_paid: totalKasMasukPaid,
         personal_buyer_this_month: personalBuyerThisMonth,
         booth_sales_this_month: boothSalesThisMonth,
         total_omset_this_month: totalOmsetThisMonth,
@@ -398,6 +417,8 @@ export async function GET(req: Request) {
           target_omset: 0,
           total_billing_this_month: 0,
           total_payment_this_month: 0,
+          total_stock_valuation: 0,
+          total_kas_masuk_paid: 0,
           personal_buyer_this_month: 0,
           booth_sales_this_month: 0,
           total_omset_this_month: 0,

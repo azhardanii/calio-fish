@@ -462,18 +462,26 @@ function MarketingDetailModal({ employee, onClose, onSaved }: { employee: any; o
           <button onClick={onClose} style={{ background: '#f1f5f9', border: 'none', borderRadius: 10, width: 32, height: 32, cursor: 'pointer', fontWeight: 800, color: '#64748b' }}>✕</button>
         </div>
 
-        {/* Dual Metric Highlights: Distribusi (Barang Keluar) vs Kas Masuk (Pembayaran) */}
+        {/* Dual Metric Highlights: Distribusi vs Kas Masuk vs Piutang vs Biaya */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 16 }}>
           <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 12, padding: '10px 14px' }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#7c3aed', letterSpacing: 0.5 }}>REALISASI DISTRIBUSI (BILLING)</div>
-            <div style={{ fontSize: 16, fontWeight: 900, color: '#5b21b6', marginTop: 2 }}>{formatRp(totalBilling)}</div>
-            <div style={{ fontSize: 10, color: '#6d28d9', marginTop: 1 }}>Total nilai barang dikirim ke outlet</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#7c3aed', letterSpacing: 0.5 }}>VALUASI STOK OUTLET</div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: '#5b21b6', marginTop: 2 }}>{formatRp(employee.total_stock_valuation ?? totalBilling)}</div>
+            <div style={{ fontSize: 10, color: '#6d28d9', marginTop: 1 }}>Total nilai stok fisik di outlet</div>
           </div>
 
           <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '10px 14px' }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: '#15803d', letterSpacing: 0.5 }}>KAS MASUK (PEMBAYARAN)</div>
             <div style={{ fontSize: 16, fontWeight: 900, color: '#14532d', marginTop: 2 }}>{formatRp(totalPayment)}</div>
             <div style={{ fontSize: 10, color: '#166534', marginTop: 1 }}>Uang tunai/transfer disetor outlet</div>
+          </div>
+
+          <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: 12, padding: '10px 14px' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#be123c', letterSpacing: 0.5 }}>TOTAL SISA PIUTANG</div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: Number(employee.total_outstanding_all) > 0 ? '#e11d48' : '#15803d', marginTop: 2 }}>
+              {formatRp(employee.total_outstanding_all || 0)}
+            </div>
+            <div style={{ fontSize: 10, color: '#9f1239', marginTop: 1 }}>Tagihan outlet belum lunas</div>
           </div>
 
           <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '10px 14px' }}>
@@ -778,12 +786,12 @@ function PerformanceDashboard({ data, mutate, filterLabel }: { data: any; mutate
     <section style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Overall Summary Cards (Tanpa Omset Booth!) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
-        <KpiMini icon="💰" label="TOTAL OMSET MARKETING" value={formatRp(totalOmsetAll)} color="#7c3aed" sub="Distribusi Outlet + Personal" />
+        <KpiMini icon="💰" label="TOTAL OMSET MARKETING" value={formatRp(totalOmsetAll)} color="#7c3aed" sub="Valuasi Stok Outlet + Sisa Piutang" />
         <KpiMini icon="💵" label="TOTAL KAS MASUK" value={formatRp(totalPaymentAll)} color="#15803d" sub="Pelunasan Outlet Disetor" />
         <KpiMini icon="🎯" label="TOTAL TARGET" value={formatRp(totalTargetAll)} color="#2563eb" />
         <KpiMini icon="🏪" label="OUTLET BINAAN" value={String(totalOutletAll)} color="#0891b2" />
-        <KpiMini icon="📤" label="PENGELUARAN DINAS" value={formatRp(totalExpensesAll)} color="#dc2626" sub="Biaya Operasional Lapangan" />
         <KpiMini icon="📋" label="OUTSTANDING PIUTANG" value={formatRp(totalOutstandingAll)} color={totalOutstandingAll > 0 ? '#dc2626' : '#16a34a'} />
+        <KpiMini icon="📤" label="PENGELUARAN DINAS" value={formatRp(totalExpensesAll)} color="#dc2626" sub="Biaya Operasional Lapangan" />
       </div>
 
       {/* Per-User Performance Cards */}
@@ -837,23 +845,23 @@ function PerformanceDashboard({ data, mutate, filterLabel }: { data: any; mutate
                   <ProgressBar value={p.pencapaian} color={p.pencapaian >= 100 ? '#22c55e' : p.pencapaian >= 50 ? '#eab308' : '#ef4444'} />
                 </div>
 
-                {/* Stats Grid: Realisasi Distribusi vs Kas Masuk */}
+                {/* Stats Grid: Target, Kas Masuk, Valuasi Stok, Sisa Piutang */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}>
                     <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, letterSpacing: 0.5 }}>TARGET BULANAN</div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{p.target_omset > 0 ? formatRp(p.target_omset) : 'Belum diset'}</div>
                   </div>
-                  <div style={{ background: '#f5f3ff', borderRadius: 10, padding: '10px 12px' }}>
-                    <div style={{ fontSize: 10, color: '#7c3aed', fontWeight: 700, letterSpacing: 0.5 }}>DISTRIBUSI (BILLING)</div>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: '#5b21b6' }}>{formatRp(p.total_billing_this_month)}</div>
-                  </div>
                   <div style={{ background: '#f0fdf4', borderRadius: 10, padding: '10px 12px' }}>
                     <div style={{ fontSize: 10, color: '#15803d', fontWeight: 700, letterSpacing: 0.5 }}>KAS MASUK (BAYAR)</div>
                     <div style={{ fontSize: 13, fontWeight: 800, color: '#166534' }}>{formatRp(p.total_payment_this_month)}</div>
                   </div>
-                  <div style={{ background: '#fef2f2', borderRadius: 10, padding: '10px 12px' }}>
-                    <div style={{ fontSize: 10, color: '#dc2626', fontWeight: 700, letterSpacing: 0.5 }}>PENGELUARAN</div>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: '#b91c1c' }}>{formatRp(p.total_expenses_this_month || 0)}</div>
+                  <div style={{ background: '#f5f3ff', borderRadius: 10, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 10, color: '#7c3aed', fontWeight: 700, letterSpacing: 0.5 }}>VALUASI STOK OUTLET</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: '#5b21b6' }}>{formatRp(p.total_stock_valuation ?? p.total_billing_this_month)}</div>
+                  </div>
+                  <div style={{ background: Number(p.total_outstanding_all) > 0 ? '#fff1f2' : '#f0fdf4', borderRadius: 10, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 10, color: Number(p.total_outstanding_all) > 0 ? '#be123c' : '#15803d', fontWeight: 700, letterSpacing: 0.5 }}>SISA PIUTANG</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: Number(p.total_outstanding_all) > 0 ? '#e11d48' : '#15803d' }}>{formatRp(p.total_outstanding_all || 0)}</div>
                   </div>
                 </div>
 
@@ -1301,14 +1309,14 @@ function MarketingMyDashboard({ data, mutate, filterLabel }: { data: any; mutate
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* KPI Cards: Distribusi vs Kas Masuk */}
+      {/* KPI Cards: Valuasi Stok, Kas Masuk, Piutang, dll */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
         <KpiMini icon="🎯" label="TARGET BULAN INI" value={p.target_omset > 0 ? formatRp(p.target_omset) : 'Belum diset'} color="#2563eb" />
-        <KpiMini icon="📦" label="REALISASI DISTRIBUSI (BILLING)" value={formatRp(p.total_billing_this_month)} color="#7c3aed" sub="Nilai barang ke outlet" />
+        <KpiMini icon="💰" label="TOTAL OMSET MARKETING" value={formatRp(p.total_omset_this_month)} color="#7c3aed" sub="Valuasi Stok + Sisa Piutang" />
         <KpiMini icon="💵" label="KAS MASUK (PEMBAYARAN)" value={formatRp(p.total_payment_this_month)} color="#15803d" sub="Pelunasan disetor" />
+        <KpiMini icon="📦" label="VALUASI STOK OUTLET" value={formatRp(p.total_stock_valuation || p.total_billing_this_month)} color="#0284c7" sub="Nilai fisik di outlet" />
+        <KpiMini icon="📋" label="OUTSTANDING SISA PIUTANG" value={formatRp(p.total_outstanding_all)} color={p.total_outstanding_all > 0 ? '#dc2626' : '#16a34a'} />
         <KpiMini icon="📤" label="PENGELUARAN DINAS" value={formatRp(p.total_expenses_this_month || 0)} color="#dc2626" sub="Biaya operasional" />
-        <KpiMini icon="👤" label="PERSONAL BUYER" value={formatRp(p.personal_buyer_this_month)} color="#0891b2" />
-        <KpiMini icon="📋" label="OUTSTANDING SISA TAGIHAN" value={formatRp(p.total_outstanding_all)} color={p.total_outstanding_all > 0 ? '#dc2626' : '#16a34a'} />
       </div>
 
       {/* Progress & Quick Action */}

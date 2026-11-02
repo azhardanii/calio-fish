@@ -36,7 +36,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [newPrice, setNewPrice] = useState<number>(0);
   const [editingStockId, setEditingStockId] = useState<string | null>(null);
-  const [newStockQty, setNewStockQty] = useState<number>(0);
+  const [stockDelta, setStockDelta] = useState<number | ''>('');
   const [stockNote, setStockNote] = useState<string>('');
 
   // SWR for warehouses & products (stok gudang sync)
@@ -424,19 +424,32 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
       alert('Akses ditolak: Hanya Owner atau Admin yang dapat mengubah stok outlet.');
       return;
     }
+    const delta = Number(stockDelta);
+    if (isNaN(delta) || delta === 0) {
+      alert('Masukkan jumlah penyesuaian stok (+ untuk menambah, - untuk mengurangi/kembalikan ke gudang).');
+      return;
+    }
+    const targetQty = Number(stock.quantity) + delta;
+    if (targetQty < 0) {
+      alert('Stok fisik outlet tidak boleh menjadi minus.');
+      return;
+    }
+
     setIsSavingStock(true);
     try {
-      const selectedWId = Number(newStockQty) > Number(stock.quantity) ? (stockWarehouseId || warehouses[0]?.id) : undefined;
-      await adjustOutletStock(stock.id, newStockQty, stockNote, selectedWId);
+      const selectedWId = stockWarehouseId || warehouses[0]?.id;
+      const res: any = await adjustOutletStock(stock.id, targetQty, stockNote, selectedWId);
 
       const targetOutletId = selectedOutlet.id;
-      const targetQty = Number(newStockQty);
 
       // 1. Immutable update for local modal state
       setSelectedOutlet((prev: any) => {
         if (!prev) return prev;
         return {
           ...prev,
+          tagihan: res?.tagihan !== undefined ? res.tagihan : prev.tagihan,
+          sisa_tagihan: res?.sisa_tagihan !== undefined ? res.sisa_tagihan : prev.sisa_tagihan,
+          payment: res?.payment !== undefined ? res.payment : prev.payment,
           stocks: (prev.stocks || []).map((s: any) =>
             s.id === stock.id ? { ...s, quantity: targetQty } : s
           )
@@ -452,6 +465,9 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
             if (o.id !== targetOutletId) return o;
             return {
               ...o,
+              tagihan: res?.tagihan !== undefined ? res.tagihan : o.tagihan,
+              sisa_tagihan: res?.sisa_tagihan !== undefined ? res.sisa_tagihan : o.sisa_tagihan,
+              payment: res?.payment !== undefined ? res.payment : o.payment,
               stocks: (o.stocks || []).map((s: any) =>
                 s.id === stock.id ? { ...s, quantity: targetQty } : s
               )
@@ -464,9 +480,12 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
       // 3. Revalidate from server
       await Promise.all([
         mutate('/api/data/outlets'),
-        mutate('/api/data/warehouses')
+        mutate('/api/data/warehouses'),
+        mutate('/api/data/marketing'),
+        mutate('/api/data/overview'),
       ]);
       setEditingStockId(null);
+      setStockDelta('');
     } catch (err: any) {
       alert(err.message || 'Gagal mengubah stok');
     } finally {
@@ -499,6 +518,9 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
         if (!prev) return prev;
         return {
           ...prev,
+          tagihan: res?.tagihan !== undefined ? res.tagihan : prev.tagihan,
+          sisa_tagihan: res?.sisa_tagihan !== undefined ? res.sisa_tagihan : prev.sisa_tagihan,
+          payment: res?.payment !== undefined ? res.payment : prev.payment,
           stocks: (prev.stocks || []).map((s: any) =>
             s.id === stock.id ? { ...s, harga_beli: priceNum } : s
           )
@@ -514,6 +536,9 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
             if (o.id !== targetOutletId) return o;
             return {
               ...o,
+              tagihan: res?.tagihan !== undefined ? res.tagihan : o.tagihan,
+              sisa_tagihan: res?.sisa_tagihan !== undefined ? res.sisa_tagihan : o.sisa_tagihan,
+              payment: res?.payment !== undefined ? res.payment : o.payment,
               stocks: (o.stocks || []).map((s: any) =>
                 s.id === stock.id ? { ...s, harga_beli: priceNum } : s
               )
@@ -524,7 +549,11 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
       );
 
       // 3. Revalidate from server
-      await mutate('/api/data/outlets');
+      await Promise.all([
+        mutate('/api/data/outlets'),
+        mutate('/api/data/marketing'),
+        mutate('/api/data/overview'),
+      ]);
       setEditingPriceId(null);
     } catch (err: any) {
       alert(err.message || 'Gagal mengubah harga');
@@ -1072,32 +1101,81 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                                 {/* Stock Edit Form (Owner / Admin Only) */}
                                 {isOwnerOrAdmin && (
                                   editingStockId === stock.id ? (
-                                    <div className="space-y-2 bg-blue-50/50 p-2.5 rounded-lg border border-blue-200 mb-3">
-                                      <div className="text-[11px] font-bold text-blue-900">Sesuaikan Stok Fisik</div>
-                                      <div className="flex gap-1.5">
-                                        <input 
-                                          type="number" 
-                                          className="border rounded px-2 py-1 text-xs w-16 bg-white font-bold" 
-                                          value={newStockQty} 
-                                          onChange={e => setNewStockQty(Number(e.target.value))} 
-                                        />
-                                        <input 
-                                          type="text" 
-                                          className="border rounded px-2 py-1 text-xs flex-1 bg-white" 
-                                          placeholder="Catatan..." 
-                                          value={stockNote} 
-                                          onChange={e => setStockNote(e.target.value)} 
-                                        />
+                                    <div className="space-y-2.5 bg-blue-50/60 p-3 rounded-xl border border-blue-200 mb-3">
+                                      <div className="flex items-center justify-between">
+                                        <div className="text-[11px] font-bold text-blue-900">Penyesuaian Stok Fisik</div>
+                                        <div className="text-[10px] text-slate-500">Stok Saat Ini: <b className="text-slate-800">{stock.quantity} pcs</b></div>
                                       </div>
-                                      {newStockQty > stock.quantity && (
+                                      
+                                      {/* Quick Delta Helper & Number Input */}
+                                      <div className="space-y-1.5">
+                                        <div className="flex items-center gap-1.5">
+                                          <div className="relative">
+                                            <input 
+                                              type="number" 
+                                              className="border border-blue-300 rounded px-2 py-1 text-xs w-20 bg-white font-black text-center text-slate-900" 
+                                              placeholder="+ / -"
+                                              value={stockDelta} 
+                                              onChange={e => {
+                                                const val = e.target.value === '' ? '' : Number(e.target.value);
+                                                setStockDelta(val);
+                                              }} 
+                                            />
+                                          </div>
+                                          <div className="flex items-center gap-1">
+                                            <button 
+                                              type="button" 
+                                              onClick={() => setStockDelta(prev => (Number(prev) || 0) - 1)}
+                                              className="px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded text-xs font-black cursor-pointer transition-colors"
+                                              title="Kurang 1 pcs (-1)"
+                                            >
+                                              -1
+                                            </button>
+                                            <button 
+                                              type="button" 
+                                              onClick={() => setStockDelta(prev => (Number(prev) || 0) + 1)}
+                                              className="px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded text-xs font-black cursor-pointer transition-colors"
+                                              title="Tambah 1 pcs (+1)"
+                                            >
+                                              +1
+                                            </button>
+                                          </div>
+                                          <input 
+                                            type="text" 
+                                            className="border border-slate-300 rounded px-2 py-1 text-xs flex-1 bg-white" 
+                                            placeholder="Keterangan..." 
+                                            value={stockNote} 
+                                            onChange={e => setStockNote(e.target.value)} 
+                                          />
+                                        </div>
+
+                                        {/* Live Preview Result */}
+                                        {stockDelta !== '' && Number(stockDelta) !== 0 && (
+                                          <div className="text-[11px] px-2 py-1 rounded bg-white border border-blue-100 flex items-center justify-between">
+                                            <span className="text-slate-500 font-medium">
+                                              Hasil Fisik: {stock.quantity} {Number(stockDelta) > 0 ? `+ ${stockDelta}` : `- ${Math.abs(Number(stockDelta))}`} =
+                                            </span>
+                                            <span className={`font-black ${stock.quantity + Number(stockDelta) < 0 ? 'text-rose-600' : 'text-blue-700'}`}>
+                                              {stock.quantity + Number(stockDelta)} pcs
+                                              {stock.quantity + Number(stockDelta) < 0 && ' (Tidak valid, stok minus!)'}
+                                            </span>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* Warehouse Selection for Both Plus (+) and Minus (-) */}
+                                      {stockDelta !== '' && Number(stockDelta) !== 0 && (
                                         <div className="pt-0.5">
-                                          <div className="text-[10px] text-blue-700 font-semibold mb-0.5">
-                                            Ambil tambahan {newStockQty - stock.quantity} pcs dari gudang:
+                                          <div className={`text-[10px] font-bold mb-0.5 flex items-center gap-1 ${
+                                            Number(stockDelta) > 0 ? 'text-blue-700' : 'text-amber-800'
+                                          }`}>
+                                            <span>{Number(stockDelta) > 0 ? '🏬 Ambil tambahan dari gudang:' : '🏬 Kembalikan stok ke gudang:'}</span>
+                                            <span className="font-black">({Math.abs(Number(stockDelta))} pcs)</span>
                                           </div>
                                           <select
                                             value={stockWarehouseId}
                                             onChange={e => setStockWarehouseId(e.target.value)}
-                                            className="w-full text-xs p-1 border border-blue-300 rounded bg-white font-medium text-slate-800"
+                                            className="w-full text-xs p-1.5 border border-blue-300 rounded-lg bg-white font-medium text-slate-800"
                                           >
                                             {warehouses.map((w: any) => (
                                               <option key={w.id} value={w.id}>
@@ -1107,11 +1185,12 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                                           </select>
                                         </div>
                                       )}
+
                                       <div className="flex gap-2 pt-0.5">
                                         <button 
-                                          disabled={isSavingStock}
+                                          disabled={isSavingStock || stockDelta === '' || Number(stockDelta) === 0 || (stock.quantity + Number(stockDelta) < 0)}
                                           onClick={() => handleSaveStock(stock)} 
-                                          className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded font-medium flex items-center gap-1 disabled:opacity-60 cursor-pointer"
+                                          className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg font-medium flex items-center gap-1 disabled:opacity-50 cursor-pointer"
                                         >
                                           {isSavingStock ? (
                                             <>
@@ -1119,16 +1198,27 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                                               <span>Menyimpan...</span>
                                             </>
                                           ) : (
-                                            <span>Simpan Stok</span>
+                                            <span>Simpan Perubahan</span>
                                           )}
                                         </button>
-                                        <button disabled={isSavingStock} onClick={() => setEditingStockId(null)} className="text-xs text-gray-500 hover:text-gray-700 cursor-pointer">Batal</button>
+                                        <button 
+                                          disabled={isSavingStock} 
+                                          onClick={() => { setEditingStockId(null); setStockDelta(''); }} 
+                                          className="text-xs text-gray-500 hover:text-gray-700 cursor-pointer"
+                                        >
+                                          Batal
+                                        </button>
                                       </div>
                                     </div>
                                   ) : (
                                     <div className="mb-3">
                                       <button 
-                                        onClick={() => { setEditingStockId(stock.id); setNewStockQty(stock.quantity); setStockNote(''); setStockWarehouseId(warehouses[0]?.id || ''); }} 
+                                        onClick={() => { 
+                                          setEditingStockId(stock.id); 
+                                          setStockDelta(''); 
+                                          setStockNote(''); 
+                                          setStockWarehouseId(warehouses[0]?.id || ''); 
+                                        }} 
                                         className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 cursor-pointer"
                                       >
                                         <Pencil size={11} />

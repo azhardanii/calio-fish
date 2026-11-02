@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { verifySession } from '@/lib/auth';
+import { recalculateOutletFinance } from '@/app/actions';
 
 export async function updateOutletProductPrice(outletStockId: string, hargaBeli: number) {
   try {
@@ -17,13 +18,24 @@ export async function updateOutletProductPrice(outletStockId: string, hargaBeli:
       return { success: false, error: 'Harga harus berupa angka valid dan tidak boleh negatif.' };
     }
 
-    await prisma.outletStock.update({
-      where: { id: outletStockId },
-      data: { harga_beli: priceNum }
+    const updatedOutlet = await prisma.$transaction(async (tx) => {
+      const updatedStock = await tx.outletStock.update({
+        where: { id: outletStockId },
+        data: { harga_beli: priceNum }
+      });
+
+      return await recalculateOutletFinance(tx, updatedStock.outlet_id);
     });
     
     revalidatePath('/outlet');
-    return { success: true };
+    revalidatePath('/marketing');
+    revalidatePath('/overview');
+    return {
+      success: true,
+      tagihan: updatedOutlet ? Number(updatedOutlet.tagihan) : undefined,
+      sisa_tagihan: updatedOutlet ? Number(updatedOutlet.sisa_tagihan) : undefined,
+      payment: updatedOutlet ? Number(updatedOutlet.payment) : undefined,
+    };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -45,7 +57,6 @@ export async function submitOutletPayment(outletId: string, amount: number) {
         where: { id: outletId },
         data: {
           payment: Number(outlet.payment) + amount,
-          sisa_tagihan: Number(outlet.sisa_tagihan) - amount,
         }
       });
       
@@ -58,9 +69,13 @@ export async function submitOutletPayment(outletId: string, amount: number) {
           date: new Date()
         }
       });
+
+      await recalculateOutletFinance(tx, outletId);
     });
 
     revalidatePath('/outlet');
+    revalidatePath('/marketing');
+    revalidatePath('/overview');
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };

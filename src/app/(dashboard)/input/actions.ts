@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
+import { recalculateOutletFinance } from '@/app/actions';
 
 export async function submitPresensiInput(employeeId: string, status: string, alasan: string) {
   try {
@@ -166,14 +167,9 @@ export async function submitWarehouseInput(input: WarehouseInput) {
         if (totalBilling > 0) {
           const outlet = await tx.outlet.findUnique({ where: { id: input.outletId } });
           if (outlet) {
-            const newTagihan = Number(outlet.tagihan) + totalBilling;
-            const newSisaTagihan = Number(outlet.sisa_tagihan) + totalBilling;
-            
             await tx.outlet.update({
               where: { id: input.outletId },
               data: {
-                tagihan: newTagihan,
-                sisa_tagihan: newSisaTagihan,
                 order_baru: outlet.order_baru + 1
               }
             });
@@ -187,6 +183,8 @@ export async function submitWarehouseInput(input: WarehouseInput) {
                 date: new Date()
               }
             });
+
+            await recalculateOutletFinance(tx, input.outletId);
           }
         }
       }

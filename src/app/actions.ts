@@ -102,6 +102,72 @@ export async function deleteKaryawan(id: string) {
   revalidatePath('/outlet');
 }
 
+// Helper: Sinkronisasi otomatis Total Tagihan & Sisa Tagihan mengikuti Stok Fisik di Outlet & Harga Khusus Outlet
+export async function recalculateOutletFinance(tx: any, outletId: string) {
+  const outlet = await tx.outlet.findUnique({
+    where: { id: outletId },
+    include: {
+      stocks: { include: { product: true } },
+      transactions: { orderBy: { date: 'desc' } },
+    }
+  });
+  if (!outlet) return null;
+
+  // 1. Hitung valuasi stok fisik yang ada di outlet sesuai harga yang disetting (harga_beli ?? base_price)
+  const stockValuation = (outlet.stocks || []).reduce((sum: number, s: any) => {
+    const unitPrice = (s.harga_beli !== null && s.harga_beli !== undefined)
+      ? Number(s.harga_beli)
+      : Number(s.product?.base_price || 0);
+    return sum + (Number(s.quantity || 0) * unitPrice);
+  }, 0);
+
+  // 2. Hitung piutang manual (input piutang manual di luar stok fisik)
+  const manualPiutang = (outlet.transactions || [])
+    .filter((t: any) => t.type === 'PIUTANG')
+    .reduce((sum: number, t: any) => sum + Number(t.amount || 0), 0);
+
+  // 3. Total pembayaran yang sudah masuk
+  const currentPayment = Number(outlet.payment || 0);
+
+  // 4. Total Tagihan & Sisa Tagihan mengikuti valuasi stok + piutang manual
+  const newTagihan = stockValuation + manualPiutang;
+  const newSisaTagihan = Math.max(0, newTagihan - currentPayment);
+
+  // 5. Sinkronkan nilai transaksi BILLING agar histori transaksi juga selaras dengan valuasi stok
+  const billingTxs = (outlet.transactions || []).filter((t: any) => t.type === 'BILLING' || t.type === 'TAGIHAN');
+  if (billingTxs.length === 1) {
+    await tx.outletTransaction.update({
+      where: { id: billingTxs[0].id },
+      data: { amount: stockValuation }
+    });
+  } else if (billingTxs.length > 1) {
+    const otherBillingsSum = billingTxs.slice(1).reduce((s: number, t: any) => s + Number(t.amount || 0), 0);
+    const latestAdjustedAmount = Math.max(0, stockValuation - otherBillingsSum);
+    await tx.outletTransaction.update({
+      where: { id: billingTxs[0].id },
+      data: { amount: latestAdjustedAmount }
+    });
+  } else if (billingTxs.length === 0 && stockValuation > 0) {
+    await tx.outletTransaction.create({
+      data: {
+        outlet_id: outletId,
+        type: 'BILLING',
+        amount: stockValuation,
+        description: 'Tagihan Valuasi Stok Outlet',
+        date: new Date()
+      }
+    });
+  }
+
+  return await tx.outlet.update({
+    where: { id: outletId },
+    data: {
+      tagihan: newTagihan,
+      sisa_tagihan: newSisaTagihan,
+    }
+  });
+}
+
 // Outlet
 export async function createOutlet(
   data: any, 
@@ -246,7 +312,7 @@ export async function createOutlet(
           data: {
             product_id: item.product_id,
             type: 'PENGIRIMAN_OUTLET',
-            flow: 'OUT',
+            flow: 'IN',
             qty: item.qty,
             balance: item.qty,
             description: `Stok Awal Outlet ${res.nama} dari gudang ${resolvedWarehouse.name} (Shipment: #${shipment.id.slice(0, 8)})`,
@@ -259,6 +325,8 @@ export async function createOutlet(
           }
         });
       }
+
+      await recalculateOutletFinance(tx, res.id);
     }
 
     return res;
@@ -268,6 +336,7 @@ export async function createOutlet(
   revalidatePath('/karyawan');
   revalidatePath('/warehouse');
   revalidatePath('/pengiriman');
+  revalidatePath('/marketing');
   revalidatePath('/overview');
   return result;
 }
@@ -315,6 +384,8 @@ export async function updateOutlet(id: string, data: any) {
 
   await prisma.outlet.update({ where: { id }, data: updateData });
   revalidatePath('/outlet');
+  revalidatePath('/marketing');
+  revalidatePath('/overview');
 }
 
 export async function addPiutang(outletId: string, amount: number, description: string = '', dateString?: string) {
@@ -329,11 +400,8 @@ export async function addPiutang(outletId: string, amount: number, description: 
   const outlet = await prisma.outlet.findUnique({ where: { id: outletId } });
   if (!outlet) throw new Error('Outlet tidak ditemukan');
 
-  const newTagihan = Number(outlet.tagihan) + amount;
-  const newSisa = newTagihan - Number(outlet.payment);
-
-  await prisma.$transaction([
-    prisma.outletTransaction.create({
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.outletTransaction.create({
       data: {
         outlet_id: outletId,
         type: 'PIUTANG',
@@ -341,13 +409,14 @@ export async function addPiutang(outletId: string, amount: number, description: 
         description,
         date: dateString ? new Date(dateString) : new Date()
       }
-    }),
-    prisma.outlet.update({
-      where: { id: outletId },
-      data: { tagihan: newTagihan, sisa_tagihan: newSisa }
-    })
-  ]);
+    });
+    return await recalculateOutletFinance(tx, outletId);
+  });
+
   revalidatePath('/outlet');
+  revalidatePath('/marketing');
+  revalidatePath('/overview');
+  return updated ? { tagihan: Number(updated.tagihan), sisa_tagihan: Number(updated.sisa_tagihan), payment: Number(updated.payment) } : null;
 }
 
 export async function addPelunasan(outletId: string, amount: number, description: string = '', dateString?: string) {
@@ -363,10 +432,9 @@ export async function addPelunasan(outletId: string, amount: number, description
   if (!outlet) throw new Error('Outlet tidak ditemukan');
 
   const newPayment = Number(outlet.payment) + amount;
-  const newSisa = Number(outlet.tagihan) - newPayment;
 
-  await prisma.$transaction([
-    prisma.outletTransaction.create({
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.outletTransaction.create({
       data: {
         outlet_id: outletId,
         type: 'PELUNASAN',
@@ -374,13 +442,18 @@ export async function addPelunasan(outletId: string, amount: number, description
         description,
         date: dateString ? new Date(dateString) : new Date()
       }
-    }),
-    prisma.outlet.update({
+    });
+    await tx.outlet.update({
       where: { id: outletId },
-      data: { payment: newPayment, sisa_tagihan: newSisa }
-    })
-  ]);
+      data: { payment: newPayment }
+    });
+    return await recalculateOutletFinance(tx, outletId);
+  });
+
   revalidatePath('/outlet');
+  revalidatePath('/marketing');
+  revalidatePath('/overview');
+  return updated ? { tagihan: Number(updated.tagihan), sisa_tagihan: Number(updated.sisa_tagihan), payment: Number(updated.payment) } : null;
 }
 
 export async function resetOutletFinance(outletId: string) {
@@ -412,6 +485,8 @@ export async function resetOutletFinance(outletId: string) {
   });
 
   revalidatePath('/outlet');
+  revalidatePath('/marketing');
+  revalidatePath('/overview');
   return updated;
 }
 
@@ -432,6 +507,8 @@ export async function deleteOutlet(id: string) {
 
   await prisma.outlet.delete({ where: { id } });
   revalidatePath('/outlet');
+  revalidatePath('/marketing');
+  revalidatePath('/overview');
 }
 
 export async function adjustOutletStock(outletStockId: string, newQty: number, note: string, warehouseId?: string) {
@@ -443,6 +520,10 @@ export async function adjustOutletStock(outletStockId: string, newQty: number, n
     throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat mengubah stok outlet.');
   }
 
+  if (newQty < 0) {
+    throw new Error('Stok akhir di outlet tidak boleh kurang dari 0 pcs.');
+  }
+
   const os = await prisma.outletStock.findUnique({ 
     where: { id: outletStockId }, 
     include: { product: true, outlet: true } 
@@ -450,33 +531,33 @@ export async function adjustOutletStock(outletStockId: string, newQty: number, n
   if (!os) throw new Error('Outlet stock tidak ditemukan');
 
   const diff = newQty - os.quantity;
-  if (diff === 0) return;
+  if (diff === 0) return null;
 
-  // If increasing stock on outlet (stock added), deduct from warehouse
+  // Resolve target warehouse (both for adding stock from warehouse and returning stock to warehouse)
   let targetWarehouse: any = null;
+  if (warehouseId) {
+    targetWarehouse = await prisma.warehouse.findUnique({ where: { id: warehouseId } });
+  }
+  if (!targetWarehouse && diff > 0) {
+    // Find first warehouse that has enough stock for this product
+    targetWarehouse = await prisma.warehouse.findFirst({
+      where: {
+        stocks: { some: { product_id: os.product_id, quantity: { gte: diff } } }
+      }
+    });
+  }
+  if (!targetWarehouse) {
+    targetWarehouse = await prisma.warehouse.findFirst({
+      where: { OR: [{ type: 'FACTORY' }, { type: 'STORAGE' }] },
+      orderBy: { created_at: 'asc' }
+    });
+  }
+
+  if (!targetWarehouse) {
+    throw new Error('Gudang asal/tujuan barang tidak ditemukan.');
+  }
+
   if (diff > 0) {
-    if (warehouseId) {
-      targetWarehouse = await prisma.warehouse.findUnique({ where: { id: warehouseId } });
-    }
-    if (!targetWarehouse) {
-      // Find first warehouse that has enough stock for this product
-      targetWarehouse = await prisma.warehouse.findFirst({
-        where: {
-          stocks: { some: { product_id: os.product_id, quantity: { gte: diff } } }
-        }
-      });
-    }
-    if (!targetWarehouse) {
-      targetWarehouse = await prisma.warehouse.findFirst({
-        where: { OR: [{ type: 'FACTORY' }, { type: 'STORAGE' }] },
-        orderBy: { created_at: 'asc' }
-      });
-    }
-
-    if (!targetWarehouse) {
-      throw new Error('Gudang asal barang tidak ditemukan.');
-    }
-
     const ws = await prisma.warehouseStock.findUnique({
       where: { warehouse_id_product_id: { warehouse_id: targetWarehouse.id, product_id: os.product_id } }
     });
@@ -486,7 +567,7 @@ export async function adjustOutletStock(outletStockId: string, newQty: number, n
     }
   }
 
-  await prisma.$transaction(async (tx) => {
+  const updatedOutlet = await prisma.$transaction(async (tx) => {
     await tx.outletStock.update({ where: { id: outletStockId }, data: { quantity: newQty } });
     
     if (diff > 0 && targetWarehouse) {
@@ -521,10 +602,10 @@ export async function adjustOutletStock(outletStockId: string, newQty: number, n
         data: {
           product_id: os.product_id,
           type: 'PENGIRIMAN_OUTLET',
-          flow: 'OUT',
+          flow: 'IN',
           qty: diff,
           balance: newQty,
-          description: `Kirim Stok ke Outlet ${os.outlet.nama} dari ${targetWarehouse.name} (${shipment.id.slice(0, 8)})${note ? `: ${note}` : ''}`,
+          description: `Ambil Stok (+${diff} pcs) ke Outlet ${os.outlet.nama} dari ${targetWarehouse.name} (${shipment.id.slice(0, 8)})${note ? `: ${note}` : ''}`,
           date: new Date(),
           source_type: 'WAREHOUSE',
           source_id: targetWarehouse.id,
@@ -533,29 +614,72 @@ export async function adjustOutletStock(outletStockId: string, newQty: number, n
           employee_id: user?.id
         }
       });
-    } else {
-      // Opname / pengurangan stok di outlet
+    } else if (diff < 0 && targetWarehouse) {
+      // Return stock back to selected warehouse
+      const returnQty = Math.abs(diff);
+      await tx.warehouseStock.upsert({
+        where: { warehouse_id_product_id: { warehouse_id: targetWarehouse.id, product_id: os.product_id } },
+        update: { quantity: { increment: returnQty } },
+        create: {
+          warehouse_id: targetWarehouse.id,
+          product_id: os.product_id,
+          quantity: returnQty,
+          returned_qty: 0,
+        }
+      });
+
+      const shipment = await tx.outboundShipment.create({
+        data: {
+          date: new Date(),
+          shipment_type: 'PENGEMBALIAN_OUTLET',
+          source_type: 'OUTLET',
+          source_name: os.outlet.nama,
+          destination_type: 'WAREHOUSE',
+          destination_name: targetWarehouse.name,
+          outlet_id: os.outlet_id,
+          status: 'SHIPPED',
+          employee_id: user?.id,
+          notes: note || `Pengembalian stok (-${returnQty} pcs) dari outlet ${os.outlet.nama} ke gudang ${targetWarehouse.name}`,
+          items: {
+            create: [
+              { product_id: os.product_id, qty: returnQty }
+            ]
+          }
+        }
+      });
+
       await tx.stockTransaction.create({
         data: {
           product_id: os.product_id,
           type: 'OPNAME_OUTLET',
           flow: 'OUT',
-          qty: Math.abs(diff),
+          qty: returnQty,
           balance: newQty,
-          description: `Penyesuaian Manual Stok Outlet ${os.outlet.nama}: ${note || 'Opname stok'}`,
+          description: `Kembalikan Stok (-${returnQty} pcs) dari Outlet ${os.outlet.nama} ke ${targetWarehouse.name} (${shipment.id.slice(0, 8)})${note ? `: ${note}` : ''}`,
           date: new Date(),
+          source_type: 'OUTLET',
+          source_id: os.outlet_id,
           destination_id: os.outlet_id,
           destination_type: 'OUTLET',
           employee_id: user?.id
         }
       });
     }
+
+    return await recalculateOutletFinance(tx, os.outlet_id);
   });
 
   revalidatePath('/outlet');
   revalidatePath('/warehouse');
   revalidatePath('/pengiriman');
+  revalidatePath('/marketing');
   revalidatePath('/overview');
+  return updatedOutlet ? {
+    tagihan: Number(updatedOutlet.tagihan),
+    sisa_tagihan: Number(updatedOutlet.sisa_tagihan),
+    payment: Number(updatedOutlet.payment),
+    newQty,
+  } : null;
 }
 
 // Affiliator (Affiliate table)
