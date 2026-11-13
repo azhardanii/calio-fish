@@ -114,7 +114,8 @@ data: { "nama": string, "akun_medsos": string, "no_hp": string, "alamat": string
 
 11. KEUANGAN_OUTLET
 For reporting payments (pelunasan/pembayaran) or debts (piutang/bon) from/to an outlet or distributor.
-data: { "outlet_name": "string", "jenis_transaksi": "PELUNASAN" | "PIUTANG", "nominal": number, "keterangan": "string" }
+Sales can report total payment nominal and items sold per product type/gramasi (e.g. 60 gr, 20 gr, abon).
+data: { "outlet_name": "string", "jenis_transaksi": "PELUNASAN" | "PIUTANG", "nominal": number, "keterangan": "string", "items": [ { "jenis": "60gr" | "20gr" | "abon" | "string", "qty": number } ] }
 
 12. PENJUALAN_BOOTH
 For reporting daily sales at an event booth or exhibition.

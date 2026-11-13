@@ -2,7 +2,8 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
-import { recalculateOutletFinance } from '@/app/actions';
+import { recalculateOutletFinance, addPiutang, addPelunasan } from '@/app/actions';
+import { postShipment } from '@/lib/consignment/finance';
 
 export async function submitPresensiInput(employeeId: string, status: string, alasan: string) {
   try {
@@ -123,75 +124,29 @@ export async function submitWarehouseInput(input: WarehouseInput) {
         });
       }
 
-      // Automatically update Outlet Stock and Billing if destination is Outlet
+      // Automatically update Outlet Consignment Stock and Ledger via postShipment (Section 4.1)
       if (input.destinationType === 'Outlet' && input.outletId) {
-        let totalBilling = 0;
-        
-        for (const item of input.items) {
-          const product = await tx.product.findUnique({ where: { id: item.productId } });
-          if (!product) continue;
-          
-          // Find or create OutletStock
-          const existingOutletStock = await tx.outletStock.findUnique({
-            where: {
-              outlet_id_product_id: {
-                outlet_id: input.outletId,
-                product_id: item.productId
-              }
-            }
-          });
-
-          let hargaBeli = product.base_price;
-          if (existingOutletStock) {
-            await tx.outletStock.update({
-              where: { id: existingOutletStock.id },
-              data: { quantity: existingOutletStock.quantity + item.qty }
-            });
-            if (existingOutletStock.harga_beli) {
-              hargaBeli = existingOutletStock.harga_beli;
-            }
-          } else {
-            await tx.outletStock.create({
-              data: {
-                outlet_id: input.outletId,
-                product_id: item.productId,
-                quantity: item.qty,
-                harga_beli: product.base_price
-              }
-            });
+        await tx.outlet.update({
+          where: { id: input.outletId },
+          data: {
+            order_baru: { increment: 1 }
           }
+        });
 
-          totalBilling += (Number(hargaBeli) * item.qty);
-        }
-
-        if (totalBilling > 0) {
-          const outlet = await tx.outlet.findUnique({ where: { id: input.outletId } });
-          if (outlet) {
-            await tx.outlet.update({
-              where: { id: input.outletId },
-              data: {
-                order_baru: outlet.order_baru + 1
-              }
-            });
-
-            await tx.outletTransaction.create({
-              data: {
-                outlet_id: input.outletId,
-                type: 'BILLING',
-                amount: totalBilling,
-                description: `Otomatis dari Pengiriman (ID: ${shipment.id})`,
-                date: new Date()
-              }
-            });
-
-            await recalculateOutletFinance(tx, input.outletId);
-          }
-        }
+        await postShipment(tx, {
+          outletId: input.outletId,
+          items: input.items,
+          date: new Date(),
+          description: `Otomatis dari Pengiriman Gudang (ID: #${shipment.id.slice(0, 8)})`
+        });
       }
     });
 
     revalidatePath('/warehouse');
     revalidatePath('/input');
+    revalidatePath('/outlet');
+    revalidatePath('/marketing');
+    revalidatePath('/overview');
     return { success: true };
   } catch (error: any) {
     console.error('Warehouse Submit Error:', error);
@@ -204,23 +159,25 @@ export async function updateOutletInput(outletId: string, data: { orderBaru: num
     const outlet = await prisma.outlet.findUnique({ where: { id: outletId } });
     if (!outlet) throw new Error('Outlet tidak ditemukan');
 
-    const newTagihan = Number(outlet.tagihan) + data.tagihanBaru;
-    const newPayment = Number(outlet.payment) + data.payment;
-    const newSisaTagihan = newTagihan - newPayment;
+    if (data.orderBaru > 0) {
+      await prisma.outlet.update({
+        where: { id: outletId },
+        data: { order_baru: { increment: data.orderBaru } }
+      });
+    }
 
-    await prisma.outlet.update({
-      where: { id: outletId },
-      data: {
-        order_baru: outlet.order_baru + data.orderBaru,
-        tagihan: newTagihan,
-        payment: newPayment,
-        sisa_tagihan: newSisaTagihan,
-        updated_at: new Date()
-      }
-    });
+    if (data.tagihanBaru > 0) {
+      await addPiutang(outletId, data.tagihanBaru, 'Penambahan tagihan/piutang manual dari form input');
+    }
+
+    if (data.payment > 0) {
+      await addPelunasan(outletId, data.payment, 'Pembayaran pelunasan manual dari form input');
+    }
 
     revalidatePath('/outlet');
     revalidatePath('/input');
+    revalidatePath('/marketing');
+    revalidatePath('/overview');
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };

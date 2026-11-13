@@ -133,6 +133,17 @@ interface OverviewData {
     totalKerugian: number;
     warehouses?: Array<{ id: string; name: string; type: string; stock: number }>;
   };
+  typeDistribution?: Array<{
+    id: string;
+    code: string;
+    name: string;
+    base_price: number;
+    gudang_qty: number;
+    outlet_qty: number;
+    total_qty: number;
+    valuasi_outlet: number;
+    valuasi_gudang: number;
+  }>;
   recentFeed: FeedItem[];
   totalShipments: number;
   totalItemsSent: number;
@@ -201,6 +212,7 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
     lowStockProducts = [],
     allProducts = [],
     stockDistribution,
+    typeDistribution = [],
     recentFeed = [],
     totalShipments = 0,
     totalItemsSent = 0,
@@ -276,6 +288,41 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl text-xs font-semibold">
+            <button
+              onClick={() => {
+                const now = new Date();
+                const from = new Date(now.getFullYear(), now.getMonth(), 1);
+                const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                setDateRange({ from, to });
+                router.push(`/overview?from=${format(from, 'yyyy-MM-dd')}&to=${format(to, 'yyyy-MM-dd')}`);
+              }}
+              className="px-2.5 py-1.5 rounded-lg hover:bg-white text-gray-700 hover:shadow-2xs transition cursor-pointer"
+            >
+              Bulan Ini
+            </button>
+            <button
+              onClick={() => {
+                const now = new Date();
+                const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                const to = new Date(now.getFullYear(), now.getMonth(), 0);
+                setDateRange({ from, to });
+                router.push(`/overview?from=${format(from, 'yyyy-MM-dd')}&to=${format(to, 'yyyy-MM-dd')}`);
+              }}
+              className="px-2.5 py-1.5 rounded-lg hover:bg-white text-gray-700 hover:shadow-2xs transition cursor-pointer"
+            >
+              Bulan Lalu
+            </button>
+            <button
+              onClick={() => {
+                setDateRange(undefined);
+                router.push('/overview?lifetime=true');
+              }}
+              className="px-2.5 py-1.5 rounded-lg hover:bg-white text-gray-700 hover:shadow-2xs transition cursor-pointer"
+            >
+              Semua Waktu
+            </button>
+          </div>
           <DateRangePicker date={dateRange} setDate={setDateRange} />
           <button
             onClick={handleApplyFilter}
@@ -934,6 +981,35 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
                 {stockDistribution?.totalStokFisikEkosistem || ((stockDistribution?.factoryStok || 0) + (stockDistribution?.storageStok || 0) + (stockDistribution?.boothStok || 0) + (stockDistribution?.outletStok || 0))} pcs
               </span>
             </div>
+
+            {/* Breakdown Stok per Jenis: Gudang vs Outlet (P6) */}
+            {typeDistribution && typeDistribution.length > 0 && (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-3 space-y-2">
+                <div className="text-[11px] font-extrabold text-slate-800 uppercase tracking-wider flex items-center justify-between">
+                  <span>📦 Stok per Jenis Produk</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Gudang vs Outlet</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {typeDistribution.map((td) => (
+                    <div key={td.id} className="bg-white p-2.5 rounded-lg border border-slate-200/80 shadow-2xs text-xs space-y-1">
+                      <div className="font-black text-slate-900 truncate">{td.name}</div>
+                      <div className="flex justify-between text-[11px] text-slate-500">
+                        <span>🏬 Gudang:</span>
+                        <span className="font-bold text-slate-800">{td.gudang_qty} pcs</span>
+                      </div>
+                      <div className="flex justify-between text-[11px] text-slate-500">
+                        <span>🏪 Outlet:</span>
+                        <span className="font-bold text-slate-800">{td.outlet_qty} pcs</span>
+                      </div>
+                      <div className="pt-1 border-t border-slate-100 flex justify-between text-[11px] font-extrabold text-blue-700">
+                        <span>Total:</span>
+                        <span>{td.total_qty} pcs</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Produk Stok Tipis */}
             {lowStockProducts.length > 0 && (

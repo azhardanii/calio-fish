@@ -1,9 +1,25 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { createOutlet, updateOutlet, deleteOutlet, addPiutang, addPelunasan, adjustOutletStock, resetOutletFinance } from '@/app/actions';
+import { 
+  createOutlet, 
+  updateOutlet, 
+  deleteOutlet, 
+  addPiutang, 
+  addPelunasan, 
+  adjustOutletStock, 
+  resetOutletFinance,
+  toggleOutletDailySales 
+} from '@/app/actions';
 import useSWR, { mutate } from 'swr';
-import { updateOutletProductPrice } from './actions';
+import { 
+  updateOutletProductPrice, 
+  updateOutletTypePrice, 
+  submitOutletPayment, 
+  submitOutletSale, 
+  completePendingPaymentAction, 
+  submitStockOpname 
+} from './actions';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { 
   RotateCcw, 
@@ -23,7 +39,11 @@ import {
   Truck, 
   Receipt,
   Info,
-  Search
+  Search,
+  Layers,
+  Calendar,
+  AlertTriangle,
+  ArrowUpDown
 } from 'lucide-react';
 
 export function OutletManager({ outlets, currentUser, employees }: { outlets: any[], currentUser: any, employees: any[] }) {
@@ -44,6 +64,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const { data: productData } = useSWR('/api/data/products');
   const warehouses = warehouseData?.warehouses || [];
   const products = productData?.products || [];
+  const productTypes = productData?.productTypes || [];
 
   const [stockWarehouseId, setStockWarehouseId] = useState<string>('');
   const [initialStocks, setInitialStocks] = useState<Record<string, number>>({});
@@ -67,6 +88,41 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const [isSavingStock, setIsSavingStock] = useState(false);
   const [isSavingPrice, setIsSavingPrice] = useState(false);
   const [isResettingFinance, setIsResettingFinance] = useState(false);
+  const [isTogglingMode, setIsTogglingMode] = useState(false);
+
+  // Type stock price editing
+  const [editingTypeStockId, setEditingTypeStockId] = useState<string | null>(null);
+  const [newTypePrice, setNewTypePrice] = useState<number>(0);
+  const [isSavingTypePrice, setIsSavingTypePrice] = useState(false);
+
+  // Consignment Payment Modal
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [payNominal, setPayNominal] = useState<number | ''>('');
+  const [paySettleOnly, setPaySettleOnly] = useState(false);
+  const [payItems, setPayItems] = useState<Record<string, number>>({});
+  const [payDesc, setPayDesc] = useState('');
+  const [payDate, setPayDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [isSubmittingPay, setIsSubmittingPay] = useState(false);
+
+  // Daily Sales (SALE) Modal
+  const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
+  const [saleItems, setSaleItems] = useState<Record<string, number>>({});
+  const [salePeriodStart, setSalePeriodStart] = useState(() => new Date().toISOString().split('T')[0]);
+  const [salePeriodEnd, setSalePeriodEnd] = useState(() => new Date().toISOString().split('T')[0]);
+  const [saleDesc, setSaleDesc] = useState('');
+  const [isSubmittingSale, setIsSubmittingSale] = useState(false);
+
+  // Opname Modal
+  const [isOpnameModalOpen, setIsOpnameModalOpen] = useState(false);
+  const [opnameActual, setOpnameActual] = useState<Record<string, number>>({});
+  const [opnameNotes, setOpnameNotes] = useState('');
+  const [isSubmittingOpname, setIsSubmittingOpname] = useState(false);
+
+  // Complete Pending Payment Modal
+  const [isPendingModalOpen, setIsPendingModalOpen] = useState(false);
+  const [pendingTx, setPendingTx] = useState<any>(null);
+  const [pendingItems, setPendingItems] = useState<Record<string, number>>({});
+  const [isSubmittingPending, setIsSubmittingPending] = useState(false);
 
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [txType, setTxType] = useState<'PIUTANG' | 'PELUNASAN'>('PIUTANG');
@@ -415,6 +471,200 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
       alert(err.message || 'Gagal mereset keuangan outlet');
     } finally {
       setIsResettingFinance(false);
+    }
+  };
+
+  const handleToggleMode = async () => {
+    if (!selectedOutlet || isTogglingMode) return;
+    if (!isOwnerOrAdmin) return;
+    const targetMode = !selectedOutlet.has_daily_sales;
+    const modeName = targetMode ? 'Modern Trade (Daily Sales)' : 'Reguler';
+    if (!confirm(`Ubah mode outlet "${selectedOutlet.nama}" menjadi ${modeName}?`)) return;
+
+    setIsTogglingMode(true);
+    try {
+      await toggleOutletDailySales(selectedOutlet.id, targetMode);
+      setSelectedOutlet({
+        ...selectedOutlet,
+        has_daily_sales: targetMode,
+      });
+      await mutate('/api/data/outlets');
+    } catch (err: any) {
+      alert(err.message || 'Gagal mengubah mode outlet');
+    } finally {
+      setIsTogglingMode(false);
+    }
+  };
+
+  const handleSaveTypePrice = async (ts: any) => {
+    if (!isOwnerOrAdmin || isSavingTypePrice) return;
+    if (newTypePrice < 0) {
+      alert('Harga tidak boleh negatif.');
+      return;
+    }
+    setIsSavingTypePrice(true);
+    try {
+      const res = await updateOutletTypePrice(
+        ts.id || 'new',
+        newTypePrice,
+        selectedOutlet.id,
+        ts.product_type_id || ts.product_type?.id
+      );
+      if (res && !res.success) throw new Error(res.error || 'Gagal menyimpan harga jenis');
+      await mutate('/api/data/outlets');
+      setEditingTypeStockId(null);
+    } catch (err: any) {
+      alert(err.message || 'Gagal menyimpan harga jenis produk');
+    } finally {
+      setIsSavingTypePrice(false);
+    }
+  };
+
+  const openPaymentModal = () => {
+    setPayNominal('');
+    setPaySettleOnly(false);
+    const initialItemMap: Record<string, number> = {};
+    (selectedOutlet?.type_stocks || []).forEach((ts: any) => {
+      initialItemMap[ts.product_type_id] = 0;
+    });
+    setPayItems(initialItemMap);
+    setPayDesc('');
+    setPayDate(new Date().toISOString().split('T')[0]);
+    setIsPaymentModalOpen(true);
+  };
+
+  const handleSubmitPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOutlet || !payNominal || isSubmittingPay) return;
+    const nominal = Number(payNominal);
+    if (nominal <= 0) {
+      alert('Nominal pembayaran harus lebih dari 0.');
+      return;
+    }
+
+    const items = Object.entries(payItems)
+      .filter(([_, qty]) => Number(qty) > 0)
+      .map(([typeId, qty]) => ({ productTypeId: typeId, qty: Number(qty) }));
+
+    setIsSubmittingPay(true);
+    try {
+      const res = await submitOutletPayment(
+        selectedOutlet.id,
+        nominal,
+        items.length > 0 ? items : undefined,
+        paySettleOnly,
+        payDesc || (paySettleOnly ? 'Pelunasan Sisa Piutang' : 'Laporan Pembayaran Outlet'),
+        payDate
+      );
+      if (res?.error) throw new Error(res.error);
+
+      await mutate('/api/data/outlets');
+      setIsPaymentModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || 'Gagal memproses pembayaran');
+    } finally {
+      setIsSubmittingPay(false);
+    }
+  };
+
+  const handleSubmitSale = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOutlet || isSubmittingSale) return;
+    const items = Object.entries(saleItems)
+      .filter(([_, qty]) => Number(qty) > 0)
+      .map(([typeId, qty]) => ({ productTypeId: typeId, qty: Number(qty) }));
+
+    if (items.length === 0) {
+      alert('Pilih minimal 1 jenis barang yang terjual.');
+      return;
+    }
+
+    setIsSubmittingSale(true);
+    try {
+      const res = await submitOutletSale(
+        selectedOutlet.id,
+        items,
+        salePeriodStart,
+        salePeriodEnd,
+        saleDesc || 'Pencatatan Penjualan Harian (Daily Sales)'
+      );
+      if (res?.error) throw new Error(res.error);
+
+      await mutate('/api/data/outlets');
+      setIsSaleModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || 'Gagal mencatat daily sales');
+    } finally {
+      setIsSubmittingSale(false);
+    }
+  };
+
+  const openOpnameModal = () => {
+    const actualMap: Record<string, number> = {};
+    (selectedOutlet?.type_stocks || []).forEach((ts: any) => {
+      actualMap[ts.product_type_id] = ts.quantity;
+    });
+    setOpnameActual(actualMap);
+    setOpnameNotes('');
+    setIsOpnameModalOpen(true);
+  };
+
+  const handleSubmitOpname = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOutlet || isSubmittingOpname) return;
+    const items = Object.entries(opnameActual).map(([typeId, qty]) => ({
+      productTypeId: typeId,
+      qtyActual: Number(qty) || 0,
+    }));
+
+    setIsSubmittingOpname(true);
+    try {
+      const res = await submitStockOpname(selectedOutlet.id, items, opnameNotes);
+      if (res?.error) throw new Error(res.error);
+
+      await mutate('/api/data/outlets');
+      setIsOpnameModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || 'Gagal menyimpan stok opname');
+    } finally {
+      setIsSubmittingOpname(false);
+    }
+  };
+
+  const openPendingModal = (tx: any) => {
+    setPendingTx(tx);
+    const initialItemMap: Record<string, number> = {};
+    (selectedOutlet?.type_stocks || []).forEach((ts: any) => {
+      initialItemMap[ts.product_type_id] = 0;
+    });
+    setPendingItems(initialItemMap);
+    setIsPendingModalOpen(true);
+  };
+
+  const handleSubmitPending = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingTx || isSubmittingPending) return;
+    const items = Object.entries(pendingItems)
+      .filter(([_, qty]) => Number(qty) > 0)
+      .map(([typeId, qty]) => ({ productTypeId: typeId, qty: Number(qty) }));
+
+    if (items.length === 0) {
+      alert('Rincian jenis produk terjual wajib diisi.');
+      return;
+    }
+
+    setIsSubmittingPending(true);
+    try {
+      const res = await completePendingPaymentAction(pendingTx.id, items);
+      if (res?.error) throw new Error(res.error);
+
+      await mutate('/api/data/outlets');
+      setIsPendingModalOpen(false);
+      setPendingTx(null);
+    } catch (err: any) {
+      alert(err.message || 'Gagal melengkapi rincian pembayaran');
+    } finally {
+      setIsSubmittingPending(false);
     }
   };
 
@@ -797,6 +1047,34 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
           return acc + Number(stock.quantity || 0);
         }, 0);
 
+        const typeStockValuation = (selectedOutlet.type_stocks || []).reduce((acc: number, ts: any) => {
+          return acc + (Number(ts.quantity || 0) * Number(ts.harga_beli || ts.product_type?.base_price || 0));
+        }, 0);
+
+        const totalTypePcs = (selectedOutlet.type_stocks || []).reduce((acc: number, ts: any) => {
+          return acc + Number(ts.quantity || 0);
+        }, 0);
+
+        const baseValuation = selectedOutlet.type_stocks && selectedOutlet.type_stocks.length > 0
+          ? typeStockValuation
+          : (selectedOutlet.valuasi_stok !== undefined ? Number(selectedOutlet.valuasi_stok) : totalPhysicalValue);
+
+        const pendingValuation = Number(selectedOutlet.valuasi_pending || 0);
+        const displayedValuation = Math.max(0, baseValuation - pendingValuation);
+        const currentPiutang = Number(selectedOutlet.piutang || 0);
+        const currentPayment = Number(selectedOutlet.payment || 0);
+
+        const typeStocksToDisplay = (productTypes.length > 0 ? productTypes : (selectedOutlet.type_stocks || []).map((ts: any) => ts.product_type).filter(Boolean)).map((pt: any) => {
+          const match = (selectedOutlet.type_stocks || []).find((ts: any) => ts.product_type_id === pt?.id || ts.product_type?.code === pt?.code);
+          return {
+            id: match?.id,
+            product_type_id: pt?.id || match?.product_type_id,
+            product_type: pt || match?.product_type,
+            quantity: match?.quantity || 0,
+            harga_beli: match?.harga_beli !== null && match?.harga_beli !== undefined ? Number(match.harga_beli) : Number(pt?.base_price || 0),
+          };
+        });
+
         const cleanPhone = (selectedOutlet.tlp || '').replace(/\D/g, '');
         const waNumber = cleanPhone.startsWith('0') ? '62' + cleanPhone.slice(1) : (cleanPhone.startsWith('8') ? '62' + cleanPhone : cleanPhone);
         const waUrl = waNumber ? `https://wa.me/${waNumber}` : null;
@@ -829,6 +1107,25 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                         <User size={10} />
                         {selectedOutlet.pengelola?.nama || 'Dikelola Pusat'}
                       </span>
+                      <div className="inline-flex items-center gap-1">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold border ${
+                          selectedOutlet.has_daily_sales
+                            ? 'bg-purple-50 text-purple-700 border-purple-200'
+                            : 'bg-blue-50 text-blue-700 border-blue-200'
+                        }`}>
+                          {selectedOutlet.has_daily_sales ? '🏬 Modern Trade (Daily Sales)' : '🏪 Reguler'}
+                        </span>
+                        {isOwnerOrAdmin && (
+                          <button
+                            onClick={handleToggleMode}
+                            disabled={isTogglingMode}
+                            className="text-[10px] sm:text-xs text-blue-600 hover:text-blue-800 underline font-semibold cursor-pointer disabled:opacity-50"
+                            title="Ubah mode outlet"
+                          >
+                            {isTogglingMode ? '...' : 'Ganti Mode'}
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <h3 className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight">{selectedOutlet.nama}</h3>
                   </div>
@@ -907,7 +1204,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                   <Package size={14} />
                   <span>Stok & Harga</span>
                   <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-600 font-bold">
-                    {selectedOutlet.stocks?.length || 0}
+                    {typeStocksToDisplay.length || selectedOutlet.stocks?.length || 0}
                   </span>
                 </button>
 
@@ -920,8 +1217,8 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                   }`}
                 >
                   <CreditCard size={14} />
-                  <span>Keuangan & Tagihan</span>
-                  {Number(selectedOutlet.sisa_tagihan || 0) > 0 && (
+                  <span>Keuangan & Transaksi</span>
+                  {(currentPiutang > 0 || pendingValuation > 0) && (
                     <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
                   )}
                 </button>
@@ -957,40 +1254,73 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
               {/* Scrollable Content Body (Holds KPI Cards + Tab Content with generous bottom padding) */}
               <div className="overflow-y-auto flex-1 p-3 sm:p-5 space-y-4 pb-24 sm:pb-6">
                 
-                {/* KPI Metrics Grid (Solusi 2: Inside scroll container, perfectly proportioned) */}
+                {/* Pending Valuation Banner */}
+                {pendingValuation > 0 && (
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                      <span>
+                        <b>Valuasi Tertunda:</b> Ada pembayaran dengan valuasi tertunda sebesar <b>Rp {pendingValuation.toLocaleString('id-ID')}</b> karena belum dilengkapi rincian item terjual.
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab('KEUANGAN')}
+                      className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px] shrink-0 cursor-pointer"
+                    >
+                      Buka Tab Keuangan
+                    </button>
+                  </div>
+                )}
+
+                {/* KPI Metrics Grid (3 Konsep Inti yang Dipisahkan) */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 p-2 sm:p-3 bg-slate-50/80 rounded-xl border border-slate-200/70">
-                  {/* Valuasi Stok Fisik */}
+                  {/* Valuasi Konsinyasi */}
                   <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs flex flex-col justify-between">
                     <div className="flex items-center justify-between gap-1 mb-1">
-                      <span className="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Valuasi Stok</span>
+                      <span className="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Valuasi Konsinyasi</span>
                       <div className="w-5 h-5 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                         <Package size={12} />
                       </div>
                     </div>
                     <div>
                       <div className="text-sm sm:text-base font-black text-slate-900 tracking-tight">
-                        Rp {totalPhysicalValue.toLocaleString('id-ID')}
+                        Rp {displayedValuation.toLocaleString('id-ID')}
                       </div>
                       <div className="text-[10px] text-blue-600 font-medium truncate mt-0.5">
-                        {totalPhysicalPcs} pcs di freezer
+                        {totalTypePcs || totalPhysicalPcs} pcs di outlet
+                        {pendingValuation > 0 && (
+                          <span className="text-amber-600 font-bold ml-1">(Tertunda Rp {pendingValuation.toLocaleString('id-ID')})</span>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Total Tagihan */}
-                  <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs flex flex-col justify-between">
+                  {/* Sisa Piutang */}
+                  <div className={`p-2.5 sm:p-3 rounded-lg border shadow-xs flex flex-col justify-between ${
+                    currentPiutang > 0 ? 'bg-rose-50/80 border-rose-200' : 'bg-white border-slate-200'
+                  }`}>
                     <div className="flex items-center justify-between gap-1 mb-1">
-                      <span className="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Total Tagihan</span>
-                      <div className="w-5 h-5 rounded-md bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
-                        <Receipt size={12} />
+                      <span className={`text-[11px] sm:text-xs font-semibold truncate ${
+                        currentPiutang > 0 ? 'text-rose-700' : 'text-slate-500'
+                      }`}>
+                        Sisa Piutang
+                      </span>
+                      <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
+                        currentPiutang > 0 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        <CreditCard size={12} />
                       </div>
                     </div>
                     <div>
-                      <div className="text-sm sm:text-base font-black text-slate-800 tracking-tight">
-                        Rp {Number(selectedOutlet.tagihan || 0).toLocaleString('id-ID')}
+                      <div className={`text-sm sm:text-base font-black tracking-tight ${
+                        currentPiutang > 0 ? 'text-rose-600' : 'text-slate-800'
+                      }`}>
+                        Rp {currentPiutang.toLocaleString('id-ID')}
                       </div>
-                      <div className="text-[10px] text-slate-400 font-normal truncate mt-0.5">
-                        Faktur & kiriman
+                      <div className={`text-[10px] font-semibold truncate mt-0.5 ${
+                        currentPiutang > 0 ? 'text-rose-600' : 'text-emerald-600'
+                      }`}>
+                        {currentPiutang > 0 ? '⚠️ Belum Disetor' : '✅ Bersih / Rp 0'}
                       </div>
                     </div>
                   </div>
@@ -1005,42 +1335,28 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                     </div>
                     <div>
                       <div className="text-sm sm:text-base font-black text-emerald-700 tracking-tight">
-                        Rp {Number(selectedOutlet.payment || 0).toLocaleString('id-ID')}
+                        Rp {currentPayment.toLocaleString('id-ID')}
                       </div>
                       <div className="text-[10px] text-emerald-600 font-medium truncate mt-0.5">
-                        Setoran lunas
+                        Setoran diterima
                       </div>
                     </div>
                   </div>
 
-                  {/* Sisa Tagihan */}
-                  <div className={`p-2.5 sm:p-3 rounded-lg border shadow-xs flex flex-col justify-between ${
-                    Number(selectedOutlet.sisa_tagihan || 0) > 0 
-                      ? 'bg-rose-50/80 border-rose-200' 
-                      : 'bg-emerald-50/80 border-emerald-200'
-                  }`}>
+                  {/* Mode Operasional */}
+                  <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs flex flex-col justify-between">
                     <div className="flex items-center justify-between gap-1 mb-1">
-                      <span className={`text-[11px] sm:text-xs font-semibold truncate ${
-                        Number(selectedOutlet.sisa_tagihan || 0) > 0 ? 'text-rose-700' : 'text-emerald-700'
-                      }`}>
-                        Sisa Tagihan
-                      </span>
-                      <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
-                        Number(selectedOutlet.sisa_tagihan || 0) > 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
-                      }`}>
-                        <CreditCard size={12} />
+                      <span className="text-[11px] sm:text-xs font-medium text-slate-500 truncate">Mode Operasional</span>
+                      <div className="w-5 h-5 rounded-md bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+                        <TrendingUp size={12} />
                       </div>
                     </div>
                     <div>
-                      <div className={`text-sm sm:text-base font-black tracking-tight ${
-                        Number(selectedOutlet.sisa_tagihan || 0) > 0 ? 'text-rose-600' : 'text-emerald-700'
-                      }`}>
-                        Rp {Number(selectedOutlet.sisa_tagihan || 0).toLocaleString('id-ID')}
+                      <div className="text-sm sm:text-base font-black text-purple-800 tracking-tight">
+                        {selectedOutlet.has_daily_sales ? 'Modern Trade' : 'Reguler'}
                       </div>
-                      <div className={`text-[10px] font-semibold truncate mt-0.5 ${
-                        Number(selectedOutlet.sisa_tagihan || 0) > 0 ? 'text-rose-600' : 'text-emerald-700'
-                      }`}>
-                        {Number(selectedOutlet.sisa_tagihan || 0) > 0 ? '⚠️ Belum Lunas' : '✅ Lunas'}
+                      <div className="text-[10px] text-slate-400 font-normal truncate mt-0.5">
+                        {selectedOutlet.has_daily_sales ? 'Daily Sales Harian' : 'Laporan via Setoran'}
                       </div>
                     </div>
                   </div>
@@ -1058,6 +1374,117 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                         </div>
                       </div>
                     )}
+
+                    {/* SECTION 1: Stok & Harga per Jenis (Dasar Valuasi Konsinyasi) */}
+                    <div className="bg-gradient-to-r from-blue-50/80 via-indigo-50/50 to-blue-50/80 p-3.5 sm:p-4 rounded-xl border border-blue-200 shadow-xs space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-black text-slate-900 flex items-center gap-1.5">
+                            <Layers size={16} className="text-blue-600" />
+                            <span>Stok & Harga per Jenis (Dasar Valuasi Konsinyasi)</span>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Patokan akumulasi valuasi Calio di outlet dan dasar pemotongan transaksi per gramasi/jenis.
+                          </p>
+                        </div>
+                        {isOwnerOrAdmin && (
+                          <button
+                            onClick={openOpnameModal}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all cursor-pointer self-start sm:self-auto active:scale-95"
+                          >
+                            <ArrowUpDown size={13} />
+                            <span>+ Stok Opname Fisik</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        {typeStocksToDisplay.map((ts: any) => {
+                          const subtotal = ts.quantity * ts.harga_beli;
+                          const isEditingThis = editingTypeStockId === (ts.id || ts.product_type_id);
+
+                          return (
+                            <div key={ts.product_type_id || ts.id} className="bg-white p-3 rounded-xl border border-blue-100 shadow-2xs flex flex-col justify-between">
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="font-extrabold text-slate-800 text-xs sm:text-sm">{ts.product_type?.name || ts.product_type_id}</span>
+                                  <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded">
+                                    {ts.product_type?.code || 'TYPE'}
+                                  </span>
+                                </div>
+
+                                <div className="bg-slate-50 p-2 rounded-lg border border-slate-100 mb-2">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="text-slate-500 font-medium">Stok Jenis:</span>
+                                    <span className="font-black text-slate-900 text-sm">{ts.quantity} pcs</span>
+                                  </div>
+                                </div>
+
+                                {isEditingThis ? (
+                                  <div className="flex items-center gap-1 py-1">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      className="w-full border border-blue-300 rounded px-2 py-1 text-xs font-bold"
+                                      value={newTypePrice}
+                                      onChange={e => setNewTypePrice(Number(e.target.value))}
+                                    />
+                                    <button
+                                      disabled={isSavingTypePrice}
+                                      onClick={() => handleSaveTypePrice(ts)}
+                                      className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] rounded font-bold cursor-pointer disabled:opacity-50"
+                                    >
+                                      {isSavingTypePrice ? '...' : 'Simpan'}
+                                    </button>
+                                    <button
+                                      onClick={() => setEditingTypeStockId(null)}
+                                      className="px-1.5 py-1 text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-between py-1 text-xs">
+                                    <span className="text-slate-500 font-medium">Harga Outlet:</span>
+                                    <div className="flex items-center gap-1 font-bold text-slate-800">
+                                      <span>Rp {ts.harga_beli.toLocaleString('id-ID')}</span>
+                                      {isOwnerOrAdmin && (
+                                        <button
+                                          onClick={() => {
+                                            setEditingTypeStockId(ts.id || ts.product_type_id);
+                                            setNewTypePrice(ts.harga_beli);
+                                          }}
+                                          className="text-slate-400 hover:text-blue-600 p-0.5 cursor-pointer"
+                                          title="Ubah harga jenis untuk outlet ini"
+                                        >
+                                          <Pencil size={11} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center justify-between pt-1.5 mt-1 border-t border-dashed border-slate-200 text-xs">
+                                <span className="text-slate-400 font-medium">Valuasi Jenis:</span>
+                                <span className="font-extrabold text-blue-700">Rp {subtotal.toLocaleString('id-ID')}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* SECTION 2: Rincian Stok Fisik per Varian Rasa */}
+                    <div>
+                      <div className="text-sm font-bold text-slate-800 mb-1 flex items-center gap-1.5">
+                        <Package size={15} className="text-slate-500" />
+                        <span>Rincian Stok Fisik per Varian Rasa (Histori Pengiriman & Freezer Toko)</span>
+                      </div>
+                      <p className="text-xs text-slate-500 mb-3">
+                        Pencatatan varian rasa di freezer outlet. Penyesuaian fisik (+ / -) tersinkron otomatis ke gudang yang dipilih.
+                      </p>
+                    </div>
 
                     {selectedOutlet.stocks && selectedOutlet.stocks.length > 0 ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -1328,32 +1755,37 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                   </div>
                 )}
 
-                {/* TAB 2: KEUANGAN & TAGIHAN */}
+                {/* TAB 2: KEUANGAN & TRANSAKSI */}
                 {activeTab === 'KEUANGAN' && (
                   <div className="space-y-4">
-                    {/* Guidance Banner (Solusi 2) */}
+                    {/* Guidance Banner */}
                     <div className="bg-blue-50/80 border border-blue-200/80 rounded-xl p-3 flex items-start gap-2.5 text-xs text-blue-900 leading-relaxed shadow-xs">
                       <Info size={16} className="text-blue-600 shrink-0 mt-0.5" />
                       <div>
-                        <span className="font-bold">Ketentuan Finansial:</span> Tagihan bertambah resmi saat ada pengiriman produk (Surat Jalan) dan nota piutang. Pembayaran tercatat dari bukti setoran pelunasan. Mengubah angka stok fisik di freezer toko tidak akan menghapus atau memanipulasi histori uang yang sudah dibayarkan.
+                        <span className="font-bold">Ketentuan Valuasi & Piutang:</span>
+                        <ul className="list-disc ml-4 mt-1 space-y-0.5">
+                          <li><b>Valuasi Konsinyasi</b> adalah nilai produk Calio yang ada di outlet (berkurang saat barang terjual/disetor).</li>
+                          <li><b>Sisa Piutang</b> adalah nilai produk yang sudah terjual namun uangnya belum disetorkan ke Calio.</li>
+                          <li><b>Pembayaran Mode A</b> memotong stok konsinyasi sesuai rincian jenis produk terjual. Mode B hanya melunasi piutang lama.</li>
+                        </ul>
                       </div>
                     </div>
 
                     {/* Action Bar */}
-                    <div className="flex flex-wrap gap-2 justify-between items-center bg-slate-50/70 p-3 rounded-xl border border-slate-100">
+                    <div className="flex flex-wrap gap-2 justify-between items-center bg-slate-50/80 p-3 rounded-xl border border-slate-200">
                       <div>
-                        {(currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN') && (
+                        {isOwnerOrAdmin && (
                           <button 
                             type="button"
                             onClick={handleResetFinance}
                             disabled={isResettingFinance}
                             className="bg-red-50 text-red-700 hover:bg-red-100 px-3 py-1.5 rounded-lg font-medium text-xs transition-colors border border-red-200 flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                            title="Reset tagihan, pembayaran, dan riwayat transaksi outlet ini menjadi Rp 0 (Khusus Admin/Owner)"
+                            title="Reset seluruh transaksi dan saldo keuangan outlet menjadi Rp 0"
                           >
                             {isResettingFinance ? (
                               <>
                                 <div className="w-3.5 h-3.5 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
-                                <span>Mereset Keuangan...</span>
+                                <span>Mereset...</span>
                               </>
                             ) : (
                               <>
@@ -1366,18 +1798,39 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                       </div>
 
                       {isOwnerOrAdmin ? (
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
+                          <button 
+                            onClick={openPaymentModal} 
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs transition-all shadow-xs flex items-center gap-1 cursor-pointer active:scale-95"
+                          >
+                            <CreditCard size={13} />
+                            <span>+ Input Pembayaran (Mode A / B)</span>
+                          </button>
+
+                          {selectedOutlet.has_daily_sales && (
+                            <button 
+                              onClick={() => {
+                                const initialSaleMap: Record<string, number> = {};
+                                (selectedOutlet?.type_stocks || []).forEach((ts: any) => {
+                                  initialSaleMap[ts.product_type_id] = 0;
+                                });
+                                setSaleItems(initialSaleMap);
+                                setSaleDesc('');
+                                setIsSaleModalOpen(true);
+                              }} 
+                              className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs transition-all shadow-xs flex items-center gap-1 cursor-pointer active:scale-95"
+                            >
+                              <TrendingUp size={13} />
+                              <span>+ Catat Daily Sales (SALE)</span>
+                            </button>
+                          )}
+
                           <button 
                             onClick={() => openTxModal('PIUTANG')} 
-                            className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg font-semibold text-xs transition-all shadow-xs flex items-center gap-1 cursor-pointer active:scale-95"
+                            className="bg-slate-700 hover:bg-slate-800 text-white px-2.5 py-1.5 rounded-lg font-medium text-xs transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+                            title="Input Piutang Manual Lama"
                           >
-                            <span className="text-base leading-none">+</span> Input Piutang
-                          </button>
-                          <button 
-                            onClick={() => openTxModal('PELUNASAN')} 
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-semibold text-xs transition-all shadow-xs flex items-center gap-1 cursor-pointer active:scale-95"
-                          >
-                            <span className="text-base leading-none">+</span> Input Pelunasan
+                            <span>+ Piutang Manual</span>
                           </button>
                         </div>
                       ) : (
@@ -1394,35 +1847,107 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                           <TableRow>
                             <TableHead className="text-xs">Tanggal</TableHead>
                             <TableHead className="text-xs">Jenis</TableHead>
-                            <TableHead className="text-xs">Keterangan</TableHead>
-                            <TableHead className="text-right text-xs">Jumlah</TableHead>
+                            <TableHead className="text-xs">Rincian Item / Status</TableHead>
+                            <TableHead className="text-xs">Dampak Valuasi</TableHead>
+                            <TableHead className="text-xs">Dampak Piutang</TableHead>
+                            <TableHead className="text-right text-xs">Nominal</TableHead>
+                            <TableHead className="text-center text-xs">Aksi</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {selectedOutlet.transactions?.map((tx: any) => {
-                            const isPayment = tx.type === 'PELUNASAN';
+                            const isPayment = tx.type === 'PAYMENT' || tx.type === 'PELUNASAN';
+                            const isSale = tx.type === 'SALE';
+                            const valDelta = tx.valuasi_delta !== null && tx.valuasi_delta !== undefined ? Number(tx.valuasi_delta) : null;
+                            const piuDelta = tx.piutang_delta !== null && tx.piutang_delta !== undefined ? Number(tx.piutang_delta) : null;
+                            const isPending = tx.breakdown_status === 'PENDING';
+
                             return (
-                              <TableRow key={tx.id}>
-                                <TableCell className="text-xs text-slate-600">{new Date(tx.date).toLocaleDateString('id-ID')}</TableCell>
+                              <TableRow key={tx.id} className={isPending ? 'bg-amber-50/50' : undefined}>
+                                <TableCell className="text-xs text-slate-600 whitespace-nowrap">
+                                  {new Date(tx.date).toLocaleDateString('id-ID')}
+                                </TableCell>
                                 <TableCell className="text-xs">
                                   <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] uppercase tracking-wider ${
-                                    isPayment ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    isPayment 
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                                      : isSale
+                                        ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                        : 'bg-rose-50 text-rose-700 border border-rose-200'
                                   }`}>
                                     {tx.type}
                                   </span>
                                 </TableCell>
-                                <TableCell className="text-xs text-slate-600">{tx.description || '-'}</TableCell>
-                                <TableCell className={`text-right text-sm font-black ${
-                                  isPayment ? 'text-emerald-700' : 'text-rose-600'
+                                <TableCell className="text-xs">
+                                  <div className="font-medium text-slate-700">{tx.description || '-'}</div>
+                                  {tx.items && tx.items.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                      {tx.items.map((it: any, i: number) => (
+                                        <span key={i} className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                                          {it.qty}x {it.product_type?.name || 'Item'}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {tx.breakdown_status && (
+                                    <div className="mt-1">
+                                      <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
+                                        tx.breakdown_status === 'COMPLETE'
+                                          ? 'bg-emerald-100 text-emerald-800'
+                                          : tx.breakdown_status === 'PARTIAL'
+                                            ? 'bg-blue-100 text-blue-800'
+                                            : tx.breakdown_status === 'ESTIMATED'
+                                              ? 'bg-amber-100 text-amber-800'
+                                              : 'bg-rose-100 text-rose-800'
+                                      }`}>
+                                        {tx.breakdown_status === 'COMPLETE' ? 'Rincian Lengkap' :
+                                         tx.breakdown_status === 'PARTIAL' ? 'Rincian Sebagian' :
+                                         tx.breakdown_status === 'ESTIMATED' ? 'Qty Diestimasi' : '⚠️ Pending Rincian'}
+                                      </span>
+                                    </div>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-xs font-bold whitespace-nowrap">
+                                  {valDelta !== null ? (
+                                    <span className={valDelta < 0 ? 'text-blue-700' : valDelta > 0 ? 'text-slate-800' : 'text-slate-400'}>
+                                      {valDelta > 0 ? `+Rp ${valDelta.toLocaleString('id-ID')}` : valDelta < 0 ? `-Rp ${Math.abs(valDelta).toLocaleString('id-ID')}` : 'Rp 0'}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-300">-</span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-xs font-bold whitespace-nowrap">
+                                  {piuDelta !== null ? (
+                                    <span className={piuDelta > 0 ? 'text-rose-600' : piuDelta < 0 ? 'text-emerald-600' : 'text-slate-400'}>
+                                      {piuDelta > 0 ? `+Rp ${piuDelta.toLocaleString('id-ID')}` : piuDelta < 0 ? `-Rp ${Math.abs(piuDelta).toLocaleString('id-ID')}` : 'Rp 0'}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-300">-</span>
+                                  )}
+                                </TableCell>
+                                <TableCell className={`text-right text-sm font-black whitespace-nowrap ${
+                                  isPayment ? 'text-emerald-700' : 'text-slate-800'
                                 }`}>
                                   Rp {Number(tx.amount).toLocaleString('id-ID')}
+                                </TableCell>
+                                <TableCell className="text-center text-xs whitespace-nowrap">
+                                  {isPending && isOwnerOrAdmin ? (
+                                    <button
+                                      onClick={() => openPendingModal(tx)}
+                                      className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[11px] font-bold cursor-pointer transition-colors"
+                                    >
+                                      Lengkapi
+                                    </button>
+                                  ) : (
+                                    <span className="text-slate-300">-</span>
+                                  )}
                                 </TableCell>
                               </TableRow>
                             );
                           })}
                           {(!selectedOutlet.transactions || selectedOutlet.transactions.length === 0) && (
                             <TableRow>
-                              <TableCell colSpan={4} className="text-center text-xs text-slate-400 py-8">Belum ada riwayat transaksi keuangan.</TableCell>
+                              <TableCell colSpan={7} className="text-center text-xs text-slate-400 py-8">Belum ada riwayat transaksi keuangan.</TableCell>
                             </TableRow>
                           )}
                         </TableBody>
@@ -1756,6 +2281,511 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
           </div>
         </div>
       )}
+
+      {/* Consignment Payment Modal (Mode A / Mode B) */}
+      {isPaymentModalOpen && selectedOutlet && (() => {
+        const availableTypes = (productTypes.length > 0 ? productTypes : (selectedOutlet.type_stocks || []).map((ts: any) => ts.product_type).filter(Boolean)).map((pt: any) => {
+          const match = (selectedOutlet.type_stocks || []).find((ts: any) => ts.product_type_id === pt?.id || ts.product_type?.code === pt?.code);
+          return {
+            id: pt?.id || match?.product_type_id,
+            name: pt?.name || match?.product_type?.name || pt?.code,
+            code: pt?.code || match?.product_type?.code,
+            price: match?.harga_beli != null ? Number(match.harga_beli) : Number(pt?.base_price || 0),
+            stock: match?.quantity || 0,
+          };
+        });
+
+        const nominal = Number(payNominal) || 0;
+        const totalItemsVal = availableTypes.reduce((acc: number, t: any) => {
+          const qty = Number(payItems[t.id]) || 0;
+          return acc + (qty * t.price);
+        }, 0);
+        const totalItemsQty = availableTypes.reduce((acc: number, t: any) => acc + (Number(payItems[t.id]) || 0), 0);
+        const selisih = totalItemsVal - nominal;
+
+        return (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[90] p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Input Pembayaran Konsinyasi</h3>
+                  <p className="text-xs text-slate-500">Outlet: <b>{selectedOutlet.nama}</b></p>
+                </div>
+                <button onClick={() => setIsPaymentModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1">
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmitPayment} className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Tanggal</label>
+                    <input
+                      type="date"
+                      required
+                      value={payDate}
+                      onChange={e => setPayDate(e.target.value)}
+                      className="w-full border rounded-lg p-2 text-xs bg-slate-50 focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Nominal Setoran (Rp) *</label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      placeholder="0"
+                      value={payNominal}
+                      onChange={e => setPayNominal(e.target.value ? Number(e.target.value) : '')}
+                      className="w-full border rounded-lg p-2 text-xs font-bold bg-slate-50 focus:bg-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Settle Only Mode Toggle */}
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={paySettleOnly}
+                      onChange={e => setPaySettleOnly(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 rounded"
+                    />
+                    <span className="text-xs font-bold text-slate-800">
+                      Pelunasan Piutang Lama Saja (Mode B)
+                    </span>
+                  </label>
+                  <p className="text-[11px] text-slate-500 ml-6 mt-0.5">
+                    Centang jika setoran ini hanya untuk melunasi sisa piutang lama tanpa mengurangi stok konsinyasi di outlet.
+                  </p>
+                </div>
+
+                {/* Mode A: Breakdown Items */}
+                {!paySettleOnly && (
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800">Rincian Produk Terjual (per Jenis):</label>
+                      <span className="text-[10px] text-slate-400">Total: {totalItemsQty} pcs</span>
+                    </div>
+
+                    <div className="space-y-2 bg-slate-50/70 p-3 rounded-xl border border-slate-200">
+                      {availableTypes.map((t: any) => {
+                        const qty = payItems[t.id] ?? '';
+                        const sub = (Number(qty) || 0) * t.price;
+
+                        return (
+                          <div key={t.id} className="flex items-center justify-between gap-2 bg-white p-2.5 rounded-lg border border-slate-100">
+                            <div>
+                              <div className="text-xs font-bold text-slate-800">{t.name}</div>
+                              <div className="text-[10px] text-slate-400">
+                                @Rp {t.price.toLocaleString('id-ID')} • Stok: {t.stock} pcs
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min="0"
+                                placeholder="0"
+                                value={qty}
+                                onChange={e => {
+                                  const val = e.target.value === '' ? 0 : Number(e.target.value);
+                                  setPayItems(prev => ({ ...prev, [t.id]: val }));
+                                }}
+                                className="w-16 border rounded px-2 py-1 text-xs text-center font-bold"
+                              />
+                              <span className="text-xs font-bold text-blue-700 min-w-[70px] text-right">
+                                Rp {sub.toLocaleString('id-ID')}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Live Calculation Feedback */}
+                    <div className="p-3 rounded-xl border text-xs space-y-1 bg-white">
+                      <div className="flex justify-between text-slate-600">
+                        <span>Total Nilai Terjual (Rincian):</span>
+                        <span className="font-bold text-slate-900">Rp {totalItemsVal.toLocaleString('id-ID')}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-600">
+                        <span>Nominal Setoran:</span>
+                        <span className="font-bold text-emerald-700">Rp {nominal.toLocaleString('id-ID')}</span>
+                      </div>
+                      <div className="pt-1.5 border-t border-slate-100">
+                        {totalItemsQty === 0 && nominal > 0 ? (
+                          <div className="text-amber-700 font-medium">
+                            ⚠️ Tanpa rincian item: Pembayaran akan berstatus <b>PENDING</b> sampai rincian dilengkapi.
+                          </div>
+                        ) : selisih === 0 ? (
+                          <div className="text-emerald-700 font-bold">
+                            ✅ Setoran PAS: Valuasi berkurang Rp {nominal.toLocaleString('id-ID')}, Piutang Rp 0.
+                          </div>
+                        ) : selisih > 0 ? (
+                          <div className="text-rose-700 font-bold">
+                            ⚠️ Ada Selisih: Valuasi berkurang Rp {totalItemsVal.toLocaleString('id-ID')}. Sisa <b>Rp {selisih.toLocaleString('id-ID')}</b> jadi PIUTANG BARU.
+                          </div>
+                        ) : (
+                          <div className="text-blue-700 font-bold">
+                            💰 Lebih Bayar: Kelebihan <b>Rp {Math.abs(selisih).toLocaleString('id-ID')}</b> akan melunasi piutang lama.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Keterangan (Opsional)</label>
+                  <input
+                    type="text"
+                    placeholder="Catatan transfer, nomor rekening, dsb."
+                    value={payDesc}
+                    onChange={e => setPayDesc(e.target.value)}
+                    className="w-full border rounded-lg p-2 text-xs bg-slate-50 focus:bg-white"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsPaymentModalOpen(false)}
+                    disabled={isSubmittingPay}
+                    className="px-4 py-2 border rounded-lg text-xs font-semibold hover:bg-slate-50"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingPay || !payNominal}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50"
+                  >
+                    {isSubmittingPay ? 'Memproses...' : 'Simpan Pembayaran'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Modern Trade Sale Modal (Daily Sales) */}
+      {isSaleModalOpen && selectedOutlet && (() => {
+        const availableTypes = (productTypes.length > 0 ? productTypes : (selectedOutlet.type_stocks || []).map((ts: any) => ts.product_type).filter(Boolean)).map((pt: any) => {
+          const match = (selectedOutlet.type_stocks || []).find((ts: any) => ts.product_type_id === pt?.id || ts.product_type?.code === pt?.code);
+          return {
+            id: pt?.id || match?.product_type_id,
+            name: pt?.name || match?.product_type?.name || pt?.code,
+            price: match?.harga_beli != null ? Number(match.harga_beli) : Number(pt?.base_price || 0),
+            stock: match?.quantity || 0,
+          };
+        });
+
+        const totalSaleVal = availableTypes.reduce((acc: number, t: any) => {
+          const qty = Number(saleItems[t.id]) || 0;
+          return acc + (qty * t.price);
+        }, 0);
+
+        return (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[90] p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Catat Penjualan Harian (Daily Sales)</h3>
+                  <p className="text-xs text-purple-700 font-semibold">Mode Modern Trade: Valuasi berkurang & Piutang naik otomatis</p>
+                </div>
+                <button onClick={() => setIsSaleModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1">
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmitSale} className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Periode Mulai</label>
+                    <input
+                      type="date"
+                      required
+                      value={salePeriodStart}
+                      onChange={e => setSalePeriodStart(e.target.value)}
+                      className="w-full border rounded-lg p-2 text-xs bg-slate-50 focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Periode Selesai</label>
+                    <input
+                      type="date"
+                      required
+                      value={salePeriodEnd}
+                      onChange={e => setSalePeriodEnd(e.target.value)}
+                      className="w-full border rounded-lg p-2 text-xs bg-slate-50 focus:bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-800">Jumlah Produk Terjual per Jenis:</label>
+                  <div className="space-y-2 bg-slate-50/70 p-3 rounded-xl border border-slate-200">
+                    {availableTypes.map((t: any) => {
+                      const qty = saleItems[t.id] ?? '';
+                      const sub = (Number(qty) || 0) * t.price;
+
+                      return (
+                        <div key={t.id} className="flex items-center justify-between gap-2 bg-white p-2.5 rounded-lg border border-slate-100">
+                          <div>
+                            <div className="text-xs font-bold text-slate-800">{t.name}</div>
+                            <div className="text-[10px] text-slate-400">@Rp {t.price.toLocaleString('id-ID')} • Stok: {t.stock} pcs</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={qty}
+                              onChange={e => {
+                                const val = e.target.value === '' ? 0 : Number(e.target.value);
+                                setSaleItems(prev => ({ ...prev, [t.id]: val }));
+                              }}
+                              className="w-16 border rounded px-2 py-1 text-xs text-center font-bold"
+                            />
+                            <span className="text-xs font-bold text-purple-700 min-w-[70px] text-right">
+                              Rp {sub.toLocaleString('id-ID')}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 text-xs flex justify-between items-center">
+                  <span className="font-bold text-purple-900">Total Nilai Penjualan:</span>
+                  <span className="text-sm font-black text-purple-900">Rp {totalSaleVal.toLocaleString('id-ID')}</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Keterangan (Opsional)</label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: Laporan POS Transmart Minggu ke-2"
+                    value={saleDesc}
+                    onChange={e => setSaleDesc(e.target.value)}
+                    className="w-full border rounded-lg p-2 text-xs bg-slate-50 focus:bg-white"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsSaleModalOpen(false)}
+                    disabled={isSubmittingSale}
+                    className="px-4 py-2 border rounded-lg text-xs font-semibold hover:bg-slate-50"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingSale || totalSaleVal <= 0}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50"
+                  >
+                    {isSubmittingSale ? 'Menyimpan...' : 'Simpan Daily Sales'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Stock Opname Fisik Modal */}
+      {isOpnameModalOpen && selectedOutlet && (() => {
+        const availableTypes = (productTypes.length > 0 ? productTypes : (selectedOutlet.type_stocks || []).map((ts: any) => ts.product_type).filter(Boolean)).map((pt: any) => {
+          const match = (selectedOutlet.type_stocks || []).find((ts: any) => ts.product_type_id === pt?.id || ts.product_type?.code === pt?.code);
+          return {
+            id: pt?.id || match?.product_type_id,
+            name: pt?.name || match?.product_type?.name || pt?.code,
+            price: match?.harga_beli != null ? Number(match.harga_beli) : Number(pt?.base_price || 0),
+            currentQty: match?.quantity || 0,
+          };
+        });
+
+        return (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[90] p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Stok Opname Fisik Outlet</h3>
+                  <p className="text-xs text-slate-500">Koreksi berkala stok riil per jenis produk</p>
+                </div>
+                <button onClick={() => setIsOpnameModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1">
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmitOpname} className="space-y-4">
+                <div className="space-y-2">
+                  {availableTypes.map((t: any) => {
+                    const actual = opnameActual[t.id] ?? t.currentQty;
+                    const diff = Number(actual) - t.currentQty;
+
+                    return (
+                      <div key={t.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+                        <div className="flex justify-between items-center text-xs font-bold text-slate-800">
+                          <span>{t.name}</span>
+                          <span className="text-slate-500">Stok Sistem: <b>{t.currentQty} pcs</b></span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <label className="text-[11px] text-slate-600">Stok Fisik Riil:</label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="0"
+                              value={actual}
+                              onChange={e => {
+                                const val = e.target.value === '' ? 0 : Number(e.target.value);
+                                setOpnameActual(prev => ({ ...prev, [t.id]: val }));
+                              }}
+                              className="w-20 border rounded px-2 py-1 text-xs font-bold text-center bg-white"
+                            />
+                            <span className={`text-xs font-bold min-w-[50px] text-right ${
+                              diff === 0 ? 'text-slate-400' : diff > 0 ? 'text-emerald-700' : 'text-rose-600'
+                            }`}>
+                              {diff > 0 ? `+${diff}` : diff} pcs
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Catatan Audit / Opname</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Contoh: Audit stok triwulan IV oleh PIC Budi"
+                    value={opnameNotes}
+                    onChange={e => setOpnameNotes(e.target.value)}
+                    className="w-full border rounded-lg p-2 text-xs bg-slate-50 focus:bg-white"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsOpnameModalOpen(false)}
+                    disabled={isSubmittingOpname}
+                    className="px-4 py-2 border rounded-lg text-xs font-semibold hover:bg-slate-50"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingOpname}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50"
+                  >
+                    {isSubmittingOpname ? 'Menyimpan...' : 'Terapkan Hasil Opname'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Complete Pending Payment Modal */}
+      {isPendingModalOpen && pendingTx && selectedOutlet && (() => {
+        const availableTypes = (productTypes.length > 0 ? productTypes : (selectedOutlet.type_stocks || []).map((ts: any) => ts.product_type).filter(Boolean)).map((pt: any) => {
+          const match = (selectedOutlet.type_stocks || []).find((ts: any) => ts.product_type_id === pt?.id || ts.product_type?.code === pt?.code);
+          return {
+            id: pt?.id || match?.product_type_id,
+            name: pt?.name || match?.product_type?.name || pt?.code,
+            price: match?.harga_beli != null ? Number(match.harga_beli) : Number(pt?.base_price || 0),
+          };
+        });
+
+        const txNominal = Number(pendingTx.amount) || 0;
+        const totalItemsVal = availableTypes.reduce((acc: number, t: any) => {
+          const qty = Number(pendingItems[t.id]) || 0;
+          return acc + (qty * t.price);
+        }, 0);
+
+        return (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[95] p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Lengkapi Rincian Pembayaran</h3>
+                  <p className="text-xs text-amber-700 font-medium">
+                    Nominal Transaksi: <b>Rp {txNominal.toLocaleString('id-ID')}</b>
+                  </p>
+                </div>
+                <button onClick={() => setIsPendingModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1">
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmitPending} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-800">Jumlah Produk Terjual:</label>
+                  {availableTypes.map((t: any) => {
+                    const qty = pendingItems[t.id] ?? '';
+                    const sub = (Number(qty) || 0) * t.price;
+
+                    return (
+                      <div key={t.id} className="flex items-center justify-between gap-2 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                        <div>
+                          <div className="text-xs font-bold text-slate-800">{t.name}</div>
+                          <div className="text-[10px] text-slate-400">@Rp {t.price.toLocaleString('id-ID')}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={qty}
+                            onChange={e => {
+                              const val = e.target.value === '' ? 0 : Number(e.target.value);
+                              setPendingItems(prev => ({ ...prev, [t.id]: val }));
+                            }}
+                            className="w-16 border rounded px-2 py-1 text-xs text-center font-bold bg-white"
+                          />
+                          <span className="text-xs font-bold text-blue-700 min-w-[70px] text-right">
+                            Rp {sub.toLocaleString('id-ID')}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex justify-between items-center">
+                  <span className="text-slate-600 font-bold">Total Nilai Terjual:</span>
+                  <span className="font-black text-slate-900">Rp {totalItemsVal.toLocaleString('id-ID')}</span>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsPendingModalOpen(false)}
+                    disabled={isSubmittingPending}
+                    className="px-4 py-2 border rounded-lg text-xs font-semibold hover:bg-slate-50"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingPending || totalItemsVal <= 0}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50"
+                  >
+                    {isSubmittingPending ? 'Menyimpan...' : 'Selesaikan Pembayaran'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }

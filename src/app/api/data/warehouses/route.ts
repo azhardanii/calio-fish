@@ -14,7 +14,7 @@ export async function GET() {
     warehouseWhere.distributor_id = distributorId;
   }
 
-  const [warehouses, shipments] = await Promise.all([
+  const [warehouses, shipments, returns, productions] = await Promise.all([
     prisma.warehouse.findMany({
       where: warehouseWhere,
       include: {
@@ -32,6 +32,22 @@ export async function GET() {
         employee: true,
       },
     }),
+    prisma.warehouseReturn.findMany({
+      orderBy: { date: 'desc' },
+      include: {
+        warehouse: true,
+        items: { include: { product: true } },
+      },
+      take: 50,
+    }),
+    prisma.productionEntry.findMany({
+      orderBy: { date: 'desc' },
+      include: {
+        warehouse: true,
+        product: true,
+      },
+      take: 100,
+    }),
   ]);
 
   const filteredShipments = isDistributor
@@ -46,6 +62,8 @@ export async function GET() {
   return NextResponse.json(serializeDeep({
     warehouses,
     shipments: filteredShipments,
+    returns,
+    productions,
     totalShipments,
     totalItemsSent,
   }));

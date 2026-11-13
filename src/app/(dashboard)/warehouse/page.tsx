@@ -18,13 +18,22 @@ import {
   X
 } from 'lucide-react';
 import Link from 'next/link';
-import { createWarehouse, updateWarehouse, deleteWarehouse, createDistributor } from '@/app/actions';
+import { 
+  createWarehouse, 
+  updateWarehouse, 
+  deleteWarehouse, 
+  createDistributor,
+  createProductionEntry,
+  createWarehouseReturn
+} from '@/app/actions';
 
 export default function WarehousePage() {
   const { data, isLoading, mutate } = useSWR('/api/data/warehouses');
   const { data: currentUser } = useSWR('/api/auth/me');
+  const { data: productData } = useSWR('/api/data/products');
+  const { data: outletData } = useSWR('/api/data/outlets');
   
-  const [activeTab, setActiveTab] = useState<'warehouse' | 'distributor'>('warehouse');
+  const [activeTab, setActiveTab] = useState<'warehouse' | 'distributor' | 'production' | 'returns'>('warehouse');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<any>({ name: '', type: 'STORAGE', address: '' });
@@ -43,6 +52,30 @@ export default function WarehousePage() {
     address: '',
   });
   const [isSubmittingDistributor, setIsSubmittingDistributor] = useState(false);
+
+  // Production manual state
+  const [isProductionModalOpen, setIsProductionModalOpen] = useState(false);
+  const [productionForm, setProductionForm] = useState({
+    warehouseId: '',
+    productId: '',
+    qty: '' as any,
+    date: new Date().toISOString().split('T')[0],
+    notes: '',
+  });
+  const [isSubmittingProduction, setIsSubmittingProduction] = useState(false);
+
+  // Warehouse Return state
+  const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
+  const [returnForm, setReturnForm] = useState({
+    warehouseId: '',
+    sourceType: 'OUTLET',
+    sourceId: '',
+    sourceName: '',
+    date: new Date().toISOString().split('T')[0],
+    notes: '',
+    items: [{ productId: '', qtyReturned: 0, qtyReusable: 0, qtyReject: 0 }],
+  });
+  const [isSubmittingReturn, setIsSubmittingReturn] = useState(false);
 
   if (isLoading && !data) {
     return (
@@ -64,8 +97,13 @@ export default function WarehousePage() {
 
   const warehouses = data?.warehouses || [];
   const shipments = data?.shipments || [];
+  const productions = data?.productions || [];
+  const returns = data?.returns || [];
   const totalShipments = data?.totalShipments || 0;
   const totalItemsSent = data?.totalItemsSent || 0;
+
+  const products = productData?.products || [];
+  const outlets = outletData?.outlets || [];
 
   const centralAndBranchWarehouses = warehouses.filter((w: any) => w.type === 'FACTORY' || w.type === 'STORAGE');
   const distributorWarehouses = warehouses.filter((w: any) => w.type === 'DISTRIBUTOR');
@@ -74,6 +112,91 @@ export default function WarehousePage() {
   const totalGlobalStock = displayedWarehouses.reduce((sum: number, w: any) => {
     return sum + (w.stocks || []).reduce((acc: number, s: any) => acc + (s.quantity || 0), 0);
   }, 0);
+
+  const groupedProductions = React.useMemo(() => {
+    const groups: Record<string, { monthLabel: string; totalQty: number; entries: any[] }> = {};
+    (productions || []).forEach((prod: any) => {
+      const d = new Date(prod.date);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+      if (!groups[key]) {
+        groups[key] = { monthLabel: label, totalQty: 0, entries: [] };
+      }
+      groups[key].totalQty += prod.qty;
+      groups[key].entries.push(prod);
+    });
+    return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a));
+  }, [productions]);
+
+  const handleSaveProduction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!productionForm.warehouseId || !productionForm.productId || Number(productionForm.qty) <= 0) {
+      alert('Gudang, produk, dan jumlah produksi wajib diisi dengan benar.');
+      return;
+    }
+    setIsSubmittingProduction(true);
+    try {
+      await createProductionEntry({
+        warehouseId: productionForm.warehouseId,
+        productId: productionForm.productId,
+        qty: Number(productionForm.qty),
+        date: productionForm.date,
+        notes: productionForm.notes,
+      });
+      await Promise.all([mutate(), productData?.mutate?.()]);
+      setIsProductionModalOpen(false);
+      alert('Stok produksi berhasil ditambahkan!');
+    } catch (err: any) {
+      alert(err.message || 'Gagal menambahkan stok produksi');
+    } finally {
+      setIsSubmittingProduction(false);
+    }
+  };
+
+  const handleSaveReturn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!returnForm.warehouseId) {
+      alert('Pilih gudang penerima retur.');
+      return;
+    }
+    const validItems = (returnForm.items || []).filter(it => it.productId && it.qtyReturned > 0);
+    if (validItems.length === 0) {
+      alert('Tambahkan minimal 1 produk retur dengan kuantitas > 0.');
+      return;
+    }
+    for (const it of validItems) {
+      if ((it.qtyReusable || 0) + (it.qtyReject || 0) !== it.qtyReturned) {
+        alert('Jumlah Layak Pakai + Reject harus sama persis dengan Total Retur.');
+        return;
+      }
+    }
+    setIsSubmittingReturn(true);
+    try {
+      await createWarehouseReturn({
+        warehouseId: returnForm.warehouseId,
+        sourceType: returnForm.sourceType,
+        sourceId: returnForm.sourceType === 'OUTLET' ? returnForm.sourceId : undefined,
+        sourceName: returnForm.sourceType === 'OUTLET' 
+          ? (outlets.find((o: any) => o.id === returnForm.sourceId)?.nama || returnForm.sourceName)
+          : returnForm.sourceName,
+        date: returnForm.date,
+        notes: returnForm.notes,
+        items: validItems.map(it => ({
+          productId: it.productId,
+          qtyReturned: it.qtyReturned,
+          qtyReusable: it.qtyReusable || 0,
+          qtyReject: it.qtyReject || 0,
+        })),
+      });
+      await Promise.all([mutate(), productData?.mutate?.(), outletData?.mutate?.()]);
+      setIsReturnModalOpen(false);
+      alert('Data retur gudang berhasil dicatat!');
+    } catch (err: any) {
+      alert(err.message || 'Gagal mencatat retur gudang');
+    } finally {
+      setIsSubmittingReturn(false);
+    }
+  };
 
   const openCreateModal = () => {
     if (!isOwnerOrAdmin) return;
@@ -139,7 +262,7 @@ export default function WarehousePage() {
 
   const handleDelete = async (w: any) => {
     if (!isOwnerOrAdmin) return;
-    const totalStock = (w.stocks || []).reduce((acc: number, s: any) => acc + (s.quantity || 0) + (s.returned_qty || 0), 0);
+    const totalStock = (w.stocks || []).reduce((acc: number, s: any) => acc + (s.quantity || 0), 0);
     if (totalStock > 0) {
       alert(`Gudang "${w.name}" tidak dapat dihapus karena masih memiliki stok aktif sebanyak ${totalStock} pcs.\n\nSilakan mutasikan atau transfer stok terlebih dahulu ke gudang lain.`);
       return;
@@ -182,26 +305,64 @@ export default function WarehousePage() {
               : 'Status stok fisik, lokasi fasilitas penyimpanan, dan manajemen gudang distributor.'}
           </p>
         </div>
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           <PdfExportButton targetId="warehouse-report" filename="laporan-warehouse" />
           {isOwnerOrAdmin && (
-            currentTab === 'distributor' ? (
+            <>
               <button
-                onClick={() => setIsDistributorModalOpen(true)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                onClick={() => {
+                  setProductionForm({
+                    warehouseId: warehouses[0]?.id || '',
+                    productId: products[0]?.id || '',
+                    qty: '' as any,
+                    date: new Date().toISOString().split('T')[0],
+                    notes: '',
+                  });
+                  setIsProductionModalOpen(true);
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
               >
                 <Plus className="w-4 h-4" />
-                <span>+ Tambah Distributor</span>
+                <span>+ Tambah Stok / Produksi</span>
               </button>
-            ) : (
+
               <button
-                onClick={openCreateModal}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                onClick={() => {
+                  setReturnForm({
+                    warehouseId: warehouses[0]?.id || '',
+                    sourceType: 'OUTLET',
+                    sourceId: outlets[0]?.id || '',
+                    sourceName: outlets[0]?.nama || '',
+                    date: new Date().toISOString().split('T')[0],
+                    notes: '',
+                    items: [{ productId: products[0]?.id || '', qtyReturned: 0, qtyReusable: 0, qtyReject: 0 }],
+                  });
+                  setIsReturnModalOpen(true);
+                }}
+                className="bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
               >
                 <Plus className="w-4 h-4" />
-                <span>+ Tambah Warehouse</span>
+                <span>+ Kelola Retur Masuk</span>
               </button>
-            )
+
+              {currentTab === 'distributor' ? (
+                <button
+                  onClick={() => setIsDistributorModalOpen(true)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Tambah Distributor</span>
+                </button>
+              ) : (
+                <button
+                  onClick={openCreateModal}
+                  className="bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Tambah Warehouse</span>
+                </button>
+              )}
+            </>
           )}
           {!isOwnerOrAdmin && (
             <span className="text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200/80 px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-2xs">
@@ -213,7 +374,7 @@ export default function WarehousePage() {
 
       {/* Tabs Switcher for Non-Distributor */}
       {!isDistributor && (
-        <div className="flex gap-2 border-b border-gray-200 pb-3">
+        <div className="flex gap-2 border-b border-gray-200 pb-3 flex-wrap">
           <button
             onClick={() => setActiveTab('warehouse')}
             className={`px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 ${
@@ -235,6 +396,26 @@ export default function WarehousePage() {
           >
             <Boxes className="w-4 h-4" />
             <span>🚚 Distributor ({distributorWarehouses.length})</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('production')}
+            className={`px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 ${
+              activeTab === 'production'
+                ? 'bg-blue-700 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            <span>🏭 Rekap Produksi Bulanan ({productions.length})</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('returns')}
+            className={`px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 ${
+              activeTab === 'returns'
+                ? 'bg-amber-700 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            <span>↩️ Histori Retur Gudang ({returns.length})</span>
           </button>
         </div>
       )}
@@ -271,8 +452,10 @@ export default function WarehousePage() {
         </div>
       </div>
 
-      {/* Warehouse Cards List */}
-      <div id="warehouse-report" className="grid grid-cols-1 gap-6">
+      {/* Main Content Area based on Tab */}
+      <div id="warehouse-report" className="space-y-6">
+        {(currentTab === 'warehouse' || currentTab === 'distributor') && (
+          <div className="grid grid-cols-1 gap-6">
         {displayedWarehouses.length === 0 ? (
           <div className="text-center py-16 px-4 bg-white rounded-2xl border border-dashed border-gray-300">
             <div className="text-4xl mb-2">{currentTab === 'distributor' ? '🚚' : '🏢'}</div>
@@ -439,6 +622,177 @@ export default function WarehousePage() {
               </Card>
             );
           })
+        )}
+          </div>
+        )}
+
+        {/* TAB 3: REKAP PRODUKSI BULANAN */}
+        {currentTab === 'production' && (
+          <div className="space-y-6">
+            <div className="bg-blue-50/80 border border-blue-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-extrabold text-blue-900">Rekapitulasi Produksi CalioFish</h3>
+                <p className="text-xs text-blue-700 mt-0.5">
+                  Pantau total hasil pengemasan & produksi bulanan yang masuk ke inventori gudang.
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="text-xs font-bold text-blue-600 uppercase">Total Tercatat</div>
+                <div className="text-2xl font-black text-blue-950">
+                  {productions.reduce((sum: number, p: any) => sum + p.qty, 0)} pcs
+                </div>
+              </div>
+            </div>
+
+            {groupedProductions.length === 0 ? (
+              <div className="text-center py-16 px-4 bg-white rounded-2xl border border-dashed border-gray-300">
+                <div className="text-4xl mb-2">🏭</div>
+                <div className="text-base font-bold text-gray-800">Belum Ada Catatan Produksi</div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Gunakan tombol <b>+ Tambah Stok / Produksi</b> di atas untuk mencatat batch produksi baru.
+                </p>
+              </div>
+            ) : (
+              groupedProductions.map(([monthKey, group]) => (
+                <div key={monthKey} className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
+                  <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-900 to-blue-950 text-white flex justify-between items-center">
+                    <div>
+                      <div className="text-xs text-blue-300 uppercase font-bold tracking-wider">Periode Produksi</div>
+                      <h4 className="text-lg font-black text-white">{group.monthLabel}</h4>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-blue-300 font-semibold">Total Hasil</div>
+                      <div className="text-xl sm:text-2xl font-black text-white">{group.totalQty.toLocaleString('id-ID')} pcs</div>
+                    </div>
+                  </div>
+
+                  <div className="p-4 sm:p-5 divide-y divide-gray-100">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                      {group.entries.map((entry: any) => (
+                        <div key={entry.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200/70 text-xs space-y-1">
+                          <div className="flex justify-between items-start">
+                            <span className="font-bold text-slate-800">{entry.product?.name || 'Produk'}</span>
+                            <span className="font-black text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                              +{entry.qty} pcs
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            🏬 {entry.warehouse?.name || 'Gudang'} • 🗓️ {new Date(entry.date).toLocaleDateString('id-ID')}
+                          </div>
+                          {entry.notes && (
+                            <div className="text-[11px] text-slate-400 italic">
+                              "{entry.notes}"
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* TAB 4: HISTORI RETUR GUDANG */}
+        {currentTab === 'returns' && (
+          <div className="space-y-4">
+            <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-extrabold text-amber-950">Histori Pengelolaan Retur Barang</h3>
+                <p className="text-xs text-amber-800 mt-0.5">
+                  Retur dibedakan menjadi: <b>Layak Pakai</b> (menambah stok gudang kembali) vs <b>Reject / Rusak</b> (dicatat sebagai kerugian).
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="text-xs font-bold text-amber-700 uppercase">Total Retur</div>
+                <div className="text-2xl font-black text-amber-950">
+                  {returns.reduce((sum: number, r: any) => {
+                    return sum + (r.items || []).reduce((acc: number, it: any) => acc + (it.qty_returned || 0), 0);
+                  }, 0)} pcs
+                </div>
+              </div>
+            </div>
+
+            {returns.length === 0 ? (
+              <div className="text-center py-16 px-4 bg-white rounded-2xl border border-dashed border-gray-300">
+                <div className="text-4xl mb-2">↩️</div>
+                <div className="text-base font-bold text-gray-800">Belum Ada Catatan Retur Masuk</div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Gunakan tombol <b>+ Kelola Retur Masuk</b> untuk mencatat barang retur dari outlet/distributor.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl border border-gray-200/80 overflow-hidden shadow-xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase tracking-wider text-[11px]">
+                      <tr>
+                        <th className="p-3">Tanggal</th>
+                        <th className="p-3">Gudang Penerima</th>
+                        <th className="p-3">Asal Retur</th>
+                        <th className="p-3">Rincian Barang</th>
+                        <th className="p-3 text-center">Layak Pakai</th>
+                        <th className="p-3 text-center">Reject / Dibuang</th>
+                        <th className="p-3 text-right">Total Retur</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {returns.map((ret: any) => {
+                        const totalRet = (ret.items || []).reduce((acc: number, it: any) => acc + (it.qty_returned || 0), 0);
+                        const totalReusable = (ret.items || []).reduce((acc: number, it: any) => acc + (it.qty_reusable || 0), 0);
+                        const totalReject = (ret.items || []).reduce((acc: number, it: any) => acc + (it.qty_reject || 0), 0);
+
+                        return (
+                          <tr key={ret.id} className="hover:bg-slate-50/60">
+                            <td className="p-3 text-slate-600 whitespace-nowrap">
+                              {new Date(ret.date).toLocaleDateString('id-ID')}
+                            </td>
+                            <td className="p-3 font-bold text-slate-800 whitespace-nowrap">
+                              🏬 {ret.warehouse?.name || 'Gudang'}
+                            </td>
+                            <td className="p-3 text-slate-700">
+                              <span className="font-semibold">{ret.source_name || '-'}</span>
+                              <span className="text-[10px] text-slate-400 block">{ret.source_type}</span>
+                            </td>
+                            <td className="p-3 text-slate-700">
+                              <div className="space-y-0.5">
+                                {(ret.items || []).map((it: any, i: number) => (
+                                  <div key={i} className="text-[11px]">
+                                    • {it.product?.name || 'Produk'}: {it.qty_returned} pcs
+                                    <span className="text-emerald-700 font-medium ml-1">({it.qty_reusable} layak)</span>
+                                    {it.qty_reject > 0 && (
+                                      <span className="text-rose-600 font-medium ml-1">({it.qty_reject} reject)</span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                              {ret.notes && (
+                                <div className="text-[10px] text-slate-400 italic mt-0.5">"{ret.notes}"</div>
+                              )}
+                            </td>
+                            <td className="p-3 text-center font-bold text-emerald-700 whitespace-nowrap">
+                              <span className="bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                {totalReusable} pcs
+                              </span>
+                            </td>
+                            <td className="p-3 text-center font-bold text-rose-600 whitespace-nowrap">
+                              <span className="bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                                {totalReject} pcs
+                              </span>
+                            </td>
+                            <td className="p-3 text-right font-black text-slate-900 text-sm whitespace-nowrap">
+                              {totalRet} pcs
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
       
@@ -785,6 +1139,349 @@ export default function WarehousePage() {
                 Tutup Detail
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL TAMBAH STOK / PRODUKSI */}
+      {isProductionModalOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[80] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center pb-3 border-b border-gray-100 mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Tambah Stok / Produksi Manual</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Catat hasil pengemasan produksi masuk ke stok gudang</p>
+              </div>
+              <button onClick={() => setIsProductionModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1">
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProduction} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Tanggal Produksi</label>
+                  <input
+                    type="date"
+                    required
+                    value={productionForm.date}
+                    onChange={e => setProductionForm({ ...productionForm, date: e.target.value })}
+                    className="w-full border rounded-xl p-2.5 text-xs bg-gray-50 focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Jumlah Hasil (pcs) *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    placeholder="Contoh: 100"
+                    value={productionForm.qty}
+                    onChange={e => setProductionForm({ ...productionForm, qty: e.target.value })}
+                    className="w-full border rounded-xl p-2.5 text-xs font-bold bg-gray-50 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Fasilitas Gudang Penerima *</label>
+                <select
+                  required
+                  value={productionForm.warehouseId}
+                  onChange={e => setProductionForm({ ...productionForm, warehouseId: e.target.value })}
+                  className="w-full border rounded-xl p-2.5 text-xs bg-gray-50 focus:bg-white font-medium"
+                >
+                  <option value="">-- Pilih Fasilitas Gudang --</option>
+                  {warehouses.map((w: any) => (
+                    <option key={w.id} value={w.id}>
+                      🏬 {w.name} ({w.type === 'FACTORY' ? 'Pabrik' : 'Storage'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Varian Produk *</label>
+                <select
+                  required
+                  value={productionForm.productId}
+                  onChange={e => setProductionForm({ ...productionForm, productId: e.target.value })}
+                  className="w-full border rounded-xl p-2.5 text-xs bg-gray-50 focus:bg-white font-medium"
+                >
+                  <option value="">-- Pilih Produk --</option>
+                  {products.map((p: any) => (
+                    <option key={p.id} value={p.id}>
+                      🐟 {p.name} ({p.sku})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Catatan / Keterangan Batch</label>
+                <input
+                  type="text"
+                  placeholder="Contoh: Batch penggorengan pagi rasa original"
+                  value={productionForm.notes}
+                  onChange={e => setProductionForm({ ...productionForm, notes: e.target.value })}
+                  className="w-full border rounded-xl p-2.5 text-xs bg-gray-50 focus:bg-white"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setIsProductionModalOpen(false)}
+                  disabled={isSubmittingProduction}
+                  className="px-4 py-2 border rounded-xl text-xs font-semibold hover:bg-gray-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingProduction}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingProduction ? 'Menyimpan...' : 'Simpan Produksi'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KELOLA RETUR MASUK */}
+      {isReturnModalOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[80] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center pb-3 border-b border-gray-100 mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Kelola Retur Masuk Gudang</h3>
+                <p className="text-xs text-amber-700 font-semibold">Layak Pakai (masuk stok) vs Reject (kerugian)</p>
+              </div>
+              <button onClick={() => setIsReturnModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1">
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveReturn} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Tanggal Retur</label>
+                  <input
+                    type="date"
+                    required
+                    value={returnForm.date}
+                    onChange={e => setReturnForm({ ...returnForm, date: e.target.value })}
+                    className="w-full border rounded-xl p-2.5 text-xs bg-gray-50 focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Gudang Penerima *</label>
+                  <select
+                    required
+                    value={returnForm.warehouseId}
+                    onChange={e => setReturnForm({ ...returnForm, warehouseId: e.target.value })}
+                    className="w-full border rounded-xl p-2.5 text-xs bg-gray-50 focus:bg-white font-medium"
+                  >
+                    <option value="">-- Pilih Gudang --</option>
+                    {warehouses.map((w: any) => (
+                      <option key={w.id} value={w.id}>🏬 {w.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Asal / Sumber Retur</label>
+                  <select
+                    value={returnForm.sourceType}
+                    onChange={e => setReturnForm({ ...returnForm, sourceType: e.target.value })}
+                    className="w-full border rounded-xl p-2.5 text-xs bg-gray-50 focus:bg-white font-medium"
+                  >
+                    <option value="OUTLET">🏪 Outlet Mitra Konsinyasi</option>
+                    <option value="DISTRIBUTOR">🚚 Mitra Distributor</option>
+                    <option value="EXTERNAL">📦 Eksternal / Konsumen</option>
+                  </select>
+                </div>
+                <div>
+                  {returnForm.sourceType === 'OUTLET' ? (
+                    <>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">Pilih Outlet *</label>
+                      <select
+                        required
+                        value={returnForm.sourceId}
+                        onChange={e => setReturnForm({ ...returnForm, sourceId: e.target.value })}
+                        className="w-full border rounded-xl p-2.5 text-xs bg-gray-50 focus:bg-white font-medium"
+                      >
+                        <option value="">-- Pilih Outlet --</option>
+                        {outlets.map((o: any) => (
+                          <option key={o.id} value={o.id}>{o.nama}</option>
+                        ))}
+                      </select>
+                    </>
+                  ) : (
+                    <>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">Nama Pengirim *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Nama distributor / pelanggan"
+                        value={returnForm.sourceName}
+                        onChange={e => setReturnForm({ ...returnForm, sourceName: e.target.value })}
+                        className="w-full border rounded-xl p-2.5 text-xs bg-gray-50 focus:bg-white"
+                      />
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Items List */}
+              <div className="space-y-3 pt-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold text-gray-800">Daftar Produk yang Diretur:</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReturnForm(prev => ({
+                        ...prev,
+                        items: [...prev.items, { productId: products[0]?.id || '', qtyReturned: 0, qtyReusable: 0, qtyReject: 0 }]
+                      }));
+                    }}
+                    className="text-[11px] text-blue-600 hover:text-blue-800 font-bold cursor-pointer"
+                  >
+                    + Tambah Produk
+                  </button>
+                </div>
+
+                {returnForm.items.map((it, idx) => (
+                  <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <div className="flex justify-between items-center gap-2">
+                      <select
+                        required
+                        value={it.productId}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setReturnForm(prev => {
+                            const newItems = [...prev.items];
+                            newItems[idx].productId = val;
+                            return { ...prev, items: newItems };
+                          });
+                        }}
+                        className="w-full border rounded-lg p-1.5 text-xs bg-white font-medium"
+                      >
+                        <option value="">-- Pilih Produk --</option>
+                        {products.map((p: any) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                      {returnForm.items.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReturnForm(prev => ({
+                              ...prev,
+                              items: prev.items.filter((_, i) => i !== idx)
+                            }));
+                          }}
+                          className="text-red-500 hover:text-red-700 p-1"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div>
+                        <label className="text-[10px] text-slate-500 font-bold block mb-0.5">Total Retur:</label>
+                        <input
+                          type="number"
+                          min="1"
+                          required
+                          value={it.qtyReturned || ''}
+                          onChange={e => {
+                            const val = Number(e.target.value) || 0;
+                            setReturnForm(prev => {
+                              const newItems = [...prev.items];
+                              newItems[idx].qtyReturned = val;
+                              return { ...prev, items: newItems };
+                            });
+                          }}
+                          className="w-full border rounded p-1 font-bold text-center bg-white"
+                          placeholder="0"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-emerald-700 font-bold block mb-0.5">Layak Pakai:</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={it.qtyReusable}
+                          onChange={e => {
+                            const val = Number(e.target.value) || 0;
+                            setReturnForm(prev => {
+                              const newItems = [...prev.items];
+                              newItems[idx].qtyReusable = val;
+                              return { ...prev, items: newItems };
+                            });
+                          }}
+                          className="w-full border rounded p-1 font-bold text-center bg-white text-emerald-800"
+                          placeholder="0"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-rose-600 font-bold block mb-0.5">Reject / Rusak:</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={it.qtyReject}
+                          onChange={e => {
+                            const val = Number(e.target.value) || 0;
+                            setReturnForm(prev => {
+                              const newItems = [...prev.items];
+                              newItems[idx].qtyReject = val;
+                              return { ...prev, items: newItems };
+                            });
+                          }}
+                          className="w-full border rounded p-1 font-bold text-center bg-white text-rose-700"
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Catatan / Alasan Retur</label>
+                <input
+                  type="text"
+                  placeholder="Contoh: Kempes nitrogen 3 pcs (kemas ulang), hancur 2 pcs"
+                  value={returnForm.notes}
+                  onChange={e => setReturnForm({ ...returnForm, notes: e.target.value })}
+                  className="w-full border rounded-xl p-2.5 text-xs bg-gray-50 focus:bg-white"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setIsReturnModalOpen(false)}
+                  disabled={isSubmittingReturn}
+                  className="px-4 py-2 border rounded-xl text-xs font-semibold hover:bg-gray-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingReturn}
+                  className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingReturn ? 'Menyimpan...' : 'Simpan Data Retur'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

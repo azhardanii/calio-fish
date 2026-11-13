@@ -45,3 +45,14 @@ node-portable.exe
 myruntime.exe
 *.exe
 make-engine.ps1
+
+# Temporary & scratch files
+calio-workflow-design.txt
+caliofish_dashboard.html
+chat-report-history.txt
+extracted_pdf.txt
+groups.json
+parsed_outlets.json
+alter.js
+*.old
+

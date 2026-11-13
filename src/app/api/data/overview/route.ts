@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
     onlineFilterAgg, onlineTodayAgg,
     offlineDaily, onlineDaily,
     totalOutlets, outletTagihanAgg,
-    products, warehouses, outlets,
+    products, warehouses, outlets, productTypes,
     totalEmployees, attendanceToday,
     recentOffline, recentOnline, recentAttendance, recentProduksi,
     onlineFilterByPlatform,
@@ -104,9 +104,10 @@ export async function GET(req: NextRequest) {
     prisma.marketingOnline.findMany({ where: dateFilter ? { date: dateFilter } : {}, orderBy: { date: 'asc' }, select: { date: true, omset_harian: true, platform: true } }),
     prisma.outlet.count(),
     prisma.outlet.aggregate({ _sum: { sisa_tagihan: true } }),
-    prisma.product.findMany({ where: { is_active: true }, select: { id: true, name: true, short_name: true, stok: true, base_price: true }, orderBy: { stok: 'asc' } }),
+    prisma.product.findMany({ where: { is_active: true }, select: { id: true, name: true, short_name: true, stok: true, base_price: true, product_type_id: true, product_type: true }, orderBy: { stok: 'asc' } }),
     prisma.warehouse.findMany({ include: { stocks: { include: { product: true } } } }),
-    prisma.outlet.findMany({ include: { stocks: { include: { product: true } } } }),
+    prisma.outlet.findMany({ include: { stocks: { include: { product: true } }, type_stocks: { include: { product_type: true } } } }),
+    prisma.productType.findMany({ include: { products: true } }),
     prisma.employee.count({ where: { status_aktif: true } }),
     prisma.attendance.findMany({ where: { date: { gte: todayStart, lte: todayEnd } }, include: { employee: { select: { nama: true } } } }),
     prisma.marketingOffline.findMany({ take: 3, orderBy: { created_at: 'desc' }, select: { date: true, omset_harian: true, created_at: true } }),
@@ -723,6 +724,44 @@ export async function GET(req: NextRequest) {
       totalKerugian,
       warehouses: warehouseSummary 
     },
+
+    typeDistribution: (productTypes || []).map((pt: any) => {
+      let gudangQty = 0;
+      warehouses.forEach(w => {
+        w.stocks.forEach(s => {
+          if (s.product?.product_type_id === pt.id) {
+            gudangQty += s.quantity;
+          }
+        });
+      });
+
+      let outletQty = 0;
+      outlets.forEach(o => {
+        const ts = (o.type_stocks || []).find((t: any) => t.product_type_id === pt.id);
+        if (ts) {
+          outletQty += ts.quantity;
+        } else {
+          (o.stocks || []).forEach((s: any) => {
+            if (s.product?.product_type_id === pt.id) {
+              outletQty += s.quantity;
+            }
+          });
+        }
+      });
+
+      const basePrice = Number(pt.base_price || 0);
+      return {
+        id: pt.id,
+        code: pt.code,
+        name: pt.name,
+        base_price: basePrice,
+        gudang_qty: gudangQty,
+        outlet_qty: outletQty,
+        total_qty: gudangQty + outletQty,
+        valuasi_outlet: outletQty * basePrice,
+        valuasi_gudang: gudangQty * basePrice,
+      };
+    }),
 
     recentFeed: feed.slice(0, 10),
     totalShipments: shipmentsData.length,

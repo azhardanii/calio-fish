@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server';
 import { GowaPayload, sendMessage, sendChatPresence, readMessage } from '@/lib/whatsapp';
 import { parseWhatsAppReport } from '@/lib/ai-parser';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { recalculateOutletFinance } from '@/app/actions';
+import { postPayment } from '@/lib/consignment/finance';
+import { TRANSACTION_TYPES, BREAKDOWN_STATUS } from '@/lib/consignment/constants';
 
 const ADMIN_PHONE = process.env.WA_ADMIN_PHONE || '6285157991798';
 const TARGET_GROUP_ID = process.env.WA_GROUP_ID || '120363293055467760@g.us';
@@ -1217,44 +1220,90 @@ export async function POST(req: Request) {
         const tgl = parsedData.date ? new Date(parsedData.date) : new Date();
 
         if (data.jenis_transaksi === 'PELUNASAN') {
-          const newPayment = Number(outlet.payment) + nominal;
-          const newSisa = Number(outlet.tagihan) - newPayment;
-          await prisma.$transaction([
-            prisma.outletTransaction.create({
-              data: {
-                outlet_id: outlet.id,
-                type: 'PELUNASAN',
-                amount: nominal,
-                description: ket,
-                date: tgl
+          // Parse reported items per product type / gramasi if provided
+          let parsedItems: any[] | undefined = undefined;
+          if (Array.isArray(data.items) && data.items.length > 0) {
+            const allTypes = await prisma.productType.findMany();
+            parsedItems = [];
+            for (const it of data.items) {
+              const rawKind = (it.jenis || '').toLowerCase();
+              const qty = Number(it.qty) || 0;
+              if (qty <= 0) continue;
+
+              const matched = allTypes.find((pt) => {
+                const c = pt.code.toLowerCase();
+                const n = pt.name.toLowerCase();
+                if (rawKind.includes('60') && (c.includes('60') || n.includes('60'))) return true;
+                if (rawKind.includes('20') && (c.includes('20') || n.includes('20'))) return true;
+                if (rawKind.includes('abon') && (c.includes('abon') || n.includes('abon'))) return true;
+                return c === rawKind || n.includes(rawKind);
+              });
+
+              if (matched) {
+                parsedItems.push({
+                  productTypeId: matched.id,
+                  qty,
+                });
               }
-            }),
-            prisma.outlet.update({
-              where: { id: outlet.id },
-              data: { payment: newPayment, sisa_tagihan: newSisa }
-            })
-          ]);
+            }
+            if (parsedItems.length === 0) parsedItems = undefined;
+          }
+
+          const txRecord = await prisma.$transaction(async (tx) => {
+            return await postPayment(tx, {
+              outletId: outlet.id,
+              nominal,
+              items: parsedItems,
+              description: ket,
+              date: tgl,
+            });
+          });
+
+          const freshOutlet = await prisma.outlet.findUnique({
+            where: { id: outlet.id },
+            include: { type_stocks: { include: { product_type: true } } },
+          });
+
+          const sisaValuasi = Math.max(
+            0,
+            Number(freshOutlet?.valuasi_stok || 0) - Number(freshOutlet?.valuasi_pending || 0)
+          );
+          const sisaPiutang = Number(freshOutlet?.piutang || 0);
           const isDistributorOutlet = !!outlet.distributor_id;
-          replyMsg = `✅ *Pembayaran ${isDistributorOutlet ? 'Distributor / Outlet' : 'Outlet'}* ${outlet.nama} sebesar Rp ${nominal.toLocaleString('id-ID')} berhasil dicatat!\nSisa Tagihan saat ini: Rp ${newSisa.toLocaleString('id-ID')}`;
+
+          let detailStatus = '';
+          if (txRecord.breakdown_status === BREAKDOWN_STATUS.PENDING) {
+            detailStatus = '\n⚠️ *Status: PENDING* (Nominal tercatat, mohon lengkapi rincian item terjual di web dashboard agar valuasi stok berkurang)';
+          } else if (txRecord.is_estimated) {
+            detailStatus = '\nℹ️ *Status: ESTIMASI* (Item terjual dihitung otomatis dari jenis stok aktif)';
+          } else if (txRecord.needs_review && Number(txRecord.piutang_delta) > 0) {
+            detailStatus = `\n⚠️ *Perhatian:* Penjualan melebihi nominal bayar. Selisih Rp ${Number(txRecord.piutang_delta).toLocaleString('id-ID')} dicatat sebagai *Piutang Baru*.`;
+          } else if (txRecord.needs_review && Number(txRecord.unallocated) > 0) {
+            detailStatus = `\nℹ️ *Kelebihan Bayar:* Rp ${Number(txRecord.unallocated).toLocaleString('id-ID')} masuk status unallocated.`;
+          }
+
+          replyMsg = `✅ *Pembayaran ${isDistributorOutlet ? 'Distributor / Outlet' : 'Outlet'}* ${outlet.nama} sebesar Rp ${nominal.toLocaleString('id-ID')} berhasil dicatat!` +
+            `\n• Valuasi Stok Sisa: Rp ${sisaValuasi.toLocaleString('id-ID')}` +
+            `\n• Sisa Piutang: Rp ${sisaPiutang.toLocaleString('id-ID')}` +
+            detailStatus;
         } else {
-          const newTagihan = Number(outlet.tagihan) + nominal;
-          const newSisa = newTagihan - Number(outlet.payment);
-          await prisma.$transaction([
-            prisma.outletTransaction.create({
+          await prisma.$transaction(async (tx) => {
+            await tx.outletTransaction.create({
               data: {
                 outlet_id: outlet.id,
-                type: 'PIUTANG',
-                amount: nominal,
+                type: TRANSACTION_TYPES.PIUTANG_MANUAL,
+                amount: new Prisma.Decimal(nominal),
+                piutang_delta: new Prisma.Decimal(nominal),
+                valuasi_delta: new Prisma.Decimal(0),
                 description: ket,
-                date: tgl
-              }
-            }),
-            prisma.outlet.update({
-              where: { id: outlet.id },
-              data: { tagihan: newTagihan, sisa_tagihan: newSisa }
-            })
-          ]);
-          replyMsg = `✅ *Penambahan Piutang/Bon Outlet* ${outlet.nama} sebesar Rp ${nominal.toLocaleString('id-ID')} berhasil dicatat!\nSisa Tagihan saat ini: Rp ${newSisa.toLocaleString('id-ID')}`;
+                date: tgl,
+              },
+            });
+            await recalculateOutletFinance(tx, outlet.id);
+          });
+
+          const freshOutlet = await prisma.outlet.findUnique({ where: { id: outlet.id } });
+          replyMsg = `✅ *Penambahan Piutang/Bon Outlet* ${outlet.nama} sebesar Rp ${nominal.toLocaleString('id-ID')} berhasil dicatat!\n• Total Sisa Piutang: Rp ${Number(freshOutlet?.piutang || 0).toLocaleString('id-ID')}`;
         }
       } else if (parsedData.report_type === 'PENJUALAN_BOOTH') {
         const boothName = data.booth_name || '';

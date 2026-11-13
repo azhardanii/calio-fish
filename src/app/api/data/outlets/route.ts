@@ -26,9 +26,17 @@ export async function GET() {
     where: whereClause,
     include: { 
       stocks: { include: { product: true } },
+      type_stocks: { include: { product_type: true } },
       pengelola: { select: { id: true, nama: true } },
       distributor: { select: { id: true, nama: true, wilayah: true } },
-      transactions: { orderBy: { date: 'desc' } },
+      transactions: { 
+        orderBy: { date: 'desc' },
+        include: { items: { include: { product_type: true } } }
+      },
+      stock_opnames: {
+        orderBy: { date: 'desc' },
+        include: { items: { include: { product_type: true } } }
+      },
       shipments: { orderBy: { date: 'desc' }, include: { items: { include: { product: true } } } }
     },
     orderBy: { created_at: 'desc' },
@@ -45,26 +53,33 @@ export async function GET() {
   });
 
   const outletsWithHistory = outlets.map(o => {
-    // Dynamic stock valuation based on custom outlet prices
-    const stockValuation = (o.stocks || []).reduce((sum, s) => {
-      const price = (s.harga_beli !== null && s.harga_beli !== undefined)
+    // Dynamic stock valuation based on type_stocks (harga_beli ?? base_price)
+    const typeValuation = (o.type_stocks || []).reduce((sum, s) => {
+      const price = s.harga_beli !== null && s.harga_beli !== undefined
         ? Number(s.harga_beli)
-        : Number(s.product?.base_price || 0);
+        : Number(s.product_type?.base_price || 0);
       return sum + (Number(s.quantity || 0) * price);
     }, 0);
 
-    const manualPiutang = (o.transactions || [])
-      .filter(t => t.type === 'PIUTANG')
-      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
-
-    const currentPayment = Number(o.payment || 0);
-    const dynamicTagihan = stockValuation + manualPiutang;
-    const dynamicSisaTagihan = Math.max(0, dynamicTagihan - currentPayment);
+    const valuasiStok = typeValuation > 0 ? typeValuation : Number(o.valuasi_stok || 0);
+    const valuasiPending = Number(o.valuasi_pending || 0);
+    const valuasiTampil = Math.max(0, valuasiStok - valuasiPending);
+    const piutang = Number(o.piutang || 0);
+    const payment = Number(o.payment || 0);
+    const tagihan = payment + piutang;
+    const sisaTagihan = piutang;
+    const needsReview = (o.transactions || []).some(t => t.needs_review);
 
     return {
       ...o,
-      tagihan: dynamicTagihan,
-      sisa_tagihan: dynamicSisaTagihan,
+      valuasi_stok: valuasiStok,
+      valuasi_pending: valuasiPending,
+      valuasi_tampil: valuasiTampil,
+      piutang,
+      payment,
+      tagihan,
+      sisa_tagihan: sisaTagihan,
+      needs_review: needsReview,
       stock_history: stockTransactions.filter(st => st.destination_id === o.id)
     };
   });

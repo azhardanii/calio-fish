@@ -3,8 +3,14 @@ import { prisma } from '@/lib/prisma';
 import { serializeDeep } from '@/lib/serialize';
 
 export async function GET() {
-  const [products, transactions] = await Promise.all([
-    prisma.product.findMany({ orderBy: { created_at: 'desc' } }),
+  const [products, productTypes, transactions] = await Promise.all([
+    prisma.product.findMany({ 
+      include: { product_type: true },
+      orderBy: { created_at: 'desc' } 
+    }),
+    prisma.productType.findMany({
+      orderBy: { code: 'asc' }
+    }),
     prisma.stockTransaction.findMany({
       include: { product: true, employee: true },
       orderBy: { created_at: 'desc' },
@@ -24,6 +30,7 @@ export async function GET() {
 
   return NextResponse.json(serializeDeep({
     products,
+    productTypes,
     transactions: serializedTransactions,
   }));
 }

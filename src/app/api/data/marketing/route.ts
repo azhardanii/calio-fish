@@ -64,6 +64,7 @@ export async function GET(req: Request) {
         managed_outlets: {
           include: {
             stocks: { include: { product: true } },
+            type_stocks: { include: { product_type: true } },
             transactions: { orderBy: { date: 'desc' } },
           }
         },
@@ -110,12 +111,22 @@ export async function GET(req: Request) {
         totalPaymentAll += Number(outlet.payment || 0);
         totalOutstandingAll += Number(outlet.sisa_tagihan || 0);
 
-        (outlet.stocks || []).forEach((s: any) => {
-          const unitPrice = (s.harga_beli !== null && s.harga_beli !== undefined)
-            ? Number(s.harga_beli)
-            : Number(s.product?.base_price || 0);
-          totalStockValuation += (Number(s.quantity || 0) * unitPrice);
-        });
+        const typeStocks = (outlet as any).type_stocks || [];
+        if (typeStocks.length > 0) {
+          typeStocks.forEach((ts: any) => {
+            const unitPrice = (ts.harga_beli !== null && ts.harga_beli !== undefined)
+              ? Number(ts.harga_beli)
+              : Number(ts.product_type?.base_price || 0);
+            totalStockValuation += (Number(ts.quantity || 0) * unitPrice);
+          });
+        } else {
+          (outlet.stocks || []).forEach((s: any) => {
+            const unitPrice = (s.harga_beli !== null && s.harga_beli !== undefined)
+              ? Number(s.harga_beli)
+              : Number(s.product?.base_price || 0);
+            totalStockValuation += (Number(s.quantity || 0) * unitPrice);
+          });
+        }
 
         (outlet.transactions || []).forEach(tx => {
           if (!tx.date) return;
