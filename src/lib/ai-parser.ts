@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const getSystemPrompt = (productMappingStr: string) => `You are a data extraction assistant for Calio Fish operations.
+const getSystemPrompt = (productMappingStr: string, typeMappingStr: string) => `You are a data extraction assistant for Calio Fish operations.
 Your job is to parse unstructured WhatsApp messages in Indonesian into a structured JSON object.
 Identify the report type and extract relevant information according to the new operational schema.
 
@@ -114,8 +114,16 @@ data: { "nama": string, "akun_medsos": string, "no_hp": string, "alamat": string
 
 11. KEUANGAN_OUTLET
 For reporting payments (pelunasan/pembayaran) or debts (piutang/bon) from/to an outlet or distributor.
-Sales can report total payment nominal and items sold per product type/gramasi (e.g. 60 gr, 20 gr, abon).
-data: { "outlet_name": "string", "jenis_transaksi": "PELUNASAN" | "PIUTANG", "nominal": number, "keterangan": "string", "items": [ { "jenis": "60gr" | "20gr" | "abon" | "string", "qty": number } ] }
+Sales report total payment nominal and sold qty PER KATEGORI/JENIS (not required per flavor).
+Available KATEGORI/JENIS in DB: ${typeMappingStr || '60gr, 20gr, abon'}.
+Optional: if sales also explicitly write specific flavor variants inside the message, map them to SKU in "variants"; otherwise omit "variants".
+data: {
+  "outlet_name": "string",
+  "jenis_transaksi": "PELUNASAN" | "PIUTANG",
+  "nominal": number,
+  "keterangan": "string",
+  "items": [ { "jenis": "string (category code or name e.g. 20gr, 60gr, 90gr, abon)", "qty": number, "variants": [ { "product_key": "string (SKU optional)", "qty": number } ] } ]
+}
 
 12. PENJUALAN_BOOTH
 For reporting daily sales at an event booth or exhibition.
@@ -124,12 +132,16 @@ data: { "booth_name": "string", "omset_harian": number, "metode_pembayaran": "TU
 
 export async function parseWhatsAppReport(text: string) {
   try {
-    const products = await prisma.product.findMany({ select: { sku: true, short_name: true, name: true } });
+    const [products, productTypes] = await Promise.all([
+      prisma.product.findMany({ select: { sku: true, short_name: true, name: true } }),
+      prisma.productType.findMany({ where: { is_active: true }, select: { code: true, name: true } }),
+    ]);
     const productMappingStr = products.map(p => `"${p.short_name}" atau "${p.name}" -> ${p.sku}`).join(', ');
+    const typeMappingStr = productTypes.map(pt => `"${pt.name}" (${pt.code})`).join(', ');
 
     const cleanedText = text.replace(/^[\/!#]?(lapor|laporkan)\s*/i, '').trim();
     const currentDate = new Date().toLocaleDateString('en-CA');
-    const fullPrompt = getSystemPrompt(productMappingStr) + '\n\nCURRENT_DATE: ' + currentDate + '\n\nMessage:\n' + cleanedText;
+    const fullPrompt = getSystemPrompt(productMappingStr, typeMappingStr) + '\n\nCURRENT_DATE: ' + currentDate + '\n\nMessage:\n' + cleanedText;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.1-flash-lite',

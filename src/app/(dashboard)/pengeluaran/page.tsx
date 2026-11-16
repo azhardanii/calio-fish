@@ -27,6 +27,7 @@ export default function PengeluaranPage() {
       <div id="pengeluaran-report">
         <PengeluaranClient 
           initialData={data?.data || []} 
+          employees={data?.employees || []}
           exportButton={<PdfExportButton targetId="pengeluaran-report" filename="laporan-pengeluaran" />}
         />
       </div>

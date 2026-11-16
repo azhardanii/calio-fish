@@ -13,15 +13,21 @@ interface Props {
   products: Product[];
   distributors?: any[];
   warehouses?: any[];
+  booths?: any[];
 }
 
-export default function WarehouseInputForm({ outlets, affiliates, products, distributors = [], warehouses = [] }: Props) {
+export default function WarehouseInputForm({ outlets, affiliates, products, distributors = [], warehouses = [], booths = [] }: Props) {
   const [destinationType, setDestinationType] = useState('Distributor');
   const [destinationName, setDestinationName] = useState('');
   const [outletId, setOutletId] = useState('');
   const [affiliateId, setAffiliateId] = useState('');
   const [distributorId, setDistributorId] = useState('');
+  const [boothId, setBoothId] = useState('');
+  const [targetWarehouseId, setTargetWarehouseId] = useState('');
   const [warehouseId, setWarehouseId] = useState(warehouses[0]?.id || '');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [notes, setNotes] = useState('');
+  const [biayaEkspedisi, setBiayaEkspedisi] = useState('');
   const [lastManifest, setLastManifest] = useState<string | null>(null);
   const [distributorPhone, setDistributorPhone] = useState('');
   
@@ -62,6 +68,14 @@ export default function WarehouseInputForm({ outlets, affiliates, products, dist
       setMessage({ type: 'error', text: 'Pilih Affiliator!' });
       setIsSubmitting(false); return;
     }
+    if (destinationType === 'Booth' && !boothId) {
+      setMessage({ type: 'error', text: 'Pilih Event Booth tujuan!' });
+      setIsSubmitting(false); return;
+    }
+    if (destinationType === 'Warehouse' && !targetWarehouseId) {
+      setMessage({ type: 'error', text: 'Pilih Gudang tujuan!' });
+      setIsSubmitting(false); return;
+    }
     if (['E-Commerce', 'Influencer', 'Sample'].includes(destinationType) && !destinationName) {
       setMessage({ type: 'error', text: 'Nama tujuan / platform tidak boleh kosong!' });
       setIsSubmitting(false); return;
@@ -70,6 +84,10 @@ export default function WarehouseInputForm({ outlets, affiliates, products, dist
     const selectedDist = distributors.find((d: any) => d.id === distributorId);
     const resolvedDestName = destinationType === 'Distributor' 
       ? (selectedDist?.nama || 'Distributor')
+      : destinationType === 'Booth'
+      ? (booths.find((b: any) => b.id === boothId)?.nama || 'Booth Event')
+      : destinationType === 'Warehouse'
+      ? (warehouses.find((w: any) => w.id === targetWarehouseId)?.name || 'Gudang Tujuan')
       : destinationName;
 
     try {
@@ -78,8 +96,13 @@ export default function WarehouseInputForm({ outlets, affiliates, products, dist
         destinationName: resolvedDestName,
         outletId,
         affiliateId,
+        boothId: destinationType === 'Booth' ? boothId : undefined,
+        targetWarehouseId: destinationType === 'Warehouse' ? targetWarehouseId : undefined,
         items,
-        warehouseId: warehouseId || undefined
+        warehouseId: warehouseId || undefined,
+        date,
+        notes: notes.trim() || undefined,
+        biayaEkspedisi: biayaEkspedisi ? Number(biayaEkspedisi) : undefined,
       });
       
       if (res.success) {
@@ -171,6 +194,8 @@ export default function WarehouseInputForm({ outlets, affiliates, products, dist
           >
             <option value="Distributor">🚚 Mitra Distributor</option>
             <option value="Outlet">🏪 Mitra Outlet</option>
+            <option value="Booth">🎪 Event Booth</option>
+            <option value="Warehouse">🏬 Transfer Antar Gudang</option>
             <option value="E-Commerce">🛒 E-Commerce (Shopee/TikTok)</option>
             <option value="Affiliate">🌟 Affiliator</option>
             <option value="Influencer">📸 Influencer</option>
@@ -198,6 +223,18 @@ export default function WarehouseInputForm({ outlets, affiliates, products, dist
               <option value="">-- Pilih Outlet --</option>
               {outlets.map(o => <option key={o.id} value={o.id}>{o.nama}</option>)}
             </select>
+          ) : destinationType === 'Booth' ? (
+            <select value={boothId} onChange={e => setBoothId(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white">
+              <option value="">-- Pilih Booth Event Aktif --</option>
+              {booths.map((b: any) => <option key={b.id} value={b.id}>{b.nama} {b.lokasi ? `(${b.lokasi})` : ''}</option>)}
+            </select>
+          ) : destinationType === 'Warehouse' ? (
+            <select value={targetWarehouseId} onChange={e => setTargetWarehouseId(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white">
+              <option value="">-- Pilih Gudang Tujuan --</option>
+              {warehouses.filter((w: any) => w.id !== warehouseId).map((w: any) => (
+                <option key={w.id} value={w.id}>{w.name} ({w.type})</option>
+              ))}
+            </select>
           ) : destinationType === 'Affiliate' ? (
             <select value={affiliateId} onChange={e => setAffiliateId(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white">
               <option value="">-- Pilih Affiliator --</option>
@@ -213,6 +250,42 @@ export default function WarehouseInputForm({ outlets, affiliates, products, dist
             />
           )}
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">Tanggal Pengiriman</label>
+          <input
+            type="date"
+            value={date}
+            onChange={e => setDate(e.target.value)}
+            className="w-full p-2.5 border border-gray-300 rounded-lg bg-white"
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">Catatan / Keterangan (Opsional)</label>
+          <input
+            type="text"
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="Contoh: Kirim pakai mobil box / J&T"
+            className="w-full p-2.5 border border-gray-300 rounded-lg"
+          />
+        </div>
+        {(destinationType === 'Sample' || destinationType === 'Affiliate') && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Biaya Ekspedisi Sample (Rp, Opsional)</label>
+            <input
+              type="number"
+              min="0"
+              value={biayaEkspedisi}
+              onChange={e => setBiayaEkspedisi(e.target.value)}
+              placeholder="0"
+              className="w-full p-2.5 border border-gray-300 rounded-lg"
+            />
+          </div>
+        )}
       </div>
 
       <div className="space-y-4">

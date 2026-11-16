@@ -52,6 +52,7 @@ model Product {
   bundle_items       BoothBundleItem[]
   production_entries ProductionEntry[]
   return_items       WarehouseReturnItem[]
+  tx_variants        OutletTransactionVariant[]
 }
 
 model StockTransaction {
@@ -275,6 +276,24 @@ model OutletTransaction {
   created_at       DateTime                @default(now())
   outlet           Outlet                  @relation(fields: [outlet_id], references: [id], onDelete: Cascade)
   items            OutletTransactionItem[]
+  variants         OutletTransactionVariant[]
+}
+
+// Rincian varian rasa untuk item terjual per kategori (jenis).
+// source = MANUAL (dilaporkan sales/admin, opsional) atau AUTO (estimasi sistem
+// berdasarkan komposisi barang yang dikirim ke outlet tersebut).
+model OutletTransactionVariant {
+  id              String            @id @default(uuid())
+  transaction_id  String
+  product_id      String
+  product_type_id String
+  qty             Int
+  source          String            @default("AUTO")
+  created_at      DateTime          @default(now())
+  transaction     OutletTransaction @relation(fields: [transaction_id], references: [id], onDelete: Cascade)
+  product         Product           @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@index([transaction_id])
 }
 
 model OutletTransactionItem {

@@ -7,6 +7,7 @@ import { submitPresensiInput } from './actions';
 
 export default function KaryawanInputForm({ employees }: { employees: Employee[] }) {
   const [employeeId, setEmployeeId] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [status, setStatus] = useState('HADIR');
   const [alasan, setAlasan] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -20,7 +21,7 @@ export default function KaryawanInputForm({ employees }: { employees: Employee[]
     }
     setIsSubmitting(true);
     try {
-      const res = await submitPresensiInput(employeeId, status, alasan);
+      const res = await submitPresensiInput(employeeId, status, alasan, date);
       if (res.success) {
         setMessage({ type: 'success', text: 'Presensi berhasil dicatat!' });
         setEmployeeId('');
@@ -42,12 +43,24 @@ export default function KaryawanInputForm({ employees }: { employees: Employee[]
         </div>
       )}
 
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700">Pilih Karyawan</label>
-        <select value={employeeId} onChange={e => setEmployeeId(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg">
-          <option value="">-- Pilih Karyawan --</option>
-          {employees.map(e => <option key={e.id} value={e.id}>{e.nama} - {e.posisi}</option>)}
-        </select>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">Pilih Karyawan</label>
+          <select value={employeeId} onChange={e => setEmployeeId(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg">
+            <option value="">-- Pilih Karyawan --</option>
+            {employees.map(e => <option key={e.id} value={e.id}>{e.nama} - {e.posisi}</option>)}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">Tanggal Presensi</label>
+          <input
+            type="date"
+            value={date}
+            onChange={e => setDate(e.target.value)}
+            className="w-full p-2.5 border border-gray-300 rounded-lg"
+            required
+          />
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -62,12 +75,19 @@ export default function KaryawanInputForm({ employees }: { employees: Employee[]
         </div>
       </div>
 
-      {status !== 'HADIR' && (
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Keterangan / Alasan</label>
-          <input type="text" value={alasan} onChange={e => setAlasan(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="Wajib diisi jika tidak hadir" required />
-        </div>
-      )}
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-gray-700">
+          Keterangan / Alasan {status !== 'HADIR' ? '(Wajib)' : '(Opsional)'}
+        </label>
+        <input
+          type="text"
+          value={alasan}
+          onChange={e => setAlasan(e.target.value)}
+          className="w-full p-2.5 border border-gray-300 rounded-lg"
+          placeholder={status !== 'HADIR' ? 'Wajib diisi jika tidak hadir' : 'Contoh: Shift pagi / WFO'}
+          required={status !== 'HADIR'}
+        />
+      </div>
 
       <Button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg">
         {isSubmitting ? 'Menyimpan...' : 'Submit Presensi'}

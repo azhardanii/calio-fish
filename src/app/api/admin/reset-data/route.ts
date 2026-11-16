@@ -24,8 +24,11 @@ export async function POST(req: Request) {
     const delOutboundShipments = await prisma.outboundShipment.deleteMany({});
     const delStockTx = await prisma.stockTransaction.deleteMany({});
 
-    // 2. Reset Produksi & Stok Bahan
+    // 2. Reset Produksi, Retur Gudang & Stok Bahan
     const delProduksi = await prisma.produksi.deleteMany({});
+    const delProductionEntries = await prisma.productionEntry.deleteMany({});
+    const delWarehouseReturnItems = await prisma.warehouseReturnItem.deleteMany({});
+    const delWarehouseReturns = await prisma.warehouseReturn.deleteMany({});
     const delStokBahan = await prisma.stokBahan.deleteMany({});
 
     // 3. Reset Laporan Marketing (Offline & Online)
@@ -38,6 +41,9 @@ export async function POST(req: Request) {
 
     // 5. Reset Stok di Outlet menjadi 0 (Data Master Outlet & Transaksi Tagihan/Pelunasan TETAP AMAN)
     const resetOutletStocks = await prisma.outletStock.updateMany({
+      data: { quantity: 0 },
+    });
+    const resetOutletTypeStocks = await prisma.outletTypeStock.updateMany({
       data: { quantity: 0 },
     });
     const resetOutletOrder = await prisma.outlet.updateMany({
@@ -62,12 +68,16 @@ export async function POST(req: Request) {
         outboundShipmentsDeleted: delOutboundShipments.count,
         stockTransactionsDeleted: delStockTx.count,
         produksiDeleted: delProduksi.count,
+        productionEntriesDeleted: delProductionEntries.count,
+        warehouseReturnsDeleted: delWarehouseReturns.count,
+        warehouseReturnItemsDeleted: delWarehouseReturnItems.count,
         stokBahanDeleted: delStokBahan.count,
         marketingOfflineDeleted: delMarketingOffline.count,
         marketingOnlineDeleted: delMarketingOnline.count,
         sampleDeleted: delSample.count,
         jadwalKolDeleted: delJadwalKOL.count,
         outletStocksReset: resetOutletStocks.count,
+        outletTypeStocksReset: resetOutletTypeStocks.count,
         outletsReset: resetOutletOrder.count,
         warehouseStocksReset: resetWarehouseStocks.count,
         productsStockReset: resetProducts.count,

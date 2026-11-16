@@ -11,10 +11,13 @@ import {
   updateEventBooth,
   deleteEventBooth,
   createBoothBundle,
+  updateBoothBundle,
   updateBoothBundlePrice,
   deleteBoothBundle,
   transferStockToBooth,
   recordBoothSale,
+  updateBoothSale,
+  deleteBoothSale,
   completeEventBooth,
 } from '@/app/actions';
 
@@ -609,26 +612,285 @@ function RecordSaleModal({
   );
 }
 
-// ─── MODAL: EDIT HARGA BUNDLE ───────────────────────────────────────
-function EditBundlePriceModal({
-  bundle,
+// ─── MODAL: EDIT EVENT BOOTH ────────────────────────────────────────
+function EditBoothModal({
+  booth,
+  employees,
   onClose,
   onSaved,
 }: {
-  bundle: any;
+  booth: any;
+  employees: any[];
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [hargaJual, setHargaJual] = useState<number>(Number(bundle.harga_jual) || 0);
+  const [nama, setNama] = useState(booth.nama || '');
+  const [lokasi, setLokasi] = useState(booth.lokasi || '');
+  const [tanggalMulai, setTanggalMulai] = useState(
+    booth.tanggal_mulai ? new Date(booth.tanggal_mulai).toISOString().split('T')[0] : ''
+  );
+  const [tanggalSelesai, setTanggalSelesai] = useState(
+    booth.tanggal_selesai ? new Date(booth.tanggal_selesai).toISOString().split('T')[0] : ''
+  );
+  const [status, setStatus] = useState(booth.status || 'AKTIF');
+  const [picId, setPicId] = useState(booth.pic_id || '');
+  const [catatan, setCatatan] = useState(booth.catatan || '');
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!nama.trim()) { alert('Nama event/booth wajib diisi'); return; }
+    setSaving(true);
+    try {
+      await updateEventBooth(booth.id, {
+        nama: nama.trim(),
+        lokasi: lokasi.trim(),
+        tanggal_mulai: tanggalMulai,
+        tanggal_selesai: tanggalSelesai,
+        status,
+        pic_id: picId || undefined,
+        catatan: catatan.trim(),
+      });
+      onSaved();
+      onClose();
+    } catch (err: any) {
+      alert(err.message || 'Gagal memperbarui event booth');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 130, padding: 16 }}>
+      <div style={{ background: '#fff', borderRadius: 20, padding: 26, maxWidth: 480, width: '100%', boxShadow: '0 25px 50px rgba(0,0,0,0.15)' }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: '#0f172a' }}>✏️ Edit Event / Booth</h3>
+        <p style={{ margin: '0 0 16px', fontSize: 13, color: '#64748b' }}>Perbarui detail acara, lokasi, jadwal, status, atau PIC</p>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Nama Event / Booth *</label>
+            <input
+              value={nama}
+              onChange={e => setNama(e.target.value)}
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, boxSizing: 'border-box' }}
+              required
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Lokasi Booth</label>
+            <input
+              value={lokasi}
+              onChange={e => setLokasi(e.target.value)}
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, boxSizing: 'border-box' }}
+            />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Tanggal Mulai</label>
+              <input
+                type="date"
+                value={tanggalMulai}
+                onChange={e => setTanggalMulai(e.target.value)}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 13, boxSizing: 'border-box' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Tanggal Selesai</label>
+              <input
+                type="date"
+                value={tanggalSelesai}
+                onChange={e => setTanggalSelesai(e.target.value)}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 13, boxSizing: 'border-box' }}
+              />
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>PIC Marketing</label>
+              <select
+                value={picId}
+                onChange={e => setPicId(e.target.value)}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 13, background: '#fff', boxSizing: 'border-box' }}
+              >
+                <option value="">Tanpa PIC</option>
+                {employees.map(emp => (
+                  <option key={emp.id} value={emp.id}>{emp.nama}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Status</label>
+              <select
+                value={status}
+                onChange={e => setStatus(e.target.value)}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 13, background: '#fff', boxSizing: 'border-box' }}
+              >
+                <option value="AKTIF">AKTIF</option>
+                <option value="SELESAI">SELESAI</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Catatan</label>
+            <textarea
+              rows={2}
+              value={catatan}
+              onChange={e => setCatatan(e.target.value)}
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 13, boxSizing: 'border-box' }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 6 }}>
+            <button type="button" onClick={onClose} style={{ padding: '8px 18px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#64748b' }}>Batal</button>
+            <button type="submit" disabled={saving} style={{ padding: '8px 22px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+              {saving ? 'Menyimpan...' : 'Simpan Perubahan'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── MODAL: EDIT PENJUALAN KASIR BOOTH ────────────────────────────────
+function EditBoothSaleModal({
+  sale,
+  onClose,
+  onSaved,
+}: {
+  sale: any;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [qty, setQty] = useState<number>(Number(sale.qty) || 1);
+  const [unitPrice, setUnitPrice] = useState<number>(Number(sale.unit_price) || 0);
+  const [metode, setMetode] = useState<string>(sale.metode_pembayaran || 'TUNAI');
+  const [catatan, setCatatan] = useState<string>(sale.catatan || '');
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (qty <= 0 || unitPrice < 0) {
+      alert('Qty dan harga satuan tidak valid');
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateBoothSale(sale.id, {
+        qty,
+        unit_price: unitPrice,
+        metode_pembayaran: metode,
+        catatan: catatan.trim() || null,
+      });
+      onSaved();
+      onClose();
+    } catch (err: any) {
+      alert(err.message || 'Gagal memperbarui transaksi kasir');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 125, padding: 16 }}>
+      <div style={{ background: '#fff', borderRadius: 20, padding: 26, maxWidth: 440, width: '100%', boxShadow: '0 25px 50px rgba(0,0,0,0.15)' }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: '#0f172a' }}>✏️ Edit Penjualan Kasir</h3>
+        <p style={{ margin: '0 0 16px', fontSize: 13, color: '#64748b' }}>Item: <b>{sale.item_name}</b></p>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Qty *</label>
+              <input
+                type="number"
+                min="1"
+                value={qty}
+                onChange={e => setQty(Math.max(1, Number(e.target.value)))}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, boxSizing: 'border-box' }}
+                required
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Harga Satuan (Rp) *</label>
+              <input
+                type="number"
+                min="0"
+                value={unitPrice}
+                onChange={e => setUnitPrice(Number(e.target.value))}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, boxSizing: 'border-box' }}
+                required
+              />
+            </div>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Metode Pembayaran</label>
+            <select
+              value={metode}
+              onChange={e => setMetode(e.target.value)}
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, background: '#fff', boxSizing: 'border-box' }}
+            >
+              <option value="TUNAI">TUNAI</option>
+              <option value="QRIS">QRIS</option>
+              <option value="TRANSFER">TRANSFER</option>
+            </select>
+          </div>
+          <div style={{ background: '#f8fafc', borderRadius: 10, padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Total Baru:</span>
+            <span style={{ fontSize: 16, fontWeight: 800, color: '#15803d' }}>{formatRp(qty * unitPrice)}</span>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Catatan</label>
+            <input
+              type="text"
+              value={catatan}
+              onChange={e => setCatatan(e.target.value)}
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, boxSizing: 'border-box' }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 6 }}>
+            <button type="button" onClick={onClose} style={{ padding: '8px 18px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#64748b' }}>Batal</button>
+            <button type="submit" disabled={saving} style={{ padding: '8px 22px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+              {saving ? 'Menyimpan...' : 'Simpan'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── MODAL: EDIT PAKET BUNDLE ───────────────────────────────────────
+function EditBundlePriceModal({
+  bundle,
+  products,
+  onClose,
+  onSaved,
+}: {
+  bundle: any;
+  products: any[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [nama, setNama] = useState<string>(bundle.nama || '');
+  const [hargaJual, setHargaJual] = useState<number>(Number(bundle.harga_jual) || 0);
+  const [items, setItems] = useState<Array<{ product_id: string; qty: number }>>(
+    (bundle.items || []).map((it: any) => ({ product_id: it.product_id, qty: Number(it.qty) || 1 }))
+  );
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nama.trim()) { alert('Nama paket wajib diisi'); return; }
     if (hargaJual <= 0) { alert('Harga jual harus lebih dari 0'); return; }
+    if (items.length === 0 || items.some(it => !it.product_id || it.qty <= 0)) {
+      alert('Minimal 1 produk penyusun dengan qty > 0');
+      return;
+    }
 
     setSaving(true);
     try {
-      await updateBoothBundlePrice(bundle.id, hargaJual);
+      await updateBoothBundle(bundle.id, {
+        nama: nama.trim(),
+        harga_jual: hargaJual,
+        items,
+      });
       onSaved();
       onClose();
     } catch (err: any) {
@@ -640,18 +902,19 @@ function EditBundlePriceModal({
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, padding: 16 }}>
-      <div style={{ background: '#fff', borderRadius: 20, padding: 26, maxWidth: 420, width: '100%', boxShadow: '0 25px 50px rgba(0,0,0,0.15)' }}>
-        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: '#0f172a' }}>Edit Harga Paket Bundling</h3>
-        <p style={{ margin: '0 0 16px', fontSize: 13, color: '#64748b' }}>Sesuaikan harga jual paket: <b>{bundle.nama}</b></p>
+      <div style={{ background: '#fff', borderRadius: 20, padding: 26, maxWidth: 480, width: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.15)' }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: '#0f172a' }}>Edit Paket Bundling</h3>
+        <p style={{ margin: '0 0 16px', fontSize: 13, color: '#64748b' }}>Sesuaikan nama, harga jual, dan komposisi paket: <b>{bundle.nama}</b></p>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
-            <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Nama Paket</label>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4, display: 'block' }}>Nama Paket *</label>
             <input
               type="text"
-              value={bundle.nama}
-              disabled
-              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, background: '#f8fafc', color: '#64748b', boxSizing: 'border-box' }}
+              value={nama}
+              onChange={e => setNama(e.target.value)}
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
+              required
             />
           </div>
 
@@ -666,6 +929,58 @@ function EditBundlePriceModal({
               required
               autoFocus
             />
+          </div>
+
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>Komposisi Produk *</label>
+              <button
+                type="button"
+                onClick={() => setItems([...items, { product_id: products[0]?.id || '', qty: 1 }])}
+                style={{ fontSize: 11, fontWeight: 700, color: '#2563eb', background: '#eff6ff', border: 'none', padding: '3px 8px', borderRadius: 6, cursor: 'pointer' }}
+              >
+                + Tambah Produk
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {items.map((it, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <select
+                    value={it.product_id}
+                    onChange={e => {
+                      const next = [...items];
+                      next[idx] = { ...next[idx], product_id: e.target.value };
+                      setItems(next);
+                    }}
+                    style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12, background: '#fff' }}
+                  >
+                    {products.map((p: any) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min="1"
+                    value={it.qty}
+                    onChange={e => {
+                      const next = [...items];
+                      next[idx] = { ...next[idx], qty: Math.max(1, Number(e.target.value)) };
+                      setItems(next);
+                    }}
+                    style={{ width: 64, padding: '7px 8px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12, textAlign: 'center', fontWeight: 700 }}
+                  />
+                  {items.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setItems(items.filter((_, i) => i !== idx))}
+                      style={{ color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '5px 8px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
@@ -975,6 +1290,7 @@ function BoothDetailView({
   const [showSaleModal, setShowSaleModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [editingBundle, setEditingBundle] = useState<any>(null);
+  const [editingSale, setEditingSale] = useState<any>(null);
   const [deleting, setDeleting] = useState(false);
 
   const totalStockPcs = booth.stocks.reduce((sum: number, s: any) => sum + s.quantity, 0);
@@ -1190,7 +1506,7 @@ function BoothDetailView({
                           onClick={() => setEditingBundle(b)}
                           style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #c7d2fe', background: '#eef2ff', color: '#4338ca', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
                         >
-                          Edit Harga
+                          Edit Paket
                         </button>
                         {isAktif && (
                           <button
@@ -1241,11 +1557,12 @@ function BoothDetailView({
                       <th style={{ padding: '10px 14px', textAlign: 'right', color: '#475569', fontSize: 11, fontWeight: 700 }}>TOTAL RP</th>
                       <th style={{ padding: '10px 14px', textAlign: 'center', color: '#475569', fontSize: 11, fontWeight: 700 }}>METODE</th>
                       <th style={{ padding: '10px 14px', textAlign: 'left', color: '#475569', fontSize: 11, fontWeight: 700 }}>CATATAN</th>
+                      <th style={{ padding: '10px 14px', textAlign: 'right', color: '#475569', fontSize: 11, fontWeight: 700 }}>AKSI</th>
                     </tr>
                   </thead>
                   <tbody>
                     {booth.sales.length === 0 ? (
-                      <tr><td colSpan={6} style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>Belum ada penjualan di booth ini. Klik tombol &quot;+ Catat Penjualan Kasir&quot;.</td></tr>
+                      <tr><td colSpan={7} style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>Belum ada penjualan di booth ini. Klik tombol &quot;+ Catat Penjualan Kasir&quot;.</td></tr>
                     ) : booth.sales.map((sl: any) => (
                       <tr key={sl.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '10px 14px', color: '#64748b' }}>{new Date(sl.date).toLocaleString('id-ID')}</td>
@@ -1262,6 +1579,30 @@ function BoothDetailView({
                           </span>
                         </td>
                         <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{sl.catatan || '-'}</td>
+                        <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <button
+                            type="button"
+                            onClick={() => setEditingSale(sl)}
+                            style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #c7d2fe', background: '#eef2ff', color: '#4338ca', fontSize: 11, fontWeight: 700, cursor: 'pointer', marginRight: 6 }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!confirm(`Hapus penjualan "${sl.item_name}" (${sl.qty}x) dan kembalikan stok booth?`)) return;
+                              try {
+                                await deleteBoothSale(sl.id);
+                                onRefresh();
+                              } catch (err: any) {
+                                alert(err?.message || 'Gagal menghapus penjualan kasir');
+                              }
+                            }}
+                            style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                          >
+                            Hapus
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1366,7 +1707,16 @@ KETERANGAN: Sisa booth pameran selesai`}
       {editingBundle && (
         <EditBundlePriceModal
           bundle={editingBundle}
+          products={products}
           onClose={() => setEditingBundle(null)}
+          onSaved={onRefresh}
+        />
+      )}
+
+      {editingSale && (
+        <EditBoothSaleModal
+          sale={editingSale}
+          onClose={() => setEditingSale(null)}
           onSaved={onRefresh}
         />
       )}
@@ -1399,6 +1749,7 @@ export function BoothManager() {
   const { data, isLoading, error, mutate } = useSWR(apiUrl);
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingBooth, setEditingBooth] = useState<any>(null);
   const [selectedBooth, setSelectedBooth] = useState<any>(null);
   const [completingBooth, setCompletingBooth] = useState<any>(null);
 
@@ -1657,6 +2008,17 @@ export function BoothManager() {
                     </button>
                   )}
                   <button
+                    type="button"
+                    onClick={() => setEditingBooth(booth)}
+                    style={{
+                      padding: '9px 12px', borderRadius: 10, border: '1px solid #cbd5e1',
+                      background: '#fff', color: '#334155', fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                    }}
+                    title="Edit Info Booth"
+                  >
+                    ✏️
+                  </button>
+                  <button
                     onClick={async () => {
                       if (confirm(`Konfirmasi HAPUS booth "${booth.nama}"?\n\nJika booth masih memiliki sisa stok (${stockPcs} pcs), sisa stok akan dikembalikan ke Gudang Pusat.`)) {
                         try {
@@ -1698,6 +2060,15 @@ export function BoothManager() {
         <CreateBoothModal
           employees={employees}
           onClose={() => setShowCreateModal(false)}
+          onSaved={mutate}
+        />
+      )}
+
+      {editingBooth && (
+        <EditBoothModal
+          booth={editingBooth}
+          employees={employees}
+          onClose={() => setEditingBooth(null)}
           onSaved={mutate}
         />
       )}

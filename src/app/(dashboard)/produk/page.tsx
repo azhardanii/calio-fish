@@ -22,6 +22,7 @@ export default function ProductPage() {
   }
 
   const products = data?.products || [];
+  const productTypes = data?.productTypes || [];
   const transactions = data?.transactions || [];
 
   const serializedProducts = products.map((p: any) => ({
@@ -70,7 +71,7 @@ export default function ProductPage() {
       <div id="product-report" className="bg-white p-4 rounded-xl">
         <Card className="hover:shadow-lg transition-shadow duration-300">
           <CardContent className="pt-6">
-            <ProductManager products={serializedProducts} transactions={transactions} />
+            <ProductManager products={serializedProducts} productTypes={productTypes} transactions={transactions} />
           </CardContent>
         </Card>
       </div>

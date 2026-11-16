@@ -10,7 +10,11 @@ import { formatCurrency } from '@/lib/utils';
 import {
   setMarketingTarget,
   createPersonalBuyerTransaction,
+  updatePersonalBuyerTransaction,
   deletePersonalBuyerTransaction,
+  createMarketingOfflineReport,
+  updateMarketingOfflineReport,
+  deleteMarketingOfflineReport,
   createExpense,
   deleteExpense,
 } from '@/app/actions';
@@ -1115,6 +1119,118 @@ function DistributorTab({ data }: { data: any }) {
   );
 }
 
+function EditPersonalBuyerModal({
+  tx,
+  onClose,
+  onSaved,
+}: {
+  tx: any;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [buyerName, setBuyerName] = useState(tx.buyer_name || '');
+  const [productName, setProductName] = useState(tx.product_name || '');
+  const [quantity, setQuantity] = useState<number>(Number(tx.quantity || 1));
+  const [pricePerUnit, setPricePerUnit] = useState<string>(
+    tx.price_per_unit != null ? String(Number(tx.price_per_unit)) : ''
+  );
+  const [amount, setAmount] = useState<number>(Number(tx.amount || 0));
+  const [description, setDescription] = useState(tx.description || '');
+  const [date, setDate] = useState(
+    tx.date ? new Date(tx.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+  );
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await updatePersonalBuyerTransaction(tx.id, {
+        buyer_name: buyerName,
+        product_name: productName,
+        quantity: Number(quantity),
+        price_per_unit: pricePerUnit ? Number(pricePerUnit) : null,
+        amount: Number(amount),
+        description: description || null,
+        date,
+      });
+      onSaved();
+      onClose();
+    } catch (err: any) {
+      alert(err?.message || 'Gagal memperbarui transaksi personal buyer');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110, padding: 16 }}>
+      <div style={{ background: '#fff', borderRadius: 18, padding: 24, maxWidth: 460, width: '100%', boxShadow: '0 25px 50px rgba(0,0,0,0.18)' }}>
+        <h3 style={{ margin: '0 0 12px', fontSize: 17, fontWeight: 800, color: '#0f172a' }}>✏️ Edit Transaksi Personal Buyer</h3>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Tanggal</label>
+              <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Nama Pembeli</label>
+              <input type="text" required value={buyerName} onChange={(e) => setBuyerName(e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, boxSizing: 'border-box' }} />
+            </div>
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Produk</label>
+            <input type="text" value={productName} onChange={(e) => setProductName(e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, boxSizing: 'border-box' }} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Qty (pcs)</label>
+              <input
+                type="number"
+                min={1}
+                value={quantity}
+                onChange={(e) => {
+                  const q = Math.max(1, Number(e.target.value) || 1);
+                  setQuantity(q);
+                  if (pricePerUnit) setAmount(q * Number(pricePerUnit));
+                }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, boxSizing: 'border-box' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Harga/Pcs</label>
+              <input
+                type="number"
+                min={0}
+                value={pricePerUnit}
+                onChange={(e) => {
+                  setPricePerUnit(e.target.value);
+                  if (e.target.value) setAmount(quantity * Number(e.target.value));
+                }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, boxSizing: 'border-box' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Total (Rp)</label>
+              <input type="number" min={0} required value={amount} onChange={(e) => setAmount(Number(e.target.value))} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, fontWeight: 700, boxSizing: 'border-box' }} />
+            </div>
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Keterangan</label>
+            <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, boxSizing: 'border-box' }} />
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+            <button type="button" onClick={onClose} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Batal</button>
+            <button type="submit" disabled={saving} style={{ padding: '7px 18px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+              {saving ? 'Menyimpan...' : 'Simpan'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════
 // ADMIN/OWNER: PERSONAL BUYER TAB
 // ═══════════════════════════════════════════════════════════
@@ -1122,6 +1238,7 @@ function PersonalBuyerTab({ data, mutate }: { data: any; mutate: () => void }) {
   const performance: any[] = data?.marketingPerformance || [];
   const [filterEmployee, setFilterEmployee] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingTx, setEditingTx] = useState<any>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
   const allTransactions = useMemo(() => {
@@ -1244,7 +1361,15 @@ function PersonalBuyerTab({ data, mutate }: { data: any; mutate: () => void }) {
                   <td style={{ padding: '10px 14px', textAlign: 'right', color: '#64748b' }}>{t.price_per_unit ? formatRp(t.price_per_unit) : '-'}</td>
                   <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#15803d', whiteSpace: 'nowrap' }}>{formatRp(t.amount)}</td>
                   <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{t.description || '-'}</td>
-                  <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                  <td style={{ padding: '10px 14px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => setEditingTx(t)}
+                      style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', fontSize: 11, fontWeight: 600, cursor: 'pointer', marginRight: 6 }}
+                      title="Edit Transaksi"
+                    >
+                      Edit
+                    </button>
                     <button
                       onClick={() => handleDelete(t.id)}
                       disabled={deleting === t.id}
@@ -1269,6 +1394,14 @@ function PersonalBuyerTab({ data, mutate }: { data: any; mutate: () => void }) {
           warehouses={data?.warehouses}
         />
       )}
+
+      {editingTx && (
+        <EditPersonalBuyerModal
+          tx={editingTx}
+          onClose={() => setEditingTx(null)}
+          onSaved={mutate}
+        />
+      )}
     </section>
   );
 }
@@ -1281,6 +1414,7 @@ function MarketingMyDashboard({ data, mutate, filterLabel }: { data: any; mutate
   const currentMonth = data?.currentMonth || new Date().getMonth() + 1;
   const currentYear = data?.currentYear || new Date().getFullYear();
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingPbTx, setEditingPbTx] = useState<any>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
@@ -1421,7 +1555,15 @@ function MarketingMyDashboard({ data, mutate, filterLabel }: { data: any; mutate
                     <td style={{ padding: '10px 14px', textAlign: 'right', color: '#64748b' }}>{t.price_per_unit ? formatRp(t.price_per_unit) : '-'}</td>
                     <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#15803d', whiteSpace: 'nowrap' }}>{formatRp(t.amount)}</td>
                     <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{t.description || '-'}</td>
-                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                    <td style={{ padding: '10px 14px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => setEditingPbTx(t)}
+                        style={{ padding: '4px 9px', borderRadius: 8, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', fontSize: 11, fontWeight: 600, cursor: 'pointer', marginRight: 6 }}
+                        title="Edit Transaksi"
+                      >
+                        ✏️
+                      </button>
                       <button
                         onClick={() => handleDeletePB(t.id)}
                         disabled={deleting === t.id}
@@ -1448,6 +1590,14 @@ function MarketingMyDashboard({ data, mutate, filterLabel }: { data: any; mutate
         />
       )}
 
+      {editingPbTx && (
+        <EditPersonalBuyerModal
+          tx={editingPbTx}
+          onClose={() => setEditingPbTx(null)}
+          onSaved={mutate}
+        />
+      )}
+
       {showDetailModal && (
         <MarketingDetailModal
           employee={p}
@@ -1456,6 +1606,243 @@ function MarketingMyDashboard({ data, mutate, filterLabel }: { data: any; mutate
         />
       )}
     </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// LAPORAN HARIAN OFFLINE (B2B / B2C) - MANUAL CRUD
+// ═══════════════════════════════════════════════════════════
+function OfflineReportTab({ data, mutate }: { data: any; mutate: () => void }) {
+  const reports: any[] = data?.offlineReports || [];
+  const staffList: any[] = data?.marketingPerformance || (data?.myPerformance ? [data.myPerformance] : []);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<any>(null);
+  const [form, setForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    jenis_penjualan: 'B2B',
+    employee_id: staffList[0]?.id || '',
+    omset_harian: '',
+    target_omset_harian: '',
+    jumlah_outlet_aktif: '',
+    total_outlet_baru: '',
+    target_bulanan: '',
+    target_new_outlet: '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const openCreate = () => {
+    setEditingItem(null);
+    setForm({
+      date: new Date().toISOString().split('T')[0],
+      jenis_penjualan: 'B2B',
+      employee_id: staffList[0]?.id || '',
+      omset_harian: '',
+      target_omset_harian: '',
+      jumlah_outlet_aktif: '',
+      total_outlet_baru: '',
+      target_bulanan: '',
+      target_new_outlet: '',
+    });
+    setModalOpen(true);
+  };
+
+  const openEdit = (r: any) => {
+    setEditingItem(r);
+    setForm({
+      date: new Date(r.date).toISOString().split('T')[0],
+      jenis_penjualan: r.jenis_penjualan || 'B2B',
+      employee_id: r.employee_id || '',
+      omset_harian: String(Number(r.omset_harian || 0)),
+      target_omset_harian: String(Number(r.target_omset_harian || 0)),
+      jumlah_outlet_aktif: String(r.jumlah_outlet_aktif || 0),
+      total_outlet_baru: String(r.total_outlet_baru || 0),
+      target_bulanan: String(Number(r.target_bulanan || 0)),
+      target_new_outlet: String(r.target_new_outlet || 0),
+    });
+    setModalOpen(true);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const omsetH = Number(form.omset_harian || 0);
+      const targetH = Number(form.target_omset_harian || 0);
+      const targetB = Number(form.target_bulanan || 0);
+      const pct = targetB > 0 ? (omsetH / targetB) * 100 : targetH > 0 ? (omsetH / targetH) * 100 : 0;
+      const payload = {
+        date: form.date,
+        jenis_penjualan: form.jenis_penjualan,
+        employee_id: form.employee_id || null,
+        omset_harian: omsetH,
+        target_omset_harian: targetH,
+        jumlah_outlet_aktif: Number(form.jumlah_outlet_aktif || 0),
+        total_outlet_baru: Number(form.total_outlet_baru || 0),
+        target_bulanan: targetB,
+        target_new_outlet: Number(form.target_new_outlet || 0),
+        persentase: Number(pct.toFixed(2)),
+        gap: omsetH - targetH,
+      };
+      if (editingItem) {
+        await updateMarketingOfflineReport(editingItem.id, payload);
+      } else {
+        await createMarketingOfflineReport(payload);
+      }
+      setModalOpen(false);
+      mutate();
+    } catch (err: any) {
+      alert(err?.message || 'Gagal menyimpan laporan harian offline');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a' }}>Rekap Laporan Harian Marketing Offline</h3>
+          <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748b' }}>
+            Catatan harian B2B / B2C dari WA bot maupun input manual admin ({reports.length} laporan)
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={openCreate}
+          style={{
+            padding: '8px 18px', borderRadius: 10, border: 'none',
+            background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+            color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer'
+          }}
+        >
+          + Input Laporan Offline
+        </button>
+      </div>
+
+      <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: '#f8fafc' }}>
+                <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>TANGGAL</th>
+                <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>MARKETING</th>
+                <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>JENIS</th>
+                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>OMSET HARIAN</th>
+                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>TARGET HARIAN</th>
+                <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>OUTLET AKTIF / BARU</th>
+                <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: '#475569', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>AKSI</th>
+              </tr>
+            </thead>
+            <tbody>
+              {reports.length === 0 ? (
+                <tr><td colSpan={7} style={{ padding: '30px 14px', textAlign: 'center', color: '#94a3b8' }}>Belum ada laporan harian offline</td></tr>
+              ) : reports.map((r: any) => (
+                <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>{new Date(r.date).toLocaleDateString('id-ID')}</td>
+                  <td style={{ padding: '10px 14px', fontWeight: 700, color: '#0f172a' }}>{r.employee?.nama || '-'}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                    <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: r.jenis_penjualan === 'B2C' ? '#f3e8ff' : '#dbeafe', color: r.jenis_penjualan === 'B2C' ? '#7e22ce' : '#1d4ed8' }}>
+                      {r.jenis_penjualan || 'B2B'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#15803d' }}>{formatRp(Number(r.omset_harian || 0))}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right', color: '#64748b' }}>{formatRp(Number(r.target_omset_harian || 0))}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'center', fontSize: 12 }}>
+                    <b>{r.jumlah_outlet_aktif || 0}</b> aktif / <span style={{ color: '#2563eb', fontWeight: 700 }}>+{r.total_outlet_baru || 0}</span> baru
+                  </td>
+                  <td style={{ padding: '10px 14px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => openEdit(r)}
+                      style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', fontSize: 11, fontWeight: 600, cursor: 'pointer', marginRight: 6 }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!confirm('Hapus laporan harian offline ini?')) return;
+                        try {
+                          await deleteMarketingOfflineReport(r.id);
+                          mutate();
+                        } catch (err: any) {
+                          alert(err?.message || 'Gagal menghapus laporan');
+                        }
+                      }}
+                      style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      Hapus
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {modalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 115, padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 18, padding: 24, maxWidth: 480, width: '100%', boxShadow: '0 25px 50px rgba(0,0,0,0.18)' }}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 17, fontWeight: 800, color: '#0f172a' }}>
+              {editingItem ? '✏️ Edit Laporan Harian Offline' : '📝 Input Laporan Harian Offline'}
+            </h3>
+            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Tanggal</label>
+                  <input type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Jenis Penjualan</label>
+                  <select value={form.jenis_penjualan} onChange={(e) => setForm({ ...form, jenis_penjualan: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, background: '#fff', boxSizing: 'border-box' }}>
+                    <option value="B2B">B2B (Outlet/Konsinyasi)</option>
+                    <option value="B2C">B2C (Personal Buyer/Event)</option>
+                  </select>
+                </div>
+              </div>
+              {staffList.length > 0 && (
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Marketing / Pelapor</label>
+                  <select value={form.employee_id} onChange={(e) => setForm({ ...form, employee_id: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, background: '#fff', boxSizing: 'border-box' }}>
+                    <option value="">Umum / Tanpa PIC</option>
+                    {staffList.map((s: any) => (
+                      <option key={s.id} value={s.id}>{s.nama}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Omset Harian (Rp)</label>
+                  <input type="number" min={0} required value={form.omset_harian} onChange={(e) => setForm({ ...form, omset_harian: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, fontWeight: 700, boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Target Omset Harian (Rp)</label>
+                  <input type="number" min={0} value={form.target_omset_harian} onChange={(e) => setForm({ ...form, target_omset_harian: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, boxSizing: 'border-box' }} />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Outlet Aktif Dikunjungi</label>
+                  <input type="number" min={0} value={form.jumlah_outlet_aktif} onChange={(e) => setForm({ ...form, jumlah_outlet_aktif: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Total Outlet Baru</label>
+                  <input type="number" min={0} value={form.total_outlet_baru} onChange={(e) => setForm({ ...form, total_outlet_baru: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, boxSizing: 'border-box' }} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+                <button type="button" onClick={() => setModalOpen(false)} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Batal</button>
+                <button type="submit" disabled={saving} style={{ padding: '7px 18px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  {saving ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -1572,6 +1959,11 @@ export default function MarketingPage() {
         id: 'personal-buyer',
         label: '👤 Personal Buyer',
         content: <PersonalBuyerTab data={data} mutate={mutate} />,
+      },
+      {
+        id: 'offline-reports',
+        label: `📝 Laporan Harian Offline (${data?.offlineReports?.length || 0})`,
+        content: <OfflineReportTab data={data} mutate={mutate} />,
       },
     ];
 

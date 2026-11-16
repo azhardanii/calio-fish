@@ -24,7 +24,10 @@ import {
   deleteWarehouse, 
   createDistributor,
   createProductionEntry,
-  createWarehouseReturn
+  updateProductionEntry,
+  deleteProductionEntry,
+  createWarehouseReturn,
+  deleteWarehouseReturn
 } from '@/app/actions';
 
 export default function WarehousePage() {
@@ -63,6 +66,7 @@ export default function WarehousePage() {
     notes: '',
   });
   const [isSubmittingProduction, setIsSubmittingProduction] = useState(false);
+  const [editingProductionEntry, setEditingProductionEntry] = useState<any>(null);
 
   // Warehouse Return state
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
@@ -669,10 +673,10 @@ export default function WarehousePage() {
                   <div className="p-4 sm:p-5 divide-y divide-gray-100">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                       {group.entries.map((entry: any) => (
-                        <div key={entry.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200/70 text-xs space-y-1">
-                          <div className="flex justify-between items-start">
+                        <div key={entry.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200/70 text-xs space-y-1.5">
+                          <div className="flex justify-between items-start gap-2">
                             <span className="font-bold text-slate-800">{entry.product?.name || 'Produk'}</span>
-                            <span className="font-black text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                            <span className="font-black text-blue-700 bg-blue-100 px-2 py-0.5 rounded shrink-0">
                               +{entry.qty} pcs
                             </span>
                           </div>
@@ -682,6 +686,39 @@ export default function WarehousePage() {
                           {entry.notes && (
                             <div className="text-[11px] text-slate-400 italic">
                               "{entry.notes}"
+                            </div>
+                          )}
+                          {isOwnerOrAdmin && (
+                            <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-slate-200/70">
+                              <button
+                                type="button"
+                                onClick={() => setEditingProductionEntry({
+                                  id: entry.id,
+                                  productName: entry.product?.name || 'Produk',
+                                  warehouseName: entry.warehouse?.name || 'Gudang',
+                                  qty: entry.qty,
+                                  date: new Date(entry.date).toISOString().split('T')[0],
+                                  notes: entry.notes || '',
+                                })}
+                                className="px-2 py-0.5 text-[11px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 cursor-pointer"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!confirm(`Hapus catatan produksi ${entry.product?.name || ''} (+${entry.qty} pcs)? Stok gudang akan dikurangi kembali.`)) return;
+                                  try {
+                                    await deleteProductionEntry(entry.id);
+                                    await Promise.all([mutate(), productData?.mutate?.()]);
+                                  } catch (err: any) {
+                                    alert(err?.message || 'Gagal menghapus catatan produksi');
+                                  }
+                                }}
+                                className="px-2 py-0.5 text-[11px] font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded border border-rose-200 cursor-pointer"
+                              >
+                                Hapus
+                              </button>
                             </div>
                           )}
                         </div>
@@ -735,6 +772,7 @@ export default function WarehousePage() {
                         <th className="p-3 text-center">Layak Pakai</th>
                         <th className="p-3 text-center">Reject / Dibuang</th>
                         <th className="p-3 text-right">Total Retur</th>
+                        {isOwnerOrAdmin && <th className="p-3 text-right">Aksi</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -784,6 +822,25 @@ export default function WarehousePage() {
                             <td className="p-3 text-right font-black text-slate-900 text-sm whitespace-nowrap">
                               {totalRet} pcs
                             </td>
+                            {isOwnerOrAdmin && (
+                              <td className="p-3 text-right whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (!confirm('Hapus catatan retur ini? Stok gudang layak pakai akan disesuaikan kembali.')) return;
+                                    try {
+                                      await deleteWarehouseReturn(ret.id);
+                                      await Promise.all([mutate(), productData?.mutate?.()]);
+                                    } catch (err: any) {
+                                      alert(err?.message || 'Gagal menghapus retur');
+                                    }
+                                  }}
+                                  className="px-2.5 py-1 text-[11px] font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded border border-rose-200 cursor-pointer"
+                                >
+                                  Hapus
+                                </button>
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
@@ -1479,6 +1536,108 @@ export default function WarehousePage() {
                   className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50"
                 >
                   {isSubmittingReturn ? 'Menyimpan...' : 'Simpan Data Retur'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDIT CATATAN PRODUKSI */}
+      {editingProductionEntry && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[85] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex justify-between items-center pb-3 border-b border-gray-100 mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Edit Catatan Produksi</h3>
+                <p className="text-xs text-gray-500">
+                  {editingProductionEntry.productName} • {editingProductionEntry.warehouseName}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingProductionEntry(null)}
+                className="text-gray-400 hover:text-gray-600 p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setIsSubmittingProduction(true);
+                try {
+                  await updateProductionEntry(editingProductionEntry.id, {
+                    date: editingProductionEntry.date,
+                    qty: Number(editingProductionEntry.qty),
+                    notes: editingProductionEntry.notes || null,
+                  });
+                  await Promise.all([mutate(), productData?.mutate?.()]);
+                  setEditingProductionEntry(null);
+                } catch (err: any) {
+                  alert(err?.message || 'Gagal memperbarui catatan produksi');
+                } finally {
+                  setIsSubmittingProduction(false);
+                }
+              }}
+              className="space-y-4"
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Tanggal</label>
+                  <input
+                    type="date"
+                    required
+                    value={editingProductionEntry.date}
+                    onChange={(e) =>
+                      setEditingProductionEntry({ ...editingProductionEntry, date: e.target.value })
+                    }
+                    className="w-full border rounded-xl p-2.5 text-xs bg-gray-50 focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Jumlah Hasil (pcs)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    value={editingProductionEntry.qty}
+                    onChange={(e) =>
+                      setEditingProductionEntry({
+                        ...editingProductionEntry,
+                        qty: Number(e.target.value),
+                      })
+                    }
+                    className="w-full border rounded-xl p-2.5 text-xs font-bold bg-gray-50 focus:bg-white"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Catatan</label>
+                <input
+                  type="text"
+                  value={editingProductionEntry.notes}
+                  onChange={(e) =>
+                    setEditingProductionEntry({ ...editingProductionEntry, notes: e.target.value })
+                  }
+                  className="w-full border rounded-xl p-2.5 text-xs bg-gray-50 focus:bg-white"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingProductionEntry(null)}
+                  className="px-4 py-2 border rounded-xl text-xs font-semibold hover:bg-gray-50 cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingProduction}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingProduction ? 'Menyimpan...' : 'Simpan Perubahan'}
                 </button>
               </div>
             </form>

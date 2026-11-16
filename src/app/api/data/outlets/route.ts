@@ -31,7 +31,10 @@ export async function GET() {
       distributor: { select: { id: true, nama: true, wilayah: true } },
       transactions: { 
         orderBy: { date: 'desc' },
-        include: { items: { include: { product_type: true } } }
+        include: { 
+          items: { include: { product_type: true } },
+          variants: { include: { product: { select: { id: true, name: true, short_name: true, sku: true } } } }
+        }
       },
       stock_opnames: {
         orderBy: { date: 'desc' },
@@ -61,7 +64,7 @@ export async function GET() {
       return sum + (Number(s.quantity || 0) * price);
     }, 0);
 
-    const valuasiStok = typeValuation > 0 ? typeValuation : Number(o.valuasi_stok || 0);
+    const valuasiStok = (o.type_stocks && o.type_stocks.length > 0) ? typeValuation : Number(o.valuasi_stok || 0);
     const valuasiPending = Number(o.valuasi_pending || 0);
     const valuasiTampil = Math.max(0, valuasiStok - valuasiPending);
     const piutang = Number(o.piutang || 0);

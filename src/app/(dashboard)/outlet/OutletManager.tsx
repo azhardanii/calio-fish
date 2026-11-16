@@ -18,7 +18,11 @@ import {
   submitOutletPayment, 
   submitOutletSale, 
   completePendingPaymentAction, 
-  submitStockOpname 
+  submitStockOpname,
+  approveStockOpnameAction,
+  rejectStockOpnameAction,
+  updateOutletTransactionAction,
+  deleteOutletTransactionAction
 } from './actions';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { 
@@ -45,6 +49,121 @@ import {
   AlertTriangle,
   ArrowUpDown
 } from 'lucide-react';
+
+function CategorySaleRow({
+  t,
+  qty,
+  onQtyChange,
+  outletStocks,
+  variantQtys,
+  onVariantQtyChange,
+  accentClass = 'text-blue-700',
+}: {
+  t: { id: string; name: string; price: number; stock?: number };
+  qty: number | string;
+  onQtyChange: (val: number) => void;
+  outletStocks: any[];
+  variantQtys: Record<string, number>;
+  onVariantQtyChange: (productId: string, val: number) => void;
+  accentClass?: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const numQty = Number(qty) || 0;
+  const sub = numQty * t.price;
+
+  const variantsForType = (outletStocks || []).filter(
+    (s: any) => s.product?.product_type_id === t.id
+  );
+  const manualSum = Object.values(variantQtys || {}).reduce(
+    (s, q) => s + (Number(q) || 0),
+    0
+  );
+  const autoCount = Math.max(0, numQty - manualSum);
+
+  return (
+    <div className="bg-white p-2.5 rounded-lg border border-slate-100 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <div className="text-xs font-bold text-slate-800">{t.name}</div>
+          <div className="text-[10px] text-slate-400">
+            @Rp {t.price.toLocaleString('id-ID')}
+            {t.stock !== undefined && ` • Stok: ${t.stock} pcs`}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min="0"
+            placeholder="0"
+            value={qty}
+            onChange={(e) => {
+              const val = e.target.value === '' ? 0 : Number(e.target.value);
+              onQtyChange(val);
+            }}
+            className="w-16 border rounded px-2 py-1 text-xs text-center font-bold"
+          />
+          <span className={`text-xs font-bold min-w-[70px] text-right ${accentClass}`}>
+            Rp {sub.toLocaleString('id-ID')}
+          </span>
+        </div>
+      </div>
+
+      {numQty > 0 && variantsForType.length > 0 && (
+        <div className="pt-1 border-t border-dashed border-slate-100">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+          >
+            <span>{expanded ? '▾ Tutup Rincian Varian' : '▸ Rincian Varian (Opsional)'}</span>
+            <span className="text-[10px] text-slate-400 font-normal">
+              {manualSum > 0
+                ? `(${manualSum} manual, ${autoCount} auto)`
+                : '(otomatis dari riwayat kirim & sisa stok)'}
+            </span>
+          </button>
+
+          {expanded && (
+            <div className="mt-2 space-y-1.5 bg-slate-50/80 p-2 rounded-lg border border-slate-200/70">
+              {variantsForType.map((s: any) => {
+                const vQty = variantQtys?.[s.product_id] || 0;
+                return (
+                  <div key={s.id} className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className="text-slate-700 font-medium truncate">
+                      {s.product?.short_name || s.product?.name}
+                      <span className="text-slate-400 font-normal ml-1">(sisa {s.quantity})</span>
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      max={numQty}
+                      placeholder="Auto"
+                      value={vQty || ''}
+                      onChange={(e) => {
+                        const v = e.target.value === '' ? 0 : Number(e.target.value);
+                        onVariantQtyChange(s.product_id, v);
+                      }}
+                      className="w-16 border rounded px-1.5 py-0.5 text-[11px] text-center bg-white font-semibold"
+                    />
+                  </div>
+                );
+              })}
+              {manualSum > numQty ? (
+                <div className="text-[10px] text-rose-600 font-bold">
+                  ⚠️ Rincian varian ({manualSum}) melebihi total kategori ({numQty}).
+                </div>
+              ) : (
+                <div className="text-[10px] text-slate-500">
+                  Sisanya ({autoCount} pcs) dihitung otomatis dari komposisi kiriman &amp; sisa stok outlet.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function OutletManager({ outlets, currentUser, employees }: { outlets: any[], currentUser: any, employees: any[] }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -100,6 +219,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const [payNominal, setPayNominal] = useState<number | ''>('');
   const [paySettleOnly, setPaySettleOnly] = useState(false);
   const [payItems, setPayItems] = useState<Record<string, number>>({});
+  const [payVariants, setPayVariants] = useState<Record<string, Record<string, number>>>({});
   const [payDesc, setPayDesc] = useState('');
   const [payDate, setPayDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [isSubmittingPay, setIsSubmittingPay] = useState(false);
@@ -107,6 +227,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   // Daily Sales (SALE) Modal
   const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
   const [saleItems, setSaleItems] = useState<Record<string, number>>({});
+  const [saleVariants, setSaleVariants] = useState<Record<string, Record<string, number>>>({});
   const [salePeriodStart, setSalePeriodStart] = useState(() => new Date().toISOString().split('T')[0]);
   const [salePeriodEnd, setSalePeriodEnd] = useState(() => new Date().toISOString().split('T')[0]);
   const [saleDesc, setSaleDesc] = useState('');
@@ -116,13 +237,22 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const [isOpnameModalOpen, setIsOpnameModalOpen] = useState(false);
   const [opnameActual, setOpnameActual] = useState<Record<string, number>>({});
   const [opnameNotes, setOpnameNotes] = useState('');
+  const [opnameAsDraft, setOpnameAsDraft] = useState(false);
   const [isSubmittingOpname, setIsSubmittingOpname] = useState(false);
 
   // Complete Pending Payment Modal
   const [isPendingModalOpen, setIsPendingModalOpen] = useState(false);
   const [pendingTx, setPendingTx] = useState<any>(null);
   const [pendingItems, setPendingItems] = useState<Record<string, number>>({});
+  const [pendingVariants, setPendingVariants] = useState<Record<string, Record<string, number>>>({});
   const [isSubmittingPending, setIsSubmittingPending] = useState(false);
+
+  // Single Transaction Edit Modal
+  const [editingOutletTx, setEditingOutletTx] = useState<any>(null);
+  const [editTxDesc, setEditTxDesc] = useState('');
+  const [editTxDate, setEditTxDate] = useState('');
+  const [editTxAmount, setEditTxAmount] = useState<string>('');
+  const [isSavingEditTx, setIsSavingEditTx] = useState(false);
 
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [txType, setTxType] = useState<'PIUTANG' | 'PELUNASAN'>('PIUTANG');
@@ -528,9 +658,33 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
       initialItemMap[ts.product_type_id] = 0;
     });
     setPayItems(initialItemMap);
+    setPayVariants({});
     setPayDesc('');
     setPayDate(new Date().toISOString().split('T')[0]);
     setIsPaymentModalOpen(true);
+  };
+
+  const buildItemsPayload = (
+    itemsMap: Record<string, number>,
+    variantsMap: Record<string, Record<string, number>>
+  ) => {
+    return Object.entries(itemsMap)
+      .filter(([_, qty]) => Number(qty) > 0)
+      .map(([typeId, qty]) => {
+        const typeVars = variantsMap[typeId] || {};
+        const variants = Object.entries(typeVars)
+          .filter(([_, vQty]) => Number(vQty) > 0)
+          .map(([productId, vQty]) => ({ productId, qty: Number(vQty) }));
+        const totalManual = variants.reduce((s, v) => s + v.qty, 0);
+        if (totalManual > Number(qty)) {
+          throw new Error(`Rincian varian (${totalManual} pcs) melebihi total terjual kategori (${qty} pcs).`);
+        }
+        return {
+          productTypeId: typeId,
+          qty: Number(qty),
+          ...(variants.length > 0 ? { variants } : {}),
+        };
+      });
   };
 
   const handleSubmitPayment = async (e: React.FormEvent) => {
@@ -542,9 +696,13 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
       return;
     }
 
-    const items = Object.entries(payItems)
-      .filter(([_, qty]) => Number(qty) > 0)
-      .map(([typeId, qty]) => ({ productTypeId: typeId, qty: Number(qty) }));
+    let items;
+    try {
+      items = buildItemsPayload(payItems, payVariants);
+    } catch (err: any) {
+      alert(err.message);
+      return;
+    }
 
     setIsSubmittingPay(true);
     try {
@@ -570,9 +728,14 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const handleSubmitSale = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedOutlet || isSubmittingSale) return;
-    const items = Object.entries(saleItems)
-      .filter(([_, qty]) => Number(qty) > 0)
-      .map(([typeId, qty]) => ({ productTypeId: typeId, qty: Number(qty) }));
+
+    let items;
+    try {
+      items = buildItemsPayload(saleItems, saleVariants);
+    } catch (err: any) {
+      alert(err.message);
+      return;
+    }
 
     if (items.length === 0) {
       alert('Pilih minimal 1 jenis barang yang terjual.');
@@ -606,6 +769,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
     });
     setOpnameActual(actualMap);
     setOpnameNotes('');
+    setOpnameAsDraft(false);
     setIsOpnameModalOpen(true);
   };
 
@@ -619,7 +783,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
 
     setIsSubmittingOpname(true);
     try {
-      const res = await submitStockOpname(selectedOutlet.id, items, opnameNotes);
+      const res = await submitStockOpname(selectedOutlet.id, items, opnameNotes, opnameAsDraft);
       if (res?.error) throw new Error(res.error);
 
       await mutate('/api/data/outlets');
@@ -638,15 +802,21 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
       initialItemMap[ts.product_type_id] = 0;
     });
     setPendingItems(initialItemMap);
+    setPendingVariants({});
     setIsPendingModalOpen(true);
   };
 
   const handleSubmitPending = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pendingTx || isSubmittingPending) return;
-    const items = Object.entries(pendingItems)
-      .filter(([_, qty]) => Number(qty) > 0)
-      .map(([typeId, qty]) => ({ productTypeId: typeId, qty: Number(qty) }));
+
+    let items;
+    try {
+      items = buildItemsPayload(pendingItems, pendingVariants);
+    } catch (err: any) {
+      alert(err.message);
+      return;
+    }
 
     if (items.length === 0) {
       alert('Rincian jenis produk terjual wajib diisi.');
@@ -665,6 +835,37 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
       alert(err.message || 'Gagal melengkapi rincian pembayaran');
     } finally {
       setIsSubmittingPending(false);
+    }
+  };
+
+  const handleDeleteOutletTx = async (tx: any) => {
+    if (!confirm(`Hapus/batalkan transaksi "${tx.type}" senilai Rp ${Number(tx.amount).toLocaleString('id-ID')}? Stok & keuangan akan otomatis dikembalikan.`)) return;
+    try {
+      const res = await deleteOutletTransactionAction(tx.id);
+      if (res?.error) throw new Error(res.error);
+      await Promise.all([mutate('/api/data/outlets'), mutate('/api/data/marketing'), mutate('/api/data/overview')]);
+    } catch (err: any) {
+      alert(err.message || 'Gagal menghapus transaksi');
+    }
+  };
+
+  const handleSaveEditOutletTx = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOutletTx || isSavingEditTx) return;
+    setIsSavingEditTx(true);
+    try {
+      const res = await updateOutletTransactionAction(editingOutletTx.id, {
+        description: editTxDesc,
+        date: editTxDate,
+        ...(editingOutletTx.type === 'PIUTANG_MANUAL' ? { amount: Number(editTxAmount) || 0 } : {}),
+      });
+      if (res?.error) throw new Error(res.error);
+      await Promise.all([mutate('/api/data/outlets'), mutate('/api/data/marketing'), mutate('/api/data/overview')]);
+      setEditingOutletTx(null);
+    } catch (err: any) {
+      alert(err.message || 'Gagal memperbarui transaksi');
+    } finally {
+      setIsSavingEditTx(false);
     }
   };
 
@@ -1705,6 +1906,89 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                       </div>
                     )}
 
+                    {/* Riwayat Stok Opname Outlet */}
+                    <div className="mt-4 pt-4 border-t border-slate-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                          <ArrowUpDown size={14} className="text-blue-600" />
+                          <span>Riwayat Stok Opname Fisik ({selectedOutlet.stock_opnames?.length || 0})</span>
+                        </div>
+                      </div>
+                      <div className="bg-white border rounded-xl overflow-hidden shadow-xs">
+                        <Table>
+                          <TableHeader className="bg-slate-50">
+                            <TableRow>
+                              <TableHead className="text-xs">Tanggal</TableHead>
+                              <TableHead className="text-xs">Rincian Item</TableHead>
+                              <TableHead className="text-xs">Catatan</TableHead>
+                              <TableHead className="text-center text-xs">Status</TableHead>
+                              {isOwnerOrAdmin && <TableHead className="text-center text-xs">Aksi</TableHead>}
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {selectedOutlet.stock_opnames?.map((op: any) => (
+                              <TableRow key={op.id}>
+                                <TableCell className="text-xs whitespace-nowrap">{new Date(op.date).toLocaleDateString('id-ID')}</TableCell>
+                                <TableCell className="text-xs">
+                                  <div className="flex flex-wrap gap-1">
+                                    {(op.items || []).map((it: any, i: number) => (
+                                      <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                                        {it.product_type?.name || 'Jenis'}: {it.qty_system} → <b>{it.qty_actual}</b> ({it.selisih >= 0 ? `+${it.selisih}` : it.selisih})
+                                      </span>
+                                    ))}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-xs text-slate-600">{op.notes || '-'}</TableCell>
+                                <TableCell className="text-center text-xs">
+                                  <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                                    op.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' :
+                                    op.status === 'REJECTED' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-800'
+                                  }`}>
+                                    {op.status}
+                                  </span>
+                                </TableCell>
+                                {isOwnerOrAdmin && (
+                                  <TableCell className="text-center text-xs whitespace-nowrap">
+                                    {op.status === 'DRAFT' ? (
+                                      <div className="flex items-center justify-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={async () => {
+                                            const r = await approveStockOpnameAction(op.id);
+                                            if (r?.error) alert(r.error);
+                                            else await mutate('/api/data/outlets');
+                                          }}
+                                          className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold cursor-pointer"
+                                        >
+                                          Setujui
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={async () => {
+                                            const r = await rejectStockOpnameAction(op.id);
+                                            if (r?.error) alert(r.error);
+                                            else await mutate('/api/data/outlets');
+                                          }}
+                                          className="px-2 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded text-[10px] font-bold cursor-pointer"
+                                        >
+                                          Tolak
+                                        </button>
+                                      </div>
+                                    ) : <span className="text-slate-300">-</span>}
+                                  </TableCell>
+                                )}
+                              </TableRow>
+                            ))}
+                            {(!selectedOutlet.stock_opnames || selectedOutlet.stock_opnames.length === 0) && (
+                              <TableRow>
+                                <TableCell colSpan={isOwnerOrAdmin ? 5 : 4} className="text-center text-xs text-slate-400 py-5">Belum ada histori stok opname.</TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+
                     {/* Riwayat Penyesuaian Stok (Audit Trail) */}
                     <div className="mt-4 pt-4 border-t border-slate-100">
                       <div className="flex items-center justify-between mb-2">
@@ -1889,6 +2173,19 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                                       ))}
                                     </div>
                                   )}
+                                  {tx.variants && tx.variants.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                      {tx.variants.map((v: any, i: number) => (
+                                        <span key={i} className={`text-[10px] px-1.5 py-0.2 rounded border ${
+                                          v.source === 'MANUAL'
+                                            ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                            : 'bg-sky-50 text-sky-700 border-sky-200'
+                                        }`}>
+                                          {v.qty}x {v.product?.short_name || v.product?.name} ({v.source === 'MANUAL' ? 'Manual' : 'Auto'})
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
                                   {tx.breakdown_status && (
                                     <div className="mt-1">
                                       <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
@@ -1931,16 +2228,43 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                                   Rp {Number(tx.amount).toLocaleString('id-ID')}
                                 </TableCell>
                                 <TableCell className="text-center text-xs whitespace-nowrap">
-                                  {isPending && isOwnerOrAdmin ? (
-                                    <button
-                                      onClick={() => openPendingModal(tx)}
-                                      className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[11px] font-bold cursor-pointer transition-colors"
-                                    >
-                                      Lengkapi
-                                    </button>
-                                  ) : (
-                                    <span className="text-slate-300">-</span>
-                                  )}
+                                  <div className="flex items-center justify-center gap-1">
+                                    {isPending && isOwnerOrAdmin && (
+                                      <button
+                                        onClick={() => openPendingModal(tx)}
+                                        className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[11px] font-bold cursor-pointer transition-colors"
+                                      >
+                                        Lengkapi
+                                      </button>
+                                    )}
+                                    {isOwnerOrAdmin && (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setEditingOutletTx(tx);
+                                            setEditTxDesc(tx.description || '');
+                                            setEditTxDate(new Date(tx.date).toISOString().split('T')[0]);
+                                            setEditTxAmount(String(Number(tx.amount || 0)));
+                                          }}
+                                          className="p-1 text-blue-600 hover:bg-blue-50 rounded cursor-pointer"
+                                          title="Edit Catatan / Tanggal Transaksi"
+                                        >
+                                          <Pencil size={12} />
+                                        </button>
+                                        {(tx.type === 'PAYMENT' || tx.type === 'PELUNASAN' || tx.type === 'SALE' || tx.type === 'PIUTANG_MANUAL' || tx.type === 'PIUTANG') && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteOutletTx(tx)}
+                                            className="p-1 text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
+                                            title="Batalkan & Hapus Transaksi (stok dipulihkan)"
+                                          >
+                                            <Trash2 size={12} />
+                                          </button>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             );
@@ -2185,6 +2509,23 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                       ))}
                     </select>
                   </div>
+
+                  <div className="bg-purple-50/70 border border-purple-200 rounded-lg p-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(formData.has_daily_sales)}
+                        onChange={e => setFormData({ ...formData, has_daily_sales: e.target.checked })}
+                        className="w-4 h-4 text-purple-600 rounded"
+                      />
+                      <span className="text-xs font-bold text-purple-900">
+                        🏬 Mode Modern Trade (Daily Sales)
+                      </span>
+                    </label>
+                    <p className="text-[11px] text-purple-700 ml-6 mt-0.5">
+                      Aktifkan jika outlet melaporkan penjualan harian (POS) sebelum pembayaran tukar faktur.
+                    </p>
+                  </div>
                 </>
               )}
 
@@ -2369,37 +2710,23 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                     </div>
 
                     <div className="space-y-2 bg-slate-50/70 p-3 rounded-xl border border-slate-200">
-                      {availableTypes.map((t: any) => {
-                        const qty = payItems[t.id] ?? '';
-                        const sub = (Number(qty) || 0) * t.price;
-
-                        return (
-                          <div key={t.id} className="flex items-center justify-between gap-2 bg-white p-2.5 rounded-lg border border-slate-100">
-                            <div>
-                              <div className="text-xs font-bold text-slate-800">{t.name}</div>
-                              <div className="text-[10px] text-slate-400">
-                                @Rp {t.price.toLocaleString('id-ID')} • Stok: {t.stock} pcs
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                min="0"
-                                placeholder="0"
-                                value={qty}
-                                onChange={e => {
-                                  const val = e.target.value === '' ? 0 : Number(e.target.value);
-                                  setPayItems(prev => ({ ...prev, [t.id]: val }));
-                                }}
-                                className="w-16 border rounded px-2 py-1 text-xs text-center font-bold"
-                              />
-                              <span className="text-xs font-bold text-blue-700 min-w-[70px] text-right">
-                                Rp {sub.toLocaleString('id-ID')}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
+                      {availableTypes.map((t: any) => (
+                        <CategorySaleRow
+                          key={t.id}
+                          t={t}
+                          qty={payItems[t.id] ?? ''}
+                          onQtyChange={(val) => setPayItems(prev => ({ ...prev, [t.id]: val }))}
+                          outletStocks={selectedOutlet.stocks || []}
+                          variantQtys={payVariants[t.id] || {}}
+                          onVariantQtyChange={(pid, val) =>
+                            setPayVariants(prev => ({
+                              ...prev,
+                              [t.id]: { ...(prev[t.id] || {}), [pid]: val },
+                            }))
+                          }
+                          accentClass="text-blue-700"
+                        />
+                      ))}
                     </div>
 
                     {/* Live Calculation Feedback */}
@@ -2526,35 +2853,23 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-800">Jumlah Produk Terjual per Jenis:</label>
                   <div className="space-y-2 bg-slate-50/70 p-3 rounded-xl border border-slate-200">
-                    {availableTypes.map((t: any) => {
-                      const qty = saleItems[t.id] ?? '';
-                      const sub = (Number(qty) || 0) * t.price;
-
-                      return (
-                        <div key={t.id} className="flex items-center justify-between gap-2 bg-white p-2.5 rounded-lg border border-slate-100">
-                          <div>
-                            <div className="text-xs font-bold text-slate-800">{t.name}</div>
-                            <div className="text-[10px] text-slate-400">@Rp {t.price.toLocaleString('id-ID')} • Stok: {t.stock} pcs</div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="number"
-                              min="0"
-                              placeholder="0"
-                              value={qty}
-                              onChange={e => {
-                                const val = e.target.value === '' ? 0 : Number(e.target.value);
-                                setSaleItems(prev => ({ ...prev, [t.id]: val }));
-                              }}
-                              className="w-16 border rounded px-2 py-1 text-xs text-center font-bold"
-                            />
-                            <span className="text-xs font-bold text-purple-700 min-w-[70px] text-right">
-                              Rp {sub.toLocaleString('id-ID')}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {availableTypes.map((t: any) => (
+                      <CategorySaleRow
+                        key={t.id}
+                        t={t}
+                        qty={saleItems[t.id] ?? ''}
+                        onQtyChange={(val) => setSaleItems(prev => ({ ...prev, [t.id]: val }))}
+                        outletStocks={selectedOutlet.stocks || []}
+                        variantQtys={saleVariants[t.id] || {}}
+                        onVariantQtyChange={(pid, val) =>
+                          setSaleVariants(prev => ({
+                            ...prev,
+                            [t.id]: { ...(prev[t.id] || {}), [pid]: val },
+                          }))
+                        }
+                        accentClass="text-purple-700"
+                      />
+                    ))}
                   </div>
                 </div>
 
@@ -2670,6 +2985,18 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                   />
                 </div>
 
+                <label className="flex items-center gap-2 text-xs bg-amber-50 p-2.5 rounded-lg border border-amber-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={opnameAsDraft}
+                    onChange={e => setOpnameAsDraft(e.target.checked)}
+                    className="w-4 h-4 text-amber-600 rounded"
+                  />
+                  <span className="font-semibold text-amber-900">
+                    Simpan sebagai DRAFT terlebih dahulu (Approve manual nanti)
+                  </span>
+                </label>
+
                 <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                   <button
                     type="button"
@@ -2684,7 +3011,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                     disabled={isSubmittingOpname}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50"
                   >
-                    {isSubmittingOpname ? 'Menyimpan...' : 'Terapkan Hasil Opname'}
+                    {isSubmittingOpname ? 'Menyimpan...' : opnameAsDraft ? 'Simpan Draft Opname' : 'Setujui & Terapkan Opname'}
                   </button>
                 </div>
               </form>
@@ -2727,36 +3054,24 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
 
               <form onSubmit={handleSubmitPending} className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-800">Jumlah Produk Terjual:</label>
-                  {availableTypes.map((t: any) => {
-                    const qty = pendingItems[t.id] ?? '';
-                    const sub = (Number(qty) || 0) * t.price;
-
-                    return (
-                      <div key={t.id} className="flex items-center justify-between gap-2 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-                        <div>
-                          <div className="text-xs font-bold text-slate-800">{t.name}</div>
-                          <div className="text-[10px] text-slate-400">@Rp {t.price.toLocaleString('id-ID')}</div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="0"
-                            value={qty}
-                            onChange={e => {
-                              const val = e.target.value === '' ? 0 : Number(e.target.value);
-                              setPendingItems(prev => ({ ...prev, [t.id]: val }));
-                            }}
-                            className="w-16 border rounded px-2 py-1 text-xs text-center font-bold bg-white"
-                          />
-                          <span className="text-xs font-bold text-blue-700 min-w-[70px] text-right">
-                            Rp {sub.toLocaleString('id-ID')}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  <label className="text-xs font-bold text-slate-800">Jumlah Produk Terjual (per Kategori):</label>
+                  {availableTypes.map((t: any) => (
+                    <CategorySaleRow
+                      key={t.id}
+                      t={t}
+                      qty={pendingItems[t.id] ?? ''}
+                      onQtyChange={(val) => setPendingItems(prev => ({ ...prev, [t.id]: val }))}
+                      outletStocks={selectedOutlet.stocks || []}
+                      variantQtys={pendingVariants[t.id] || {}}
+                      onVariantQtyChange={(pid, val) =>
+                        setPendingVariants(prev => ({
+                          ...prev,
+                          [t.id]: { ...(prev[t.id] || {}), [pid]: val },
+                        }))
+                      }
+                      accentClass="text-blue-700"
+                    />
+                  ))}
                 </div>
 
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex justify-between items-center">
@@ -2786,6 +3101,67 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
           </div>
         );
       })()}
+
+      {/* Edit Single Outlet Transaction Modal */}
+      {editingOutletTx && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[95] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="text-base font-bold text-slate-900 mb-3">
+              Edit Transaksi ({editingOutletTx.type})
+            </h3>
+            <form onSubmit={handleSaveEditOutletTx} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Tanggal</label>
+                <input
+                  type="date"
+                  required
+                  value={editTxDate}
+                  onChange={e => setEditTxDate(e.target.value)}
+                  className="w-full border rounded-lg p-2 text-xs"
+                />
+              </div>
+              {editingOutletTx.type === 'PIUTANG_MANUAL' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Nominal Piutang (Rp)</label>
+                  <input
+                    type="number"
+                    required
+                    value={editTxAmount}
+                    onChange={e => setEditTxAmount(e.target.value)}
+                    className="w-full border rounded-lg p-2 text-xs font-bold"
+                  />
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Keterangan</label>
+                <textarea
+                  rows={2}
+                  value={editTxDesc}
+                  onChange={e => setEditTxDesc(e.target.value)}
+                  className="w-full border rounded-lg p-2 text-xs"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingOutletTx(null)}
+                  disabled={isSavingEditTx}
+                  className="px-3 py-1.5 border rounded-lg text-xs font-semibold"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEditTx}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer"
+                >
+                  {isSavingEditTx ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }

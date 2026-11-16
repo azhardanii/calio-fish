@@ -10,6 +10,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { PdfExportButton } from '@/components/ui/PdfExportButton';
 import { Badge } from '@/components/ui/badge';
 import { Navigation, Search } from 'lucide-react';
+import {
+  updateOutboundShipmentStatus,
+  deleteOutboundShipment,
+} from '@/app/actions';
 
 export default function PengirimanPage() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
@@ -30,7 +34,7 @@ export default function PengirimanPage() {
     return '/api/data/pengiriman';
   }, [appliedDateRange]);
 
-  const { data, isLoading } = useSWR(apiUrl);
+  const { data, isLoading, mutate } = useSWR(apiUrl);
   const [filterType, setFilterType] = useState('ALL');
   const [filterInput, setFilterInput] = useState('');
   const [detailedShipment, setDetailedShipment] = useState<any>(null);
@@ -424,9 +428,63 @@ export default function PengirimanPage() {
               >
                 <span>💬</span> Chat WA Surat Jalan
               </button>
-              <button onClick={() => setDetailedShipment(null)} className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition font-medium cursor-pointer">
-                Tutup Detail
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <select
+                  value={detailedShipment.status || 'TERKIRIM'}
+                  onChange={async (e) => {
+                    const nextStatus = e.target.value;
+                    try {
+                      await updateOutboundShipmentStatus(detailedShipment.id, { status: nextStatus });
+                      setDetailedShipment({ ...detailedShipment, status: nextStatus });
+                      await mutate();
+                    } catch (err: any) {
+                      alert(err?.message || 'Gagal ubah status');
+                    }
+                  }}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-xs font-bold bg-white"
+                >
+                  <option value="TERKIRIM">Status: TERKIRIM</option>
+                  <option value="DIPROSES">Status: DIPROSES</option>
+                  <option value="DITERIMA">Status: DITERIMA</option>
+                  <option value="DIBATALKAN">Status: DIBATALKAN</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const nextNotes = prompt('Edit catatan pengiriman:', detailedShipment.notes || '');
+                    if (nextNotes === null) return;
+                    try {
+                      await updateOutboundShipmentStatus(detailedShipment.id, { notes: nextNotes || null });
+                      setDetailedShipment({ ...detailedShipment, notes: nextNotes || null });
+                      await mutate();
+                    } catch (err: any) {
+                      alert(err?.message || 'Gagal memperbarui catatan');
+                    }
+                  }}
+                  className="px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 text-xs font-bold cursor-pointer"
+                >
+                  Edit Catatan
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!confirm('Hapus riwayat pengiriman ini? Catatan transaksi stok historis tidak terhapus otomatis jika stok sudah dipotong.')) return;
+                    try {
+                      await deleteOutboundShipment(detailedShipment.id);
+                      setDetailedShipment(null);
+                      await mutate();
+                    } catch (err: any) {
+                      alert(err?.message || 'Gagal menghapus pengiriman');
+                    }
+                  }}
+                  className="px-3 py-2 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg hover:bg-rose-100 text-xs font-bold cursor-pointer"
+                >
+                  Hapus Log
+                </button>
+                <button onClick={() => setDetailedShipment(null)} className="px-5 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition font-medium text-sm cursor-pointer">
+                  Tutup Detail
+                </button>
+              </div>
             </div>
           </div>
         </div>

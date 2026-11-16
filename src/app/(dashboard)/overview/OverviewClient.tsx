@@ -140,6 +140,7 @@ interface OverviewData {
     base_price: number;
     gudang_qty: number;
     outlet_qty: number;
+    terjual_qty?: number;
     total_qty: number;
     valuasi_outlet: number;
     valuasi_gudang: number;
@@ -1000,6 +1001,10 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
                       <div className="flex justify-between text-[11px] text-slate-500">
                         <span>🏪 Outlet:</span>
                         <span className="font-bold text-slate-800">{td.outlet_qty} pcs</span>
+                      </div>
+                      <div className="flex justify-between text-[11px] text-slate-500">
+                        <span>💸 Terjual (Periode):</span>
+                        <span className="font-bold text-emerald-700">{td.terjual_qty || 0} pcs</span>
                       </div>
                       <div className="pt-1 border-t border-slate-100 flex justify-between text-[11px] font-extrabold text-blue-700">
                         <span>Total:</span>

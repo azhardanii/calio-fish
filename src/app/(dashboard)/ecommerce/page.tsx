@@ -7,7 +7,12 @@ import { format } from "date-fns";
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { formatCurrency } from '@/lib/utils';
 import { PdfExportButton } from '@/components/ui/PdfExportButton';
-import { setOnlineTarget } from '@/app/actions';
+import {
+  setOnlineTarget,
+  createMarketingOnlineReport,
+  updateMarketingOnlineReport,
+  deleteMarketingOnlineReport,
+} from '@/app/actions';
 
 function formatRp(val: number) {
   return formatCurrency(val);
@@ -98,6 +103,247 @@ function SetEcommerceTargetModal({
   );
 }
 
+// Modal Input / Edit Laporan Penjualan E-Commerce
+function EcommerceReportModal({
+  editingReport,
+  products,
+  warehouses,
+  onClose,
+  onSaved,
+}: {
+  editingReport: any | null;
+  products: any[];
+  warehouses: any[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isEditing = Boolean(editingReport);
+  const [date, setDate] = useState(
+    editingReport?.date
+      ? new Date(editingReport.date).toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0]
+  );
+  const [platform, setPlatform] = useState<'shopee' | 'tiktok'>(
+    editingReport?.platform?.toLowerCase() === 'tiktok' ? 'tiktok' : 'shopee'
+  );
+  const [omsetHarian, setOmsetHarian] = useState<string>(
+    editingReport ? String(Number(editingReport.omset_harian || 0)) : ''
+  );
+  const [targetHarian, setTargetHarian] = useState<string>(
+    editingReport && Number(editingReport.target_harian || 0) > 0
+      ? String(Number(editingReport.target_harian))
+      : ''
+  );
+  const centralWarehouse =
+    warehouses.find((w: any) => w.type === 'FACTORY' || w.name?.toLowerCase().includes('banyuwangi')) ||
+    warehouses[0];
+  const [warehouseId, setWarehouseId] = useState<string>(centralWarehouse?.id || '');
+  const [deductStock, setDeductStock] = useState(false);
+  const [items, setItems] = useState<Array<{ product_id: string; qty: number }>>([
+    { product_id: products[0]?.id || '', qty: 1 },
+  ]);
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!date || !omsetHarian) return;
+    setSaving(true);
+    try {
+      const targetVal = targetHarian ? Number(targetHarian) : undefined;
+      if (isEditing) {
+        await updateMarketingOnlineReport(editingReport.id, {
+          date,
+          platform,
+          omset_harian: Number(omsetHarian),
+          target_harian: targetVal ?? 0,
+        });
+      } else {
+        const validItems = deductStock
+          ? items.filter((it) => it.product_id && it.qty > 0)
+          : undefined;
+        await createMarketingOnlineReport({
+          date,
+          platform,
+          omset_harian: Number(omsetHarian),
+          target_harian: targetVal,
+          warehouse_id: deductStock && validItems?.length ? warehouseId : undefined,
+          items: validItems?.length ? validItems : undefined,
+        });
+      }
+      onSaved();
+      onClose();
+    } catch (err: any) {
+      alert(err?.message || 'Gagal menyimpan laporan e-commerce');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+          <h3 className="text-lg font-extrabold text-slate-900">
+            {isEditing ? '✏️ Edit Laporan E-Commerce' : '🛒 Catat Penjualan E-Commerce'}
+          </h3>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold cursor-pointer">
+            ×
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Tanggal</label>
+              <input
+                type="date"
+                required
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Platform</label>
+              <select
+                value={platform}
+                onChange={(e) => setPlatform(e.target.value as 'shopee' | 'tiktok')}
+                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white"
+              >
+                <option value="shopee">🛍️ Shopee</option>
+                <option value="tiktok">🎵 TikTok</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Omset Harian (Rp) *</label>
+              <input
+                type="number"
+                min={0}
+                required
+                placeholder="Contoh: 2500000"
+                value={omsetHarian}
+                onChange={(e) => setOmsetHarian(e.target.value)}
+                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Target Harian (Opsional)</label>
+              <input
+                type="number"
+                min={0}
+                placeholder="Otomatis dari target/30"
+                value={targetHarian}
+                onChange={(e) => setTargetHarian(e.target.value)}
+                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+
+          {!isEditing && products.length > 0 && warehouses.length > 0 && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-3">
+              <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={deductStock}
+                  onChange={(e) => setDeductStock(e.target.checked)}
+                />
+                <span>Sekalian potong stok gudang &amp; catat pengiriman produk keluar</span>
+              </label>
+
+              {deductStock && (
+                <div className="space-y-2.5 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Gudang Asal</label>
+                    <select
+                      value={warehouseId}
+                      onChange={(e) => setWarehouseId(e.target.value)}
+                      className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+                    >
+                      {warehouses.map((w: any) => (
+                        <option key={w.id} value={w.id}>{w.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase">Item Terjual</span>
+                      <button
+                        type="button"
+                        onClick={() => setItems([...items, { product_id: products[0]?.id || '', qty: 1 }])}
+                        className="text-xs font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
+                      >
+                        + Tambah Produk
+                      </button>
+                    </div>
+                    {items.map((it, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <select
+                          value={it.product_id}
+                          onChange={(e) => {
+                            const next = [...items];
+                            next[idx] = { ...next[idx], product_id: e.target.value };
+                            setItems(next);
+                          }}
+                          className="flex-1 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+                        >
+                          {products.map((p: any) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          min={1}
+                          value={it.qty}
+                          onChange={(e) => {
+                            const next = [...items];
+                            next[idx] = { ...next[idx], qty: Math.max(1, Number(e.target.value) || 1) };
+                            setItems(next);
+                          }}
+                          className="w-20 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-center font-bold bg-white"
+                        />
+                        {items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setItems(items.filter((_, i) => i !== idx))}
+                            className="text-rose-500 hover:text-rose-700 font-bold px-1.5 cursor-pointer"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-5 py-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl disabled:opacity-50 cursor-pointer"
+            >
+              {saving ? 'Menyimpan...' : isEditing ? 'Simpan Perubahan' : 'Simpan Laporan'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function EcommercePage() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
     const today = new Date();
@@ -110,6 +356,8 @@ export default function EcommercePage() {
 
   const [filterPlatform, setFilterPlatform] = useState<'ALL' | 'SHOPEE' | 'TIKTOK'>('ALL');
   const [targetModalPlatform, setTargetModalPlatform] = useState<'shopee' | 'tiktok' | null>(null);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [editingReport, setEditingReport] = useState<any>(null);
 
   const apiUrl = useMemo(() => {
     if (appliedDateRange?.from) {
@@ -200,6 +448,16 @@ export default function EcommercePage() {
             className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium border border-slate-300 transition"
           >
             Reset Bulan Ini
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setEditingReport(null);
+              setReportModalOpen(true);
+            }}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold transition shadow-sm cursor-pointer"
+          >
+            + Catat Penjualan E-Commerce
           </button>
           <PdfExportButton targetId="ecommerce-report" filename="laporan-ecommerce-caliofish" />
         </div>
@@ -374,12 +632,13 @@ export default function EcommercePage() {
                 <th className="py-3 px-4 text-right">Target Harian</th>
                 <th className="py-3 px-4 text-center">Gap</th>
                 <th className="py-3 px-4">Pelapor</th>
+                <th className="py-3 px-4 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {displayedReports.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400">
+                  <td colSpan={7} className="py-8 text-center text-slate-400">
                     Tidak ada laporan penjualan online pada rentang tanggal ini.
                   </td>
                 </tr>
@@ -417,6 +676,33 @@ export default function EcommercePage() {
                       <td className="py-3 px-4 text-slate-600 font-medium">
                         {r.employee?.nama || 'Admin / AI Webhook'}
                       </td>
+                      <td className="py-3 px-4 text-right whitespace-nowrap space-x-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingReport(r);
+                            setReportModalOpen(true);
+                          }}
+                          className="px-2.5 py-1 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 cursor-pointer"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!confirm('Hapus laporan penjualan online ini?')) return;
+                            try {
+                              await deleteMarketingOnlineReport(r.id);
+                              await mutate();
+                            } catch (err: any) {
+                              alert(err?.message || 'Gagal menghapus laporan');
+                            }
+                          }}
+                          className="px-2.5 py-1 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-md border border-rose-200 cursor-pointer"
+                        >
+                          Hapus
+                        </button>
+                      </td>
                     </tr>
                   );
                 })
@@ -432,6 +718,20 @@ export default function EcommercePage() {
           platform={targetModalPlatform}
           currentTarget={targetModalPlatform === 'shopee' ? globalShopeeTarget : globalTiktokTarget}
           onClose={() => setTargetModalPlatform(null)}
+          onSaved={() => mutate()}
+        />
+      )}
+
+      {/* Create / Edit Report Modal */}
+      {reportModalOpen && (
+        <EcommerceReportModal
+          editingReport={editingReport}
+          products={data?.products || []}
+          warehouses={data?.warehouses || []}
+          onClose={() => {
+            setReportModalOpen(false);
+            setEditingReport(null);
+          }}
           onSaved={() => mutate()}
         />
       )}

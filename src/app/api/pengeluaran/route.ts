@@ -30,20 +30,27 @@ export async function GET(req: NextRequest) {
       };
     }
 
-    const expenses = await prisma.expense.findMany({
-      where: { date: dateFilter },
-      include: { employee: { select: { nama: true } } },
-      orderBy: { date: 'desc' }
-    });
-
-    const total = await prisma.expense.aggregate({
-      _sum: { amount: true },
-      where: { date: dateFilter }
-    });
+    const [expenses, total, employees] = await Promise.all([
+      prisma.expense.findMany({
+        where: { date: dateFilter },
+        include: { employee: { select: { id: true, nama: true } } },
+        orderBy: { date: 'desc' }
+      }),
+      prisma.expense.aggregate({
+        _sum: { amount: true },
+        where: { date: dateFilter }
+      }),
+      prisma.employee.findMany({
+        where: { status_aktif: true },
+        select: { id: true, nama: true, posisi: true },
+        orderBy: { nama: 'asc' }
+      })
+    ]);
 
     return NextResponse.json(serializeDeep({
       data: expenses,
-      total: Number(total._sum.amount || 0)
+      total: Number(total._sum.amount || 0),
+      employees
     }));
   } catch (error: any) {
     console.error('Error fetching expenses:', error);
@@ -69,7 +76,8 @@ export async function POST(req: NextRequest) {
         category: category || 'OPERASIONAL',
         description,
         employee_id: employee_id || session.id
-      }
+      },
+      include: { employee: { select: { id: true, nama: true } } }
     });
 
     return NextResponse.json(serializeDeep(expense));
@@ -87,7 +95,16 @@ export async function PUT(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { id, title, amount, date, category, description } = body;
+    const { id, title, amount, date, category, description, employee_id } = body;
+
+    const existing = await prisma.expense.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: 'Pengeluaran tidak ditemukan' }, { status: 404 });
+    }
+    const role = (session.role || '').toUpperCase();
+    if (role !== 'OWNER' && role !== 'ADMIN' && existing.employee_id !== session.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     const expense = await prisma.expense.update({
       where: { id },
@@ -96,8 +113,10 @@ export async function PUT(req: NextRequest) {
         amount,
         date: new Date(date),
         category,
-        description
-      }
+        description,
+        ...(employee_id !== undefined ? { employee_id: employee_id || null } : {}),
+      },
+      include: { employee: { select: { id: true, nama: true } } }
     });
 
     return NextResponse.json(serializeDeep(expense));
@@ -117,6 +136,15 @@ export async function DELETE(req: NextRequest) {
     const { searchParams } = req.nextUrl;
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
+
+    const existing = await prisma.expense.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: 'Pengeluaran tidak ditemukan' }, { status: 404 });
+    }
+    const role = (session.role || '').toUpperCase();
+    if (role !== 'OWNER' && role !== 'ADMIN' && existing.employee_id !== session.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     await prisma.expense.delete({ where: { id } });
 

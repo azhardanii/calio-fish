@@ -196,6 +196,7 @@ export async function createOutlet(
         wilayah: data.wilayah || (isDistributor ? user?.wilayah : null),
         status: data.status || 'Active',
         pic: data.pic,
+        has_daily_sales: Boolean(data.has_daily_sales),
         order_baru: data.order_baru || 0,
         tagihan: data.tagihan || 0,
         payment: data.payment || 0,
@@ -206,22 +207,19 @@ export async function createOutlet(
     });
 
     const activeProducts = await tx.product.findMany({ where: { is_active: true } });
-    const stockMap = new Map<string, number>();
-    validInitialItems.forEach(it => stockMap.set(it.product_id, it.qty));
 
-    // Create outlet stocks for all active products
+    // Create outlet stocks initially 0 for all active products (postShipment will increment validInitialItems)
     for (const p of activeProducts) {
-      const initialQty = stockMap.get(p.id) || 0;
       await tx.outletStock.create({
         data: {
           outlet_id: res.id,
           product_id: p.id,
-          quantity: initialQty,
+          quantity: 0,
         }
       });
     }
 
-    // Deduct warehouse stocks and record transactions if initial stocks provided
+    // Deduct warehouse stocks and record transactions + postShipment consignment if initial stocks provided
     if (validInitialItems.length > 0 && resolvedWarehouse) {
       const shipment = await tx.outboundShipment.create({
         data: {
@@ -259,7 +257,7 @@ export async function createOutlet(
           data: {
             product_id: item.product_id,
             type: 'PENGIRIMAN_OUTLET',
-            flow: 'IN',
+            flow: 'OUT',
             qty: item.qty,
             balance: item.qty,
             description: `Stok Awal Outlet ${res.nama} dari gudang ${resolvedWarehouse.name} (Shipment: #${shipment.id.slice(0, 8)})`,
@@ -273,7 +271,12 @@ export async function createOutlet(
         });
       }
 
-      await recalculateOutletFinance(tx, res.id);
+      await postShipment(tx, {
+        outletId: res.id,
+        items: validInitialItems.map(it => ({ productId: it.product_id, qty: it.qty })),
+        date: new Date(),
+        description: `Stok Awal Outlet dari gudang ${resolvedWarehouse.name} (#${shipment.id.slice(0, 8)})`
+      });
     }
 
     return res;
@@ -311,6 +314,9 @@ export async function updateOutlet(id: string, data: any) {
     status: data.status,
     pic: data.pic,
   };
+  if (data.has_daily_sales !== undefined && isOwnerOrAdmin) {
+    updateData.has_daily_sales = Boolean(data.has_daily_sales);
+  }
 
   // Only Owner / Admin can change pengelola_id, distributor_id, and finance figures
   if (isOwnerOrAdmin) {
@@ -431,6 +437,13 @@ export async function resetOutletFinance(outletId: string) {
       where: { outlet_id: outletId }
     });
     await tx.outletTypeStock.deleteMany({
+      where: { outlet_id: outletId }
+    });
+    await tx.outletStock.updateMany({
+      where: { outlet_id: outletId },
+      data: { quantity: 0 }
+    });
+    await tx.outletStockOpname.deleteMany({
       where: { outlet_id: outletId }
     });
     return await tx.outlet.update({
@@ -682,21 +695,136 @@ export async function deleteAffiliator(id: string) {
   revalidatePath('/affiliator');
 }
 
+// Product Type (Kategori Produk) CRUD
+export async function createProductType(data: {
+  code: string;
+  name: string;
+  base_price: number;
+  is_active?: boolean;
+}) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  if (role !== 'OWNER' && role !== 'ADMIN') {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat menambah kategori produk.');
+  }
+
+  const cleanCode = (data.code || '').trim().toUpperCase();
+  const cleanName = (data.name || '').trim();
+  if (!cleanCode || !cleanName) {
+    throw new Error('Kode dan nama kategori produk wajib diisi.');
+  }
+
+  const created = await prisma.productType.create({
+    data: {
+      code: cleanCode,
+      name: cleanName,
+      base_price: new Prisma.Decimal(Number(data.base_price) || 0),
+      is_active: data.is_active !== undefined ? Boolean(data.is_active) : true,
+    }
+  });
+  revalidatePath('/produk');
+  revalidatePath('/outlet');
+  revalidatePath('/overview');
+  return created;
+}
+
+export async function updateProductType(id: string, data: {
+  code?: string;
+  name?: string;
+  base_price?: number;
+  is_active?: boolean;
+}) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  if (role !== 'OWNER' && role !== 'ADMIN') {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat mengubah kategori produk.');
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const pt = await tx.productType.update({
+      where: { id },
+      data: {
+        ...(data.code !== undefined ? { code: data.code.trim().toUpperCase() } : {}),
+        ...(data.name !== undefined ? { name: data.name.trim() } : {}),
+        ...(data.base_price !== undefined ? { base_price: new Prisma.Decimal(Number(data.base_price) || 0) } : {}),
+        ...(data.is_active !== undefined ? { is_active: Boolean(data.is_active) } : {}),
+      }
+    });
+
+    // Keep linked products' legacy category string synced with ProductType name
+    if (data.name !== undefined) {
+      await tx.product.updateMany({
+        where: { product_type_id: id },
+        data: { category: pt.name }
+      });
+    }
+    return pt;
+  });
+
+  revalidatePath('/produk');
+  revalidatePath('/outlet');
+  revalidatePath('/overview');
+  return updated;
+}
+
+export async function deleteProductType(id: string) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  if (role !== 'OWNER' && role !== 'ADMIN') {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat menghapus kategori produk.');
+  }
+
+  const [prodCount, txItemCount, opnameItemCount] = await Promise.all([
+    prisma.product.count({ where: { product_type_id: id } }),
+    prisma.outletTransactionItem.count({ where: { product_type_id: id } }),
+    prisma.outletStockOpnameItem.count({ where: { product_type_id: id } }),
+  ]);
+
+  if (prodCount > 0) {
+    throw new Error(`Kategori masih digunakan oleh ${prodCount} produk. Ubah kategori produk tersebut terlebih dahulu sebelum menghapus.`);
+  }
+  if (txItemCount > 0 || opnameItemCount > 0) {
+    throw new Error('Kategori memiliki riwayat transaksi konsinyasi/opname sehingga tidak boleh dihapus. Nonaktifkan saja statusnya.');
+  }
+
+  await prisma.productType.delete({ where: { id } });
+  revalidatePath('/produk');
+  revalidatePath('/outlet');
+  revalidatePath('/overview');
+  return { success: true };
+}
+
 // Product
 export async function createProduct(data: any) {
-  if (data.base_price !== undefined) data.base_price = Number(data.base_price);
-  if (data.stok !== undefined) data.stok = Number(data.stok);
-  await prisma.product.create({ data });
+  const payload = { ...data };
+  if (payload.base_price !== undefined) payload.base_price = Number(payload.base_price);
+  if (payload.stok !== undefined) payload.stok = Number(payload.stok);
+  if (payload.product_type_id) {
+    const pt = await prisma.productType.findUnique({ where: { id: payload.product_type_id } });
+    if (pt) payload.category = pt.name;
+  } else {
+    payload.product_type_id = null;
+  }
+  await prisma.product.create({ data: payload });
   revalidatePath('/produk');
+  revalidatePath('/outlet');
 }
 export async function updateProduct(id: string, data: any) {
-  if (data.base_price !== undefined) data.base_price = Number(data.base_price);
-  
-  // Pisahkan stok dari data utama agar tidak ter-update sembarangan tanpa lewat ledger
-  const { stok, ...updateData } = data;
-  
+  const payload = { ...data };
+  if (payload.base_price !== undefined) payload.base_price = Number(payload.base_price);
+  if (payload.product_type_id) {
+    const pt = await prisma.productType.findUnique({ where: { id: payload.product_type_id } });
+    if (pt) payload.category = pt.name;
+  } else if (payload.product_type_id === '') {
+    payload.product_type_id = null;
+  }
+
+  // Pisahkan stok dan relasi dari data utama agar tidak ter-update sembarangan tanpa lewat ledger
+  const { stok, id: _id, product_type, created_at, updated_at, ...updateData } = payload;
+
   await prisma.product.update({ where: { id }, data: updateData });
   revalidatePath('/produk');
+  revalidatePath('/outlet');
 }
 export async function deleteProduct(id: string) {
   await prisma.product.delete({ where: { id } });
@@ -2045,6 +2173,13 @@ export async function setOnlineTarget(platform: string, target: number) {
     create: { key, value: target, label }
   });
 
+  // Sync ke SystemSetting agar WhatsApp bot & modul settings membaca angka yang sama
+  await prisma.systemSetting.upsert({
+    where: { key },
+    update: { value: String(target) },
+    create: { key, value: String(target) }
+  });
+
   revalidatePath('/ecommerce');
   revalidatePath('/overview');
   return updated;
@@ -2057,6 +2192,8 @@ export async function createProduksiKegiatan(data: {
   bahan_baku?: number | null;
   bahan_jadi?: number | null;
   total_hasil_pcs?: number | null;
+  hpp_batch?: number | null;
+  employee_id?: string;
   product_id?: string;
   warehouse_id?: string;
 }) {
@@ -2103,7 +2240,8 @@ export async function createProduksiKegiatan(data: {
         bahan_baku: data.bahan_baku !== null && data.bahan_baku !== undefined && !isNaN(Number(data.bahan_baku)) ? Number(data.bahan_baku) : null,
         bahan_jadi: data.bahan_jadi !== null && data.bahan_jadi !== undefined && !isNaN(Number(data.bahan_jadi)) ? Number(data.bahan_jadi) : null,
         total_hasil_pcs: pcs > 0 ? pcs : null,
-        employee_id: user.id,
+        hpp_batch: data.hpp_batch !== null && data.hpp_batch !== undefined && !isNaN(Number(data.hpp_batch)) ? Number(data.hpp_batch) : null,
+        employee_id: data.employee_id || user.id,
       }
     });
 
@@ -2160,6 +2298,38 @@ export async function createProduksiKegiatan(data: {
   return result;
 }
 
+export async function updateProduksiKegiatan(id: string, data: {
+  date?: string;
+  kegiatan?: string;
+  jenis_produksi?: string | null;
+  bahan_baku?: number | null;
+  bahan_jadi?: number | null;
+  total_hasil_pcs?: number | null;
+  hpp_batch?: number | null;
+  employee_id?: string | null;
+}) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const updated = await prisma.produksi.update({
+    where: { id },
+    data: {
+      ...(data.date ? { date: new Date(data.date) } : {}),
+      ...(data.kegiatan !== undefined ? { kegiatan: data.kegiatan.trim() } : {}),
+      ...(data.jenis_produksi !== undefined ? { jenis_produksi: data.jenis_produksi ? data.jenis_produksi.trim() : null } : {}),
+      ...(data.bahan_baku !== undefined ? { bahan_baku: data.bahan_baku !== null && !isNaN(Number(data.bahan_baku)) ? Number(data.bahan_baku) : null } : {}),
+      ...(data.bahan_jadi !== undefined ? { bahan_jadi: data.bahan_jadi !== null && !isNaN(Number(data.bahan_jadi)) ? Number(data.bahan_jadi) : null } : {}),
+      ...(data.total_hasil_pcs !== undefined ? { total_hasil_pcs: data.total_hasil_pcs !== null && !isNaN(Number(data.total_hasil_pcs)) ? Number(data.total_hasil_pcs) : null } : {}),
+      ...(data.hpp_batch !== undefined ? { hpp_batch: data.hpp_batch !== null && !isNaN(Number(data.hpp_batch)) ? Number(data.hpp_batch) : null } : {}),
+      ...(data.employee_id !== undefined ? { employee_id: data.employee_id || null } : {}),
+    }
+  });
+
+  revalidatePath('/produksi');
+  revalidatePath('/overview');
+  return updated;
+}
+
 export async function deleteProduksiKegiatan(id: string) {
   const user = await verifySession();
   if (!user) throw new Error('Tidak terautentikasi');
@@ -2169,6 +2339,840 @@ export async function deleteProduksiKegiatan(id: string) {
   revalidatePath('/produksi');
   revalidatePath('/overview');
   return { success: true };
+}
+
+// ═══════════════════════════════════════════════════════════
+// STOK BAHAN (KEMASAN, BUMBU, KARDUS) CRUD
+// ═══════════════════════════════════════════════════════════
+export async function createStokBahan(data: {
+  tanggal: string;
+  kategori: string;
+  jenis_ukuran: string;
+  masuk?: number;
+  keluar?: number;
+  employee_id?: string;
+}) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const created = await prisma.stokBahan.create({
+    data: {
+      tanggal: data.tanggal ? new Date(data.tanggal) : new Date(),
+      kategori: (data.kategori || 'KEMASAN').toUpperCase(),
+      jenis_ukuran: (data.jenis_ukuran || '-').trim(),
+      masuk: Math.max(0, Number(data.masuk) || 0),
+      keluar: Math.max(0, Number(data.keluar) || 0),
+      employee_id: data.employee_id || user.id,
+    }
+  });
+
+  revalidatePath('/produksi');
+  return created;
+}
+
+export async function updateStokBahan(id: string, data: {
+  tanggal?: string;
+  kategori?: string;
+  jenis_ukuran?: string;
+  masuk?: number;
+  keluar?: number;
+  employee_id?: string | null;
+}) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const updated = await prisma.stokBahan.update({
+    where: { id },
+    data: {
+      ...(data.tanggal ? { tanggal: new Date(data.tanggal) } : {}),
+      ...(data.kategori ? { kategori: data.kategori.toUpperCase() } : {}),
+      ...(data.jenis_ukuran !== undefined ? { jenis_ukuran: data.jenis_ukuran.trim() } : {}),
+      ...(data.masuk !== undefined ? { masuk: Math.max(0, Number(data.masuk) || 0) } : {}),
+      ...(data.keluar !== undefined ? { keluar: Math.max(0, Number(data.keluar) || 0) } : {}),
+      ...(data.employee_id !== undefined ? { employee_id: data.employee_id || null } : {}),
+    }
+  });
+
+  revalidatePath('/produksi');
+  return updated;
+}
+
+export async function deleteStokBahan(id: string) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  await prisma.stokBahan.delete({ where: { id } });
+  revalidatePath('/produksi');
+  return { success: true };
+}
+
+// ═══════════════════════════════════════════════════════════
+// ATTENDANCE / PRESENSI MANUAL CRUD
+// ═══════════════════════════════════════════════════════════
+export async function createAttendanceManual(data: {
+  employee_id: string;
+  date: string;
+  status_kehadiran: string;
+  alasan?: string;
+  waktu?: string;
+}) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  if (!user || (role !== 'OWNER' && role !== 'ADMIN')) {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat mengelola presensi manual.');
+  }
+
+  const targetDate = data.date ? new Date(data.date) : new Date();
+  const waktuDate = data.waktu ? new Date(data.waktu) : new Date();
+
+  const created = await prisma.attendance.create({
+    data: {
+      employee_id: data.employee_id,
+      date: targetDate,
+      waktu: waktuDate,
+      status_kehadiran: (data.status_kehadiran || 'HADIR').toUpperCase(),
+      alasan: data.alasan?.trim() || null,
+    }
+  });
+
+  revalidatePath('/karyawan');
+  revalidatePath('/overview');
+  return created;
+}
+
+export async function updateAttendance(id: string, data: {
+  employee_id?: string;
+  date?: string;
+  waktu?: string;
+  status_kehadiran?: string;
+  alasan?: string | null;
+}) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  if (!user || (role !== 'OWNER' && role !== 'ADMIN')) {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat mengubah presensi.');
+  }
+
+  const updated = await prisma.attendance.update({
+    where: { id },
+    data: {
+      ...(data.employee_id ? { employee_id: data.employee_id } : {}),
+      ...(data.date ? { date: new Date(data.date) } : {}),
+      ...(data.waktu ? { waktu: new Date(data.waktu) } : {}),
+      ...(data.status_kehadiran ? { status_kehadiran: data.status_kehadiran.toUpperCase() } : {}),
+      ...(data.alasan !== undefined ? { alasan: data.alasan?.trim() || null } : {}),
+    }
+  });
+
+  revalidatePath('/karyawan');
+  revalidatePath('/overview');
+  return updated;
+}
+
+export async function deleteAttendance(id: string) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  if (!user || (role !== 'OWNER' && role !== 'ADMIN')) {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat menghapus presensi.');
+  }
+
+  await prisma.attendance.delete({ where: { id } });
+  revalidatePath('/karyawan');
+  revalidatePath('/overview');
+  return { success: true };
+}
+
+// ═══════════════════════════════════════════════════════════
+// MARKETING OFFLINE & ONLINE REPORT CRUD
+// ═══════════════════════════════════════════════════════════
+export async function createMarketingOfflineReport(data: {
+  date: string;
+  jenis_penjualan?: string;
+  employee_id?: string | null;
+  target_bulanan?: number;
+  target_new_outlet?: number;
+  jumlah_outlet_aktif?: number;
+  total_outlet_baru?: number;
+  target_omset_harian?: number;
+  omset_harian?: number;
+  omset_mtd?: number;
+  persentase?: number;
+  gap?: number;
+}) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const created = await prisma.marketingOffline.create({
+    data: {
+      date: data.date ? new Date(data.date) : new Date(),
+      jenis_penjualan: data.jenis_penjualan || 'B2B',
+      employee_id: data.employee_id || user.id,
+      target_bulanan: Number(data.target_bulanan) || 0,
+      target_new_outlet: Number(data.target_new_outlet) || 0,
+      jumlah_outlet_aktif: Number(data.jumlah_outlet_aktif) || 0,
+      total_outlet_baru: Number(data.total_outlet_baru) || 0,
+      target_omset_harian: Number(data.target_omset_harian) || 0,
+      omset_harian: Number(data.omset_harian) || 0,
+      omset_mtd: Number(data.omset_mtd) || 0,
+      persentase: Number(data.persentase) || 0,
+      gap: Number(data.gap) || 0,
+    }
+  });
+
+  revalidatePath('/marketing');
+  revalidatePath('/overview');
+  return created;
+}
+
+export async function updateMarketingOfflineReport(id: string, data: {
+  date?: string;
+  jenis_penjualan?: string;
+  employee_id?: string | null;
+  target_bulanan?: number;
+  target_new_outlet?: number;
+  jumlah_outlet_aktif?: number;
+  total_outlet_baru?: number;
+  target_omset_harian?: number;
+  omset_harian?: number;
+  omset_mtd?: number;
+  persentase?: number;
+  gap?: number;
+}) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const updated = await prisma.marketingOffline.update({
+    where: { id },
+    data: {
+      ...(data.date ? { date: new Date(data.date) } : {}),
+      ...(data.jenis_penjualan !== undefined ? { jenis_penjualan: data.jenis_penjualan } : {}),
+      ...(data.employee_id !== undefined ? { employee_id: data.employee_id || null } : {}),
+      ...(data.target_bulanan !== undefined ? { target_bulanan: Number(data.target_bulanan) || 0 } : {}),
+      ...(data.target_new_outlet !== undefined ? { target_new_outlet: Number(data.target_new_outlet) || 0 } : {}),
+      ...(data.jumlah_outlet_aktif !== undefined ? { jumlah_outlet_aktif: Number(data.jumlah_outlet_aktif) || 0 } : {}),
+      ...(data.total_outlet_baru !== undefined ? { total_outlet_baru: Number(data.total_outlet_baru) || 0 } : {}),
+      ...(data.target_omset_harian !== undefined ? { target_omset_harian: Number(data.target_omset_harian) || 0 } : {}),
+      ...(data.omset_harian !== undefined ? { omset_harian: Number(data.omset_harian) || 0 } : {}),
+      ...(data.omset_mtd !== undefined ? { omset_mtd: Number(data.omset_mtd) || 0 } : {}),
+      ...(data.persentase !== undefined ? { persentase: Number(data.persentase) || 0 } : {}),
+      ...(data.gap !== undefined ? { gap: Number(data.gap) || 0 } : {}),
+    }
+  });
+
+  revalidatePath('/marketing');
+  revalidatePath('/overview');
+  return updated;
+}
+
+export async function deleteMarketingOfflineReport(id: string) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  await prisma.marketingOffline.delete({ where: { id } });
+  revalidatePath('/marketing');
+  revalidatePath('/overview');
+  return { success: true };
+}
+
+export async function createMarketingOnlineReport(data: {
+  date: string;
+  platform: string;
+  omset_harian: number;
+  target_harian?: number;
+  target_bulanan?: number;
+  target_mtd?: number;
+  total_omset_mtd?: number;
+  warehouse_id?: string;
+  items?: Array<{ product_id: string; qty: number }>;
+}) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const platformClean = (data.platform || 'shopee').toLowerCase();
+  const validItems = (data.items || []).filter(i => i.product_id && i.qty > 0);
+  const omsetHarian = Number(data.omset_harian) || 0;
+  const targetHarian = Number(data.target_harian) || 0;
+  const targetMtd = Number(data.target_mtd) || 0;
+  const totalMtd = Number(data.total_omset_mtd) || omsetHarian;
+  const gap = targetHarian > 0 ? omsetHarian - targetHarian : (Number(data.target_bulanan) || 0) - totalMtd;
+  const persentase = targetHarian > 0 ? (omsetHarian / targetHarian) * 100 : 0;
+
+  const created = await prisma.$transaction(async (tx) => {
+    const rec = await tx.marketingOnline.create({
+      data: {
+        date: data.date ? new Date(data.date) : new Date(),
+        platform: platformClean,
+        omset_harian: omsetHarian,
+        target_harian: targetHarian,
+        target_bulanan: Number(data.target_bulanan) || 0,
+        target_mtd: targetMtd,
+        total_omset_mtd: totalMtd,
+        persentase,
+        gap,
+        employee_id: user.id,
+      }
+    });
+
+    if (validItems.length > 0) {
+      let w = data.warehouse_id ? await tx.warehouse.findUnique({ where: { id: data.warehouse_id } }) : null;
+      if (!w) {
+        w = await tx.warehouse.findFirst({ where: { OR: [{ type: 'FACTORY' }, { type: 'STORAGE' }] }, orderBy: { created_at: 'asc' } });
+      }
+      if (!w) throw new Error('Gudang asal tidak ditemukan');
+
+      const shipment = await tx.outboundShipment.create({
+        data: {
+          date: data.date ? new Date(data.date) : new Date(),
+          shipment_type: 'ONLINE',
+          source_type: 'WAREHOUSE',
+          source_name: w.name,
+          destination_type: 'E-Commerce',
+          destination_name: platformClean,
+          status: 'SHIPPED',
+          employee_id: user.id,
+          items: { create: validItems.map(it => ({ product_id: it.product_id, qty: it.qty })) }
+        }
+      });
+
+      for (const it of validItems) {
+        const product = await tx.product.findUnique({ where: { id: it.product_id } });
+        if (!product) throw new Error(`Produk ${it.product_id} tidak ditemukan`);
+        const ws = await tx.warehouseStock.findUnique({
+          where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: product.id } }
+        });
+        const avail = ws?.quantity || 0;
+        if (avail < it.qty) {
+          throw new Error(`Stok "${product.name}" di "${w.name}" tidak mencukupi (Tersedia: ${avail}, Diminta: ${it.qty}).`);
+        }
+        await tx.warehouseStock.update({
+          where: { id: ws!.id },
+          data: { quantity: { decrement: it.qty } }
+        });
+        const newBal = Math.max(0, product.stok - it.qty);
+        await tx.product.update({ where: { id: product.id }, data: { stok: newBal } });
+        await tx.stockTransaction.create({
+          data: {
+            product_id: product.id,
+            type: 'PENJUALAN',
+            flow: 'OUT',
+            qty: it.qty,
+            balance: newBal,
+            description: `Penjualan Online (${platformClean}) dari ${w.name} (#${shipment.id.slice(0, 8)})`,
+            date: data.date ? new Date(data.date) : new Date(),
+            source_type: 'WAREHOUSE',
+            source_id: w.id,
+            destination_type: 'ENDUSER',
+            employee_id: user.id,
+          }
+        });
+      }
+    }
+
+    return rec;
+  });
+
+  revalidatePath('/ecommerce');
+  revalidatePath('/marketing');
+  revalidatePath('/overview');
+  revalidatePath('/warehouse');
+  revalidatePath('/pengiriman');
+  return created;
+}
+
+export async function updateMarketingOnlineReport(id: string, data: {
+  date?: string;
+  platform?: string;
+  omset_harian?: number;
+  target_harian?: number;
+  target_bulanan?: number;
+  target_mtd?: number;
+  total_omset_mtd?: number;
+}) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const updated = await prisma.marketingOnline.update({
+    where: { id },
+    data: {
+      ...(data.date ? { date: new Date(data.date) } : {}),
+      ...(data.platform ? { platform: data.platform.toLowerCase() } : {}),
+      ...(data.omset_harian !== undefined ? { omset_harian: Number(data.omset_harian) || 0 } : {}),
+      ...(data.target_harian !== undefined ? { target_harian: Number(data.target_harian) || 0 } : {}),
+      ...(data.target_bulanan !== undefined ? { target_bulanan: Number(data.target_bulanan) || 0 } : {}),
+      ...(data.target_mtd !== undefined ? { target_mtd: Number(data.target_mtd) || 0 } : {}),
+      ...(data.total_omset_mtd !== undefined ? { total_omset_mtd: Number(data.total_omset_mtd) || 0 } : {}),
+    }
+  });
+
+  revalidatePath('/ecommerce');
+  revalidatePath('/marketing');
+  revalidatePath('/overview');
+  return updated;
+}
+
+export async function deleteMarketingOnlineReport(id: string) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  await prisma.marketingOnline.delete({ where: { id } });
+  revalidatePath('/ecommerce');
+  revalidatePath('/marketing');
+  revalidatePath('/overview');
+  return { success: true };
+}
+
+// ═══════════════════════════════════════════════════════════
+// JADWAL KOL (AFFILIATE) CRUD
+// ═══════════════════════════════════════════════════════════
+export async function createJadwalKOL(data: {
+  affiliate_id: string;
+  jadwal_kirim?: string | null;
+  jadwal_pengerjaan?: string | null;
+  estimasi_upload?: string | null;
+  status?: string;
+}) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const created = await prisma.jadwalKOL.create({
+    data: {
+      affiliate_id: data.affiliate_id,
+      jadwal_kirim: data.jadwal_kirim ? new Date(data.jadwal_kirim) : null,
+      jadwal_pengerjaan: data.jadwal_pengerjaan?.trim() || null,
+      estimasi_upload: data.estimasi_upload ? new Date(data.estimasi_upload) : null,
+      status: (data.status || 'TERJADWAL').toUpperCase(),
+      employee_id: user.id,
+    }
+  });
+
+  revalidatePath('/affiliator');
+  return created;
+}
+
+export async function updateJadwalKOL(id: string, data: {
+  affiliate_id?: string;
+  jadwal_kirim?: string | null;
+  jadwal_pengerjaan?: string | null;
+  estimasi_upload?: string | null;
+  status?: string;
+}) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const updated = await prisma.jadwalKOL.update({
+    where: { id },
+    data: {
+      ...(data.affiliate_id ? { affiliate_id: data.affiliate_id } : {}),
+      ...(data.jadwal_kirim !== undefined ? { jadwal_kirim: data.jadwal_kirim ? new Date(data.jadwal_kirim) : null } : {}),
+      ...(data.jadwal_pengerjaan !== undefined ? { jadwal_pengerjaan: data.jadwal_pengerjaan?.trim() || null } : {}),
+      ...(data.estimasi_upload !== undefined ? { estimasi_upload: data.estimasi_upload ? new Date(data.estimasi_upload) : null } : {}),
+      ...(data.status ? { status: data.status.toUpperCase() } : {}),
+    }
+  });
+
+  revalidatePath('/affiliator');
+  return updated;
+}
+
+export async function deleteJadwalKOL(id: string) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  await prisma.jadwalKOL.delete({ where: { id } });
+  revalidatePath('/affiliator');
+  return { success: true };
+}
+
+// ═══════════════════════════════════════════════════════════
+// DISTRIBUSI SAMPLE CRUD
+// ═══════════════════════════════════════════════════════════
+export async function createDistribusiSample(data: {
+  date: string;
+  jenis_sample: string;
+  total_produk: number;
+  biaya_ekspedisi?: number;
+}) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const created = await prisma.distribusiSample.create({
+    data: {
+      date: data.date ? new Date(data.date) : new Date(),
+      jenis_sample: (data.jenis_sample || 'Sample Produk').trim(),
+      total_produk: Math.max(0, Number(data.total_produk) || 0),
+      biaya_ekspedisi: Math.max(0, Number(data.biaya_ekspedisi) || 0),
+      employee_id: user.id,
+    }
+  });
+
+  revalidatePath('/distribusi-sample');
+  revalidatePath('/pengiriman');
+  return created;
+}
+
+export async function updateDistribusiSample(id: string, data: {
+  date?: string;
+  jenis_sample?: string;
+  total_produk?: number;
+  biaya_ekspedisi?: number;
+}) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const updated = await prisma.distribusiSample.update({
+    where: { id },
+    data: {
+      ...(data.date ? { date: new Date(data.date) } : {}),
+      ...(data.jenis_sample !== undefined ? { jenis_sample: data.jenis_sample.trim() } : {}),
+      ...(data.total_produk !== undefined ? { total_produk: Math.max(0, Number(data.total_produk) || 0) } : {}),
+      ...(data.biaya_ekspedisi !== undefined ? { biaya_ekspedisi: Math.max(0, Number(data.biaya_ekspedisi) || 0) } : {}),
+    }
+  });
+
+  revalidatePath('/distribusi-sample');
+  revalidatePath('/pengiriman');
+  return updated;
+}
+
+export async function deleteDistribusiSample(id: string) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  await prisma.distribusiSample.delete({ where: { id } });
+  revalidatePath('/distribusi-sample');
+  revalidatePath('/pengiriman');
+  return { success: true };
+}
+
+// ═══════════════════════════════════════════════════════════
+// OUTBOUND SHIPMENT, PRODUCTION ENTRY, RETURN, BOOTH & PERSONAL BUYER EDIT/DELETE
+// ═══════════════════════════════════════════════════════════
+export async function updateOutboundShipmentStatus(id: string, data: {
+  status?: string;
+  notes?: string | null;
+  date?: string;
+}) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  if (!user || (role !== 'OWNER' && role !== 'ADMIN')) {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat mengubah status pengiriman.');
+  }
+
+  const updated = await prisma.outboundShipment.update({
+    where: { id },
+    data: {
+      ...(data.status ? { status: data.status } : {}),
+      ...(data.notes !== undefined ? { notes: data.notes } : {}),
+      ...(data.date ? { date: new Date(data.date) } : {}),
+    }
+  });
+
+  revalidatePath('/pengiriman');
+  revalidatePath('/warehouse');
+  return updated;
+}
+
+export async function deleteOutboundShipment(id: string) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  if (!user || (role !== 'OWNER' && role !== 'ADMIN')) {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat menghapus resi pengiriman.');
+  }
+
+  await prisma.outboundShipment.delete({ where: { id } });
+  revalidatePath('/pengiriman');
+  revalidatePath('/warehouse');
+  return { success: true };
+}
+
+export async function updateProductionEntry(id: string, data: {
+  date?: string;
+  qty?: number;
+  notes?: string | null;
+}) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  if (!user || !['OWNER', 'ADMIN', 'PRODUKSI', 'GUDANG'].includes(role)) {
+    throw new Error('Akses ditolak');
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const existing = await tx.productionEntry.findUnique({ where: { id } });
+    if (!existing) throw new Error('Data entri produksi tidak ditemukan');
+
+    const newQty = data.qty !== undefined ? Math.max(1, Number(data.qty)) : existing.qty;
+    const diff = newQty - existing.qty;
+
+    if (diff !== 0) {
+      await tx.warehouseStock.upsert({
+        where: { warehouse_id_product_id: { warehouse_id: existing.warehouse_id, product_id: existing.product_id } },
+        create: { warehouse_id: existing.warehouse_id, product_id: existing.product_id, quantity: Math.max(0, diff) },
+        update: { quantity: { increment: diff } },
+      });
+      await tx.product.update({
+        where: { id: existing.product_id },
+        data: { stok: { increment: diff } }
+      });
+    }
+
+    return await tx.productionEntry.update({
+      where: { id },
+      data: {
+        ...(data.date ? { date: new Date(data.date) } : {}),
+        qty: newQty,
+        ...(data.notes !== undefined ? { notes: data.notes } : {}),
+      }
+    });
+  });
+
+  revalidatePath('/warehouse');
+  revalidatePath('/overview');
+  return result;
+}
+
+export async function deleteProductionEntry(id: string) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  if (!user || !['OWNER', 'ADMIN', 'PRODUKSI', 'GUDANG'].includes(role)) {
+    throw new Error('Akses ditolak');
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const existing = await tx.productionEntry.findUnique({ where: { id } });
+    if (!existing) throw new Error('Data entri produksi tidak ditemukan');
+
+    const ws = await tx.warehouseStock.findUnique({
+      where: { warehouse_id_product_id: { warehouse_id: existing.warehouse_id, product_id: existing.product_id } }
+    });
+    if (ws) {
+      await tx.warehouseStock.update({
+        where: { id: ws.id },
+        data: { quantity: Math.max(0, ws.quantity - existing.qty) }
+      });
+    }
+    const prod = await tx.product.findUnique({ where: { id: existing.product_id } });
+    if (prod) {
+      await tx.product.update({
+        where: { id: prod.id },
+        data: { stok: Math.max(0, prod.stok - existing.qty) }
+      });
+    }
+    await tx.productionEntry.delete({ where: { id } });
+  });
+
+  revalidatePath('/warehouse');
+  revalidatePath('/overview');
+  return { success: true };
+}
+
+export async function deleteWarehouseReturn(id: string) {
+  const user = await verifySession();
+  const role = (user?.role || '').toUpperCase();
+  if (!user || (role !== 'OWNER' && role !== 'ADMIN')) {
+    throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat menghapus catatan retur gudang.');
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const ret = await tx.warehouseReturn.findUnique({
+      where: { id },
+      include: { items: true }
+    });
+    if (!ret) throw new Error('Data retur tidak ditemukan');
+
+    for (const it of ret.items) {
+      const ws = await tx.warehouseStock.findUnique({
+        where: { warehouse_id_product_id: { warehouse_id: ret.warehouse_id, product_id: it.product_id } }
+      });
+      if (ws) {
+        await tx.warehouseStock.update({
+          where: { id: ws.id },
+          data: {
+            quantity: Math.max(0, ws.quantity - it.qty_reusable),
+            returned_qty: Math.max(0, ws.returned_qty - it.qty_reject),
+          }
+        });
+      }
+      if (it.qty_reusable > 0) {
+        const prod = await tx.product.findUnique({ where: { id: it.product_id } });
+        if (prod) {
+          await tx.product.update({
+            where: { id: prod.id },
+            data: { stok: Math.max(0, prod.stok - it.qty_reusable) }
+          });
+        }
+      }
+    }
+
+    await tx.warehouseReturn.delete({ where: { id } });
+  });
+
+  revalidatePath('/warehouse');
+  revalidatePath('/overview');
+  return { success: true };
+}
+
+export async function updatePersonalBuyerTransaction(id: string, data: {
+  buyer_name?: string;
+  product_name?: string;
+  quantity?: number;
+  price_per_unit?: number | null;
+  amount?: number;
+  description?: string | null;
+  date?: string;
+}) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const role = (user.role || '').toUpperCase();
+  const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
+  const existing = await prisma.personalBuyerTransaction.findUnique({ where: { id } });
+  if (!existing) throw new Error('Transaksi tidak ditemukan');
+  if (!isOwnerOrAdmin && existing.employee_id !== user.id) {
+    throw new Error('Akses ditolak');
+  }
+
+  const updated = await prisma.personalBuyerTransaction.update({
+    where: { id },
+    data: {
+      ...(data.buyer_name !== undefined ? { buyer_name: data.buyer_name } : {}),
+      ...(data.product_name !== undefined ? { product_name: data.product_name } : {}),
+      ...(data.quantity !== undefined ? { quantity: Number(data.quantity) || 1 } : {}),
+      ...(data.price_per_unit !== undefined ? { price_per_unit: data.price_per_unit !== null ? Number(data.price_per_unit) : null } : {}),
+      ...(data.amount !== undefined ? { amount: Number(data.amount) || 0 } : {}),
+      ...(data.description !== undefined ? { description: data.description } : {}),
+      ...(data.date ? { date: new Date(data.date) } : {}),
+    }
+  });
+
+  revalidatePath('/marketing');
+  revalidatePath('/overview');
+  return updated;
+}
+
+export async function updateBoothSale(saleId: string, data: {
+  metode_pembayaran?: string;
+  catatan?: string | null;
+  unit_price?: number;
+  qty?: number;
+}) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const result = await prisma.$transaction(async (tx) => {
+    const existing = await tx.boothSale.findUnique({ where: { id: saleId } });
+    if (!existing) throw new Error('Transaksi penjualan booth tidak ditemukan');
+
+    const qty = data.qty !== undefined ? Math.max(1, Number(data.qty)) : existing.qty;
+    const unitPrice = data.unit_price !== undefined ? Number(data.unit_price) : Number(existing.unit_price);
+    const totalPrice = qty * unitPrice;
+    const oldTotal = Number(existing.total_price);
+    const delta = totalPrice - oldTotal;
+
+    const updated = await tx.boothSale.update({
+      where: { id: saleId },
+      data: {
+        ...(data.metode_pembayaran ? { metode_pembayaran: data.metode_pembayaran } : {}),
+        ...(data.catatan !== undefined ? { catatan: data.catatan } : {}),
+        qty,
+        unit_price: new Prisma.Decimal(unitPrice),
+        total_price: new Prisma.Decimal(totalPrice),
+      }
+    });
+
+    if (delta !== 0) {
+      await tx.eventBooth.update({
+        where: { id: existing.booth_id },
+        data: {
+          total_penjualan: { increment: delta },
+          kas_masuk: { increment: delta },
+        }
+      });
+    }
+
+    return updated;
+  });
+
+  revalidatePath('/booth');
+  revalidatePath('/overview');
+  return result;
+}
+
+export async function deleteBoothSale(saleId: string) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  await prisma.$transaction(async (tx) => {
+    const existing = await tx.boothSale.findUnique({
+      where: { id: saleId },
+      include: { bundle: { include: { items: true } } }
+    });
+    if (!existing) throw new Error('Transaksi penjualan booth tidak ditemukan');
+
+    // Restore booth stocks
+    if (existing.bundle_id && existing.bundle) {
+      for (const bi of existing.bundle.items) {
+        await tx.boothStock.updateMany({
+          where: { booth_id: existing.booth_id, product_id: bi.product_id },
+          data: { quantity: { increment: bi.qty * existing.qty } }
+        });
+      }
+    } else if (existing.product_id) {
+      await tx.boothStock.updateMany({
+        where: { booth_id: existing.booth_id, product_id: existing.product_id },
+        data: { quantity: { increment: existing.qty } }
+      });
+    }
+
+    const totalVal = Number(existing.total_price);
+    const booth = await tx.eventBooth.findUnique({ where: { id: existing.booth_id } });
+    if (booth) {
+      await tx.eventBooth.update({
+        where: { id: booth.id },
+        data: {
+          total_penjualan: Math.max(0, Number(booth.total_penjualan) - totalVal),
+          kas_masuk: Math.max(0, Number(booth.kas_masuk) - totalVal),
+        }
+      });
+    }
+
+    await tx.boothSale.delete({ where: { id: saleId } });
+  });
+
+  revalidatePath('/booth');
+  revalidatePath('/overview');
+  return { success: true };
+}
+
+export async function updateBoothBundle(bundleId: string, data: {
+  nama?: string;
+  harga_jual?: number;
+  items?: Array<{ product_id: string; qty: number }>;
+}) {
+  const user = await verifySession();
+  if (!user) throw new Error('Tidak terautentikasi');
+
+  const updated = await prisma.$transaction(async (tx) => {
+    if (data.items) {
+      await tx.boothBundleItem.deleteMany({ where: { bundle_id: bundleId } });
+      await tx.boothBundleItem.createMany({
+        data: data.items.filter(it => it.product_id && it.qty > 0).map(it => ({
+          bundle_id: bundleId,
+          product_id: it.product_id,
+          qty: it.qty
+        }))
+      });
+    }
+    return await tx.boothBundle.update({
+      where: { id: bundleId },
+      data: {
+        ...(data.nama ? { nama: data.nama.trim() } : {}),
+        ...(data.harga_jual !== undefined ? { harga_jual: Number(data.harga_jual) || 0 } : {}),
+      }
+    });
+  });
+
+  revalidatePath('/booth');
+  return updated;
 }
 
 

@@ -8,20 +8,30 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { Download, Edit2, Plus, Trash2 } from 'lucide-react';
-import { createProduksiKegiatan, deleteProduksiKegiatan } from '@/app/actions';
+import {
+  createProduksiKegiatan,
+  updateProduksiKegiatan,
+  deleteProduksiKegiatan,
+  createStokBahan,
+  updateStokBahan,
+  deleteStokBahan,
+} from '@/app/actions';
 
 interface Produksi {
   id: string;
   date: Date;
   kegiatan: string;
+  jenis_produksi?: string | null;
   bahan_baku: number | null;
   bahan_jadi: number | null;
   total_hasil_pcs: number | null;
+  hpp_batch?: number | null;
   employee_name?: string;
 }
 
 export function ProduksiClient({ 
   initialData, 
+  stokBahan = [],
   targetPcs = 200, 
   targetKg = 50, 
   exportButton,
@@ -30,6 +40,7 @@ export function ProduksiClient({
   warehouses = []
 }: { 
   initialData: Produksi[], 
+  stokBahan?: any[],
   targetPcs?: number, 
   targetKg?: number, 
   exportButton?: React.ReactNode,
@@ -37,7 +48,19 @@ export function ProduksiClient({
   products?: any[],
   warehouses?: any[]
 }) {
+  const [activeSubTab, setActiveSubTab] = useState<'produksi' | 'stok_bahan'>('produksi');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingProduksi, setEditingProduksi] = useState<Produksi | null>(null);
+  const [isBahanModalOpen, setIsBahanModalOpen] = useState(false);
+  const [editingBahan, setEditingBahan] = useState<any>(null);
+  const [bahanForm, setBahanForm] = useState({
+    tanggal: new Date().toISOString().split('T')[0],
+    kategori: 'KEMASAN',
+    jenis_ukuran: '',
+    masuk: '',
+    keluar: '',
+  });
+  const [savingBahan, setSavingBahan] = useState(false);
   const [filterKegiatan, setFilterKegiatan] = useState<string>('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
     const today = new Date();
@@ -165,8 +188,73 @@ export function ProduksiClient({
       }));
   }, [filteredData, appliedDateRange]);
 
-  const defaultKegiatan = ['Pembersihan', 'Pengemasan'];
+  const defaultKegiatan = ['Pembersihan', 'Pemotongan', 'Penggorengan', 'Penirisan Minyak', 'Pemberian Bumbu', 'Pengemasan', 'Lainnya'];
   const uniqueKegiatan = Array.from(new Set([...defaultKegiatan, ...initialData.map(p => p.kegiatan)]));
+
+  const stokBahanSummary = useMemo(() => {
+    const map = new Map<string, { kategori: string; jenis_ukuran: string; masuk: number; keluar: number; saldo: number }>();
+    for (const sb of stokBahan || []) {
+      const k = `${sb.kategori}::${sb.jenis_ukuran}`;
+      const cur = map.get(k) || { kategori: sb.kategori, jenis_ukuran: sb.jenis_ukuran, masuk: 0, keluar: 0, saldo: 0 };
+      cur.masuk += Number(sb.masuk || 0);
+      cur.keluar += Number(sb.keluar || 0);
+      cur.saldo = cur.masuk - cur.keluar;
+      map.set(k, cur);
+    }
+    return Array.from(map.values());
+  }, [stokBahan]);
+
+  const openBahanModal = (item?: any) => {
+    if (item) {
+      setEditingBahan(item);
+      setBahanForm({
+        tanggal: new Date(item.tanggal).toISOString().split('T')[0],
+        kategori: item.kategori || 'KEMASAN',
+        jenis_ukuran: item.jenis_ukuran || '',
+        masuk: String(item.masuk || 0),
+        keluar: String(item.keluar || 0),
+      });
+    } else {
+      setEditingBahan(null);
+      setBahanForm({
+        tanggal: new Date().toISOString().split('T')[0],
+        kategori: 'KEMASAN',
+        jenis_ukuran: '',
+        masuk: '',
+        keluar: '',
+      });
+    }
+    setIsBahanModalOpen(true);
+  };
+
+  const handleSaveBahan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bahanForm.jenis_ukuran.trim()) {
+      alert('Jenis / ukuran bahan wajib diisi');
+      return;
+    }
+    setSavingBahan(true);
+    try {
+      const payload = {
+        tanggal: bahanForm.tanggal,
+        kategori: bahanForm.kategori,
+        jenis_ukuran: bahanForm.jenis_ukuran,
+        masuk: Number(bahanForm.masuk) || 0,
+        keluar: Number(bahanForm.keluar) || 0,
+      };
+      if (editingBahan) {
+        await updateStokBahan(editingBahan.id, payload);
+      } else {
+        await createStokBahan(payload);
+      }
+      if (mutate) mutate();
+      setIsBahanModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || 'Gagal menyimpan stok bahan');
+    } finally {
+      setSavingBahan(false);
+    }
+  };
 
   const filterLabel = useMemo(() => {
     if (!appliedDateRange?.from) return 'Lifetime (Semua Waktu)';
@@ -262,10 +350,17 @@ export function ProduksiClient({
           </button>
           
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => { setEditingProduksi(null); setIsModalOpen(true); }}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold cursor-pointer transition-all shadow-sm active:scale-95"
           >
             <Plus size={16} /> Tambah Kegiatan
+          </button>
+
+          <button
+            onClick={() => openBahanModal()}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold cursor-pointer transition-all shadow-sm active:scale-95"
+          >
+            <Plus size={16} /> Input Stok Bahan
           </button>
 
           <button
@@ -282,6 +377,121 @@ export function ProduksiClient({
           )}
         </div>
       </div>
+
+      {/* Sub-Tab Switcher */}
+      <div className="flex gap-2 border-b border-gray-200 pb-3">
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('produksi')}
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition cursor-pointer ${
+            activeSubTab === 'produksi' ? 'bg-slate-900 text-white shadow-xs' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          🏭 Laporan Produksi Harian ({filteredData.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('stok_bahan')}
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition cursor-pointer ${
+            activeSubTab === 'stok_bahan' ? 'bg-emerald-700 text-white shadow-xs' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          📦 Stok Bahan (Kemasan / Bumbu / Kardus) ({stokBahan.length})
+        </button>
+      </div>
+
+      {activeSubTab === 'stok_bahan' ? (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {stokBahanSummary.map((item, idx) => (
+              <div key={idx} className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
+                <div className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">{item.kategori}</div>
+                <div className="font-bold text-gray-900 text-sm mt-0.5">{item.jenis_ukuran}</div>
+                <div className="text-2xl font-black text-slate-900 mt-1">{item.saldo.toLocaleString('id-ID')}</div>
+                <div className="text-[11px] text-gray-500 mt-1">
+                  Masuk: <b className="text-emerald-700">+{item.masuk}</b> • Keluar: <b className="text-rose-600">-{item.keluar}</b>
+                </div>
+              </div>
+            ))}
+            {stokBahanSummary.length === 0 && (
+              <div className="col-span-full text-center py-8 bg-gray-50 rounded-xl border border-dashed text-sm text-gray-500">
+                Belum ada catatan stok bahan. Klik &quot;+ Input Stok Bahan&quot; untuk menambahkan.
+              </div>
+            )}
+          </div>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Log Mutasi Stok Bahan (Kemasan, Bumbu, Kardus)</CardTitle>
+              <button
+                type="button"
+                onClick={() => openBahanModal()}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer"
+              >
+                + Tambah Mutasi Bahan
+              </button>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tanggal</TableHead>
+                    <TableHead>Kategori</TableHead>
+                    <TableHead>Jenis / Ukuran</TableHead>
+                    <TableHead className="text-right">Masuk</TableHead>
+                    <TableHead className="text-right">Keluar</TableHead>
+                    <TableHead>PIC</TableHead>
+                    <TableHead className="text-center">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {stokBahan.map((sb: any) => (
+                    <TableRow key={sb.id} className="hover:bg-gray-50">
+                      <TableCell>{new Date(sb.tanggal).toLocaleDateString('id-ID')}</TableCell>
+                      <TableCell>
+                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 text-xs font-bold">{sb.kategori}</span>
+                      </TableCell>
+                      <TableCell className="font-semibold">{sb.jenis_ukuran}</TableCell>
+                      <TableCell className="text-right font-bold text-emerald-700">{sb.masuk > 0 ? `+${sb.masuk}` : '-'}</TableCell>
+                      <TableCell className="text-right font-bold text-rose-600">{sb.keluar > 0 ? `-${sb.keluar}` : '-'}</TableCell>
+                      <TableCell className="text-gray-600">{sb.employee_name || 'Sistem'}</TableCell>
+                      <TableCell className="text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openBahanModal(sb)}
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg cursor-pointer"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (confirm('Hapus mutasi stok bahan ini?')) {
+                                await deleteStokBahan(sb.id);
+                                if (mutate) mutate();
+                              }
+                            }}
+                            className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {stokBahan.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-gray-500 py-8">Belum ada log mutasi stok bahan.</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <>
 
       {/* Top Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -387,11 +597,12 @@ export function ProduksiClient({
             <TableHeader>
               <TableRow>
                 <TableHead>Tanggal</TableHead>
-                <TableHead>Kegiatan</TableHead>
+                <TableHead>Kegiatan &amp; Jenis</TableHead>
                 <TableHead>Bahan Baku (kg)</TableHead>
                 <TableHead>Bahan Jadi (kg)</TableHead>
                 <TableHead>Rendemen</TableHead>
                 <TableHead>Total Hasil (pcs)</TableHead>
+                <TableHead className="text-right">HPP Batch</TableHead>
                 <TableHead>Diinput Oleh</TableHead>
                 <TableHead className="text-center">Aksi</TableHead>
               </TableRow>
@@ -402,7 +613,10 @@ export function ProduksiClient({
                 return (
                   <TableRow key={p.id} className="hover:bg-gray-50 transition-colors">
                     <TableCell className="font-medium">{new Date(p.date).toLocaleDateString('id-ID')}</TableCell>
-                    <TableCell className="capitalize">{p.kegiatan}</TableCell>
+                    <TableCell className="capitalize">
+                      <div className="font-semibold">{p.kegiatan}</div>
+                      {p.jenis_produksi && <div className="text-[11px] text-gray-500">{p.jenis_produksi}</div>}
+                    </TableCell>
                     <TableCell>{p.bahan_baku ? `${Number(p.bahan_baku)} kg` : '-'}</TableCell>
                     <TableCell>{p.bahan_jadi ? `${Number(p.bahan_jadi)} kg` : '-'}</TableCell>
                     <TableCell>
@@ -413,12 +627,18 @@ export function ProduksiClient({
                       ) : '-'}
                     </TableCell>
                     <TableCell className="font-bold">{p.total_hasil_pcs ? `${p.total_hasil_pcs} pcs` : '-'}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">
+                      {p.hpp_batch ? `Rp ${Number(p.hpp_batch).toLocaleString('id-ID')}` : '-'}
+                    </TableCell>
                     <TableCell className="text-gray-600">{p.employee_name || 'Sistem'}</TableCell>
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-1">
                         <button
-                          title="Info input/edit via sistem & WA"
-                          onClick={() => alert(`Data produksi "${p.kegiatan}" tanggal ${new Date(p.date).toLocaleDateString('id-ID')}.\nUntuk memperbarui data, Anda bisa menambahkan kegiatan revisi atau input baru.`)}
+                          title="Edit baris kegiatan produksi"
+                          onClick={() => {
+                            setEditingProduksi(p);
+                            setIsModalOpen(true);
+                          }}
                           className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                         >
                           <Edit2 size={14} />
@@ -446,18 +666,95 @@ export function ProduksiClient({
               })}
               {filteredData.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-gray-500 py-8">Belum ada data produksi.</TableCell>
+                  <TableCell colSpan={9} className="text-center text-gray-500 py-8">Belum ada data produksi.</TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+        </>
+      )}
 
-      {/* ── MODAL: TAMBAH KEGIATAN PRODUKSI ── */}
+      {/* ── MODAL: STOK BAHAN CRUD ── */}
+      {isBahanModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-[75] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              {editingBahan ? 'Edit Mutasi Stok Bahan' : 'Input Stok Bahan (Kemasan/Bumbu/Kardus)'}
+            </h3>
+            <form onSubmit={handleSaveBahan} className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Tanggal *</label>
+                <input
+                  type="date"
+                  required
+                  value={bahanForm.tanggal}
+                  onChange={e => setBahanForm({ ...bahanForm, tanggal: e.target.value })}
+                  className="w-full p-2 border rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Kategori *</label>
+                <select
+                  value={bahanForm.kategori}
+                  onChange={e => setBahanForm({ ...bahanForm, kategori: e.target.value })}
+                  className="w-full p-2 border rounded-lg text-sm bg-white font-semibold"
+                >
+                  <option value="KEMASAN">KEMASAN</option>
+                  <option value="BUMBU">BUMBU</option>
+                  <option value="KARDUS">KARDUS</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Jenis / Ukuran *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Cth: Standing Pouch 60gr / Bumbu Balado / Kardus Besar"
+                  value={bahanForm.jenis_ukuran}
+                  onChange={e => setBahanForm({ ...bahanForm, jenis_ukuran: e.target.value })}
+                  className="w-full p-2 border rounded-lg text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-emerald-700 block mb-1">Masuk (+)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={bahanForm.masuk}
+                    onChange={e => setBahanForm({ ...bahanForm, masuk: e.target.value })}
+                    className="w-full p-2 border rounded-lg text-sm font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-rose-700 block mb-1">Keluar (-)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={bahanForm.keluar}
+                    onChange={e => setBahanForm({ ...bahanForm, keluar: e.target.value })}
+                    className="w-full p-2 border rounded-lg text-sm font-bold"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t">
+                <button type="button" onClick={() => setIsBahanModalOpen(false)} className="px-4 py-2 text-sm border rounded-lg">Batal</button>
+                <button type="submit" disabled={savingBahan} className="px-4 py-2 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg cursor-pointer">
+                  {savingBahan ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: TAMBAH / EDIT KEGIATAN PRODUKSI ── */}
       {isModalOpen && (
         <TambahKegiatanModal
-          onClose={() => setIsModalOpen(false)}
+          editingItem={editingProduksi}
+          onClose={() => { setIsModalOpen(false); setEditingProduksi(null); }}
           onSaved={() => {
             if (mutate) mutate();
           }}
@@ -470,23 +767,29 @@ export function ProduksiClient({
 }
 
 function TambahKegiatanModal({ 
+  editingItem = null,
   onClose, 
   onSaved,
   products = [],
   warehouses = []
 }: { 
+  editingItem?: Produksi | null;
   onClose: () => void; 
   onSaved: () => void;
   products?: any[];
   warehouses?: any[];
 }) {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [kegiatan, setKegiatan] = useState<'Pembersihan' | 'Pengemasan'>('Pembersihan');
-  const [bahanBaku, setBahanBaku] = useState<string>('');
-  const [bahanJadi, setBahanJadi] = useState<string>('');
+  const [date, setDate] = useState(
+    editingItem ? new Date(editingItem.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+  );
+  const [kegiatan, setKegiatan] = useState<string>(editingItem?.kegiatan || 'Pembersihan');
+  const [jenisProduksi, setJenisProduksi] = useState<string>(editingItem?.jenis_produksi || '');
+  const [bahanBaku, setBahanBaku] = useState<string>(editingItem?.bahan_baku != null ? String(editingItem.bahan_baku) : '');
+  const [bahanJadi, setBahanJadi] = useState<string>(editingItem?.bahan_jadi != null ? String(editingItem.bahan_jadi) : '');
+  const [hppBatch, setHppBatch] = useState<string>(editingItem?.hpp_batch != null ? String(editingItem.hpp_batch) : '');
   const [selectedProductId, setSelectedProductId] = useState<string>(products[0]?.id || '');
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>(warehouses[0]?.id || '');
-  const [totalHasilPcs, setTotalHasilPcs] = useState<string>('');
+  const [totalHasilPcs, setTotalHasilPcs] = useState<string>(editingItem?.total_hasil_pcs != null ? String(editingItem.total_hasil_pcs) : '');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -494,9 +797,11 @@ function TambahKegiatanModal({
     if (warehouses.length > 0 && !selectedWarehouseId) setSelectedWarehouseId(warehouses[0].id);
   }, [products, warehouses, selectedProductId, selectedWarehouseId]);
 
+  const isPengemasan = /kemas|pengemasan|packing/i.test(kegiatan);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (kegiatan === 'Pengemasan') {
+    if (!editingItem && isPengemasan) {
       if (!totalHasilPcs || parseInt(totalHasilPcs, 10) <= 0) {
         alert('Masukkan jumlah hasil kemasan jadi (pcs) yang valid.');
         return;
@@ -510,17 +815,30 @@ function TambahKegiatanModal({
     setLoading(true);
     try {
       const selectedProduct = products.find(p => p.id === selectedProductId);
-      await createProduksiKegiatan({
-        date,
-        kegiatan,
-        jenis_produksi: kegiatan === 'Pengemasan' ? (selectedProduct?.name || selectedProduct?.short_name) : undefined,
-        bahan_baku: bahanBaku ? parseFloat(bahanBaku) : null,
-        bahan_jadi: kegiatan === 'Pembersihan' ? (bahanJadi ? parseFloat(bahanJadi) : null) : null,
-        total_hasil_pcs: kegiatan === 'Pengemasan' && totalHasilPcs ? parseInt(totalHasilPcs, 10) : null,
-        product_id: kegiatan === 'Pengemasan' ? selectedProductId : undefined,
-        warehouse_id: kegiatan === 'Pengemasan' ? (selectedWarehouseId || warehouses[0]?.id) : undefined,
-      });
-      alert(`✅ Kegiatan "${kegiatan}" berhasil dicatat!${kegiatan === 'Pengemasan' ? ' Stok produk & gudang telah bertambah.' : ''}`);
+      if (editingItem) {
+        await updateProduksiKegiatan(editingItem.id, {
+          date,
+          kegiatan,
+          jenis_produksi: jenisProduksi || null,
+          bahan_baku: bahanBaku ? parseFloat(bahanBaku) : null,
+          bahan_jadi: bahanJadi ? parseFloat(bahanJadi) : null,
+          total_hasil_pcs: totalHasilPcs ? parseInt(totalHasilPcs, 10) : null,
+          hpp_batch: hppBatch ? parseFloat(hppBatch) : null,
+        });
+      } else {
+        await createProduksiKegiatan({
+          date,
+          kegiatan,
+          jenis_produksi: jenisProduksi || (isPengemasan ? (selectedProduct?.name || selectedProduct?.short_name) : undefined),
+          bahan_baku: bahanBaku ? parseFloat(bahanBaku) : null,
+          bahan_jadi: bahanJadi ? parseFloat(bahanJadi) : null,
+          total_hasil_pcs: isPengemasan && totalHasilPcs ? parseInt(totalHasilPcs, 10) : (totalHasilPcs ? parseInt(totalHasilPcs, 10) : null),
+          hpp_batch: hppBatch ? parseFloat(hppBatch) : null,
+          product_id: isPengemasan ? selectedProductId : undefined,
+          warehouse_id: isPengemasan ? (selectedWarehouseId || warehouses[0]?.id) : undefined,
+        });
+      }
+      alert(`✅ Kegiatan "${kegiatan}" berhasil ${editingItem ? 'diperbarui' : 'dicatat'}!`);
       onSaved();
       onClose();
     } catch (err: any) {
@@ -536,9 +854,9 @@ function TambahKegiatanModal({
         <div className="flex justify-between items-center pb-3 border-b border-gray-100 mb-4">
           <div>
             <h3 className="text-lg sm:text-xl font-bold text-gray-900 flex items-center gap-2">
-              <span>🏭</span> Tambah Laporan Produksi
+              <span>🏭</span> {editingItem ? 'Edit Laporan Produksi' : 'Tambah Laporan Produksi'}
             </h3>
-            <p className="text-xs text-gray-500 mt-0.5">Pencatatan pembersihan &amp; penambahan stok dari pengemasan</p>
+            <p className="text-xs text-gray-500 mt-0.5">Pencatatan tahapan produksi &amp; pengemasan</p>
           </div>
           <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg cursor-pointer">
             ✕
@@ -546,39 +864,66 @@ function TambahKegiatanModal({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="text-xs font-bold text-gray-700 block mb-1">Tanggal Kegiatan *</label>
-            <input
-              type="date"
-              value={date}
-              onChange={e => setDate(e.target.value)}
-              required
-              className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-gray-700 block mb-1">Tanggal Kegiatan *</label>
+              <input
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                required
+                className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-700 block mb-1">Jenis Kegiatan *</label>
+              <select
+                value={kegiatan}
+                onChange={e => setKegiatan(e.target.value)}
+                className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white font-semibold text-gray-800"
+              >
+                <option value="Pembersihan">Pembersihan</option>
+                <option value="Pemotongan">Pemotongan</option>
+                <option value="Penggorengan">Penggorengan</option>
+                <option value="Penirisan Minyak">Penirisan Minyak</option>
+                <option value="Pemberian Bumbu">Pemberian Bumbu</option>
+                <option value="Pengemasan">Pengemasan (Masuk Stok)</option>
+                <option value="Lainnya">Lainnya</option>
+              </select>
+            </div>
           </div>
 
-          <div>
-            <label className="text-xs font-bold text-gray-700 block mb-1">Jenis Kegiatan *</label>
-            <select
-              value={kegiatan}
-              onChange={e => setKegiatan(e.target.value as 'Pembersihan' | 'Pengemasan')}
-              className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white font-semibold text-gray-800"
-            >
-              <option value="Pembersihan">🐟 Pembersihan (Bahan Beku → Bahan Kering)</option>
-              <option value="Pengemasan">📦 Pengemasan (Bahan Kering → Bahan Jadi Masuk Stok)</option>
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-gray-700 block mb-1">Jenis Produksi / Batch</label>
+              <input
+                type="text"
+                placeholder="Cth: basah / kering / rasa"
+                value={jenisProduksi}
+                onChange={e => setJenisProduksi(e.target.value)}
+                className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-700 block mb-1">HPP Batch (Rp, Opsional)</label>
+              <input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={hppBatch}
+                onChange={e => setHppBatch(e.target.value)}
+                className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white"
+              />
+            </div>
           </div>
 
-          {/* MODE 1: PEMBERSIHAN (HANYA PENCATATAN, TIDAK MASUK STOK) */}
-          {kegiatan === 'Pembersihan' && (
+          {/* MODE NON-PENGEMASAN ATAU EDIT */}
+          {(!isPengemasan || editingItem) && (
             <div className="space-y-3 bg-amber-50/60 p-3.5 rounded-xl border border-amber-200">
-              <div className="text-xs text-amber-900 font-medium leading-relaxed">
-                <span className="font-bold">📝 Catatan Alur:</span> Pembersihan (bahan beku → bahan kering) hanya bersifat pencatatan konversi berat dan <u>tidak menambah stok kemasan</u>.
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-1">Bahan Beku (Kg) *</label>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Bahan Baku (Kg)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -586,12 +931,11 @@ function TambahKegiatanModal({
                     placeholder="0.00"
                     value={bahanBaku}
                     onChange={e => setBahanBaku(e.target.value)}
-                    required
                     className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white font-bold"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-1">Bahan Kering (Kg) *</label>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Bahan Jadi (Kg)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -599,19 +943,29 @@ function TambahKegiatanModal({
                     placeholder="0.00"
                     value={bahanJadi}
                     onChange={e => setBahanJadi(e.target.value)}
-                    required
                     className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white font-bold text-emerald-700"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Hasil (Pcs)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={totalHasilPcs}
+                    onChange={e => setTotalHasilPcs(e.target.value)}
+                    className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white font-bold"
                   />
                 </div>
               </div>
             </div>
           )}
 
-          {/* MODE 2: PENGEMASAN (MASUK KE STOK PRODUK & GUDANG) */}
-          {kegiatan === 'Pengemasan' && (
+          {/* MODE PENGEMASAN BARU (MASUK KE STOK PRODUK & GUDANG) */}
+          {isPengemasan && !editingItem && (
             <div className="space-y-3 bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200">
               <div className="text-xs text-emerald-900 font-medium leading-relaxed">
-                <span className="font-bold">📦 Masuk ke Stok:</span> Hasil pengemasan akan otomatis menambahkan stok produk siap jual dan tercatat masuk ke stok gudang yang dipilih.
+                <span className="font-bold">📦 Masuk ke Stok:</span> Hasil pengemasan otomatis menambah stok produk &amp; gudang yang dipilih.
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

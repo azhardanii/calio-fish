@@ -9,6 +9,7 @@ import {
   completePendingPayment, 
   applyOpname, 
   recalculateOutletFinance,
+  deleteOutletTransactionRecord,
   ConsignmentItemInput 
 } from '@/lib/consignment/finance';
 import { OPNAME_STATUS } from '@/lib/consignment/constants';
@@ -246,15 +247,16 @@ export async function completePendingPaymentAction(
 export async function submitStockOpname(
   outletId: string,
   items: Array<{ productTypeId: string; qtyActual: number }>,
-  notes?: string
+  notes?: string,
+  saveAsDraft: boolean = false
 ) {
   try {
     const user = await verifySession();
     const role = (user?.role || '').toUpperCase();
     const isOwnerOrAdmin = role === 'OWNER' || role === 'ADMIN';
 
-    if (!isOwnerOrAdmin) {
-      return { success: false, error: 'Akses ditolak: Hanya OWNER atau ADMIN yang dapat mengajukan stok opname.' };
+    if (!isOwnerOrAdmin && !saveAsDraft) {
+      return { success: false, error: 'Akses ditolak: Hanya OWNER atau ADMIN yang dapat langsung menyetujui stok opname.' };
     }
 
     const outlet = await prisma.outlet.findUnique({
@@ -297,8 +299,9 @@ export async function submitStockOpname(
         },
       });
 
-      // Auto approve for OWNER/ADMIN
-      await applyOpname(tx, { opnameId: op.id });
+      if (!saveAsDraft && isOwnerOrAdmin) {
+        await applyOpname(tx, { opnameId: op.id });
+      }
       return op;
     });
 
@@ -306,6 +309,110 @@ export async function submitStockOpname(
     revalidatePath('/marketing');
     revalidatePath('/overview');
     return { success: true, data: opname };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function approveStockOpnameAction(opnameId: string) {
+  try {
+    const user = await verifySession();
+    const role = (user?.role || '').toUpperCase();
+    if (role !== 'OWNER' && role !== 'ADMIN') {
+      return { success: false, error: 'Hanya OWNER atau ADMIN yang dapat menyetujui stok opname.' };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await applyOpname(tx, { opnameId });
+    });
+
+    revalidatePath('/outlet');
+    revalidatePath('/marketing');
+    revalidatePath('/overview');
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function rejectStockOpnameAction(opnameId: string) {
+  try {
+    const user = await verifySession();
+    const role = (user?.role || '').toUpperCase();
+    if (role !== 'OWNER' && role !== 'ADMIN') {
+      return { success: false, error: 'Hanya OWNER atau ADMIN yang dapat menolak stok opname.' };
+    }
+
+    await prisma.outletStockOpname.update({
+      where: { id: opnameId },
+      data: { status: OPNAME_STATUS.REJECTED },
+    });
+
+    revalidatePath('/outlet');
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateOutletTransactionAction(
+  transactionId: string,
+  data: { description?: string; date?: string; amount?: number }
+) {
+  try {
+    const user = await verifySession();
+    const role = (user?.role || '').toUpperCase();
+    if (role !== 'OWNER' && role !== 'ADMIN') {
+      return { success: false, error: 'Hanya OWNER atau ADMIN yang dapat mengedit transaksi outlet.' };
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const existing = await tx.outletTransaction.findUnique({ where: { id: transactionId } });
+      if (!existing) throw new Error('Transaksi tidak ditemukan');
+
+      const updatePayload: any = {};
+      if (data.description !== undefined) updatePayload.description = data.description;
+      if (data.date) updatePayload.date = new Date(data.date);
+      if (data.amount !== undefined && existing.type === 'PIUTANG_MANUAL') {
+        const amt = Number(data.amount) || 0;
+        updatePayload.amount = new Prisma.Decimal(amt);
+        updatePayload.piutang_delta = new Prisma.Decimal(amt);
+      }
+
+      const txRec = await tx.outletTransaction.update({
+        where: { id: transactionId },
+        data: updatePayload,
+      });
+
+      await recalculateOutletFinance(tx, existing.outlet_id);
+      return txRec;
+    });
+
+    revalidatePath('/outlet');
+    revalidatePath('/marketing');
+    revalidatePath('/overview');
+    return { success: true, data: updated };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function deleteOutletTransactionAction(transactionId: string) {
+  try {
+    const user = await verifySession();
+    const role = (user?.role || '').toUpperCase();
+    if (role !== 'OWNER' && role !== 'ADMIN') {
+      return { success: false, error: 'Hanya OWNER atau ADMIN yang dapat menghapus transaksi outlet.' };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await deleteOutletTransactionRecord(tx, { transactionId });
+    });
+
+    revalidatePath('/outlet');
+    revalidatePath('/marketing');
+    revalidatePath('/overview');
+    return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
   }

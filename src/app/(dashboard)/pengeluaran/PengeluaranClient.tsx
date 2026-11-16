@@ -15,10 +15,19 @@ interface Expense {
   date: string;
   category: string;
   description: string;
-  employee?: { nama: string };
+  employee_id?: string | null;
+  employee?: { id?: string; nama: string } | null;
 }
 
-export function PengeluaranClient({ initialData, exportButton }: { initialData: Expense[], exportButton?: React.ReactNode }) {
+export function PengeluaranClient({
+  initialData,
+  employees = [],
+  exportButton,
+}: {
+  initialData: Expense[];
+  employees?: Array<{ id: string; nama: string; posisi?: string }>;
+  exportButton?: React.ReactNode;
+}) {
   const [data, setData] = useState<Expense[]>(initialData);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
     const today = new Date();
@@ -37,7 +46,8 @@ export function PengeluaranClient({ initialData, exportButton }: { initialData: 
     amount: '',
     date: new Date().toISOString().slice(0, 10),
     category: 'OPERASIONAL',
-    description: ''
+    description: '',
+    employee_id: ''
   });
 
   const filteredData = useMemo(() => {
@@ -84,7 +94,8 @@ export function PengeluaranClient({ initialData, exportButton }: { initialData: 
         amount: item.amount.toString(),
         date: new Date(item.date).toISOString().slice(0, 10),
         category: item.category,
-        description: item.description || ''
+        description: item.description || '',
+        employee_id: item.employee_id || item.employee?.id || ''
       });
     } else {
       setEditingItem(null);
@@ -93,7 +104,8 @@ export function PengeluaranClient({ initialData, exportButton }: { initialData: 
         amount: '',
         date: new Date().toISOString().slice(0, 10),
         category: 'OPERASIONAL',
-        description: ''
+        description: '',
+        employee_id: ''
       });
     }
     setIsModalOpen(true);
@@ -107,7 +119,8 @@ export function PengeluaranClient({ initialData, exportButton }: { initialData: 
       const body = {
         ...formData,
         id: editingItem?.id,
-        amount: Number(formData.amount)
+        amount: Number(formData.amount),
+        employee_id: formData.employee_id || undefined
       };
 
       const res = await fetch(url, {
@@ -121,7 +134,7 @@ export function PengeluaranClient({ initialData, exportButton }: { initialData: 
       const savedData = await res.json();
       
       if (editingItem) {
-        setData(data.map(item => item.id === savedData.id ? { ...savedData, employee: item.employee } : item));
+        setData(data.map(item => item.id === savedData.id ? { ...savedData, employee: savedData.employee || item.employee } : item));
       } else {
         setData([savedData, ...data]);
       }
@@ -322,6 +335,24 @@ export function PengeluaranClient({ initialData, exportButton }: { initialData: 
                   <label className="text-sm font-semibold text-gray-700">Jumlah (Rp)</label>
                   <input type="number" required placeholder="150000" min="0" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold text-gray-900" />
                 </div>
+
+                {employees.length > 0 && (
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold text-gray-700">PIC / Karyawan (Opsional)</label>
+                    <select
+                      value={formData.employee_id}
+                      onChange={e => setFormData({ ...formData, employee_id: e.target.value })}
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
+                    >
+                      <option value="">Otomatis (Akun Login Saat Ini)</option>
+                      {employees.map(emp => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.nama}{emp.posisi ? ` (${emp.posisi})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div className="space-y-1.5">
                   <label className="text-sm font-semibold text-gray-700">Catatan Tambahan (Opsional)</label>

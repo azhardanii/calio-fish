@@ -1,7 +1,15 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { createAffiliator, updateAffiliator, deleteAffiliator, sendAffiliateSample } from '@/app/actions';
+import {
+  createAffiliator,
+  updateAffiliator,
+  deleteAffiliator,
+  sendAffiliateSample,
+  createJadwalKOL,
+  updateJadwalKOL,
+  deleteJadwalKOL,
+} from '@/app/actions';
 import { formatCurrency } from '@/lib/utils';
 import { DateRange } from 'react-day-picker';
 
@@ -30,6 +38,31 @@ export function AffiliatorManager({
   // Send Sample Modal State
   const [isSendSampleModalOpen, setIsSendSampleModalOpen] = useState(false);
   const [selectedAffiliateForSample, setSelectedAffiliateForSample] = useState<any>(null);
+
+  // Tab & Jadwal KOL State
+  const [activeSubTab, setActiveSubTab] = useState<'database' | 'jadwal'>('database');
+  const [jadwalModalOpen, setJadwalModalOpen] = useState(false);
+  const [editingJadwal, setEditingJadwal] = useState<any>(null);
+  const [jadwalForm, setJadwalForm] = useState({
+    affiliate_id: '',
+    jadwal_kirim: '',
+    jadwal_pengerjaan: '',
+    estimasi_upload: '',
+    status: 'PENDING',
+  });
+  const [savingJadwal, setSavingJadwal] = useState(false);
+
+  const jadwalList = useMemo(() => {
+    const rows: any[] = [];
+    for (const aff of affiliators) {
+      for (const j of aff.jadwal || []) {
+        rows.push({ ...j, affiliate: aff });
+      }
+    }
+    return rows.sort(
+      (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+    );
+  }, [affiliators]);
 
   // Filtered affiliators by search
   const filteredAffiliators = useMemo(() => {
@@ -164,6 +197,145 @@ export function AffiliatorManager({
         </div>
       </div>
 
+      {/* Sub-navigation Tabs */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('database')}
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition cursor-pointer ${
+            activeSubTab === 'database'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          👥 Database Affiliator ({filteredAffiliators.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('jadwal')}
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition cursor-pointer ${
+            activeSubTab === 'jadwal'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          📅 Jadwal KOL / Endorse ({jadwalList.length})
+        </button>
+      </div>
+
+      {activeSubTab === 'jadwal' ? (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Jadwal Pengiriman, Pengerjaan &amp; Upload KOL</h2>
+              <p className="text-xs text-slate-500">Kelola jadwal endorsement yang sebelumnya hanya bisa diinput lewat WA bot</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingJadwal(null);
+                setJadwalForm({
+                  affiliate_id: affiliators[0]?.id || '',
+                  jadwal_kirim: '',
+                  jadwal_pengerjaan: '',
+                  estimasi_upload: '',
+                  status: 'PENDING',
+                });
+                setJadwalModalOpen(true);
+              }}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
+            >
+              + Tambah Jadwal KOL
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50/75 border-b border-slate-200 text-slate-600 uppercase text-[11px] tracking-wider font-semibold">
+                <tr>
+                  <th className="p-3.5 pl-5">Affiliator / KOL</th>
+                  <th className="p-3.5">Jadwal Kirim Sample</th>
+                  <th className="p-3.5">Jadwal Pengerjaan</th>
+                  <th className="p-3.5">Estimasi Upload</th>
+                  <th className="p-3.5 text-center">Status</th>
+                  <th className="p-3.5 pr-5 text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {jadwalList.map((j: any) => (
+                  <tr key={j.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="p-3.5 pl-5">
+                      <div className="font-bold text-slate-900">{j.affiliate?.nama || '-'}</div>
+                      <div className="text-xs text-blue-600">{j.affiliate?.akun_medsos || ''}</div>
+                    </td>
+                    <td className="p-3.5 text-slate-700 text-xs">
+                      {j.jadwal_kirim ? new Date(j.jadwal_kirim).toLocaleDateString('id-ID') : '-'}
+                    </td>
+                    <td className="p-3.5 text-slate-700 text-xs">
+                      {j.jadwal_pengerjaan || '-'}
+                    </td>
+                    <td className="p-3.5 text-slate-700 text-xs">
+                      {j.estimasi_upload ? new Date(j.estimasi_upload).toLocaleDateString('id-ID') : '-'}
+                    </td>
+                    <td className="p-3.5 text-center">
+                      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                        j.status === 'SELESAI'
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : j.status === 'PROSES'
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                          : 'bg-slate-100 text-slate-700 border border-slate-200'
+                      }`}>
+                        {j.status || 'PENDING'}
+                      </span>
+                    </td>
+                    <td className="p-3.5 pr-5 text-right space-x-1.5 whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingJadwal(j);
+                          setJadwalForm({
+                            affiliate_id: j.affiliate_id,
+                            jadwal_kirim: j.jadwal_kirim ? new Date(j.jadwal_kirim).toISOString().split('T')[0] : '',
+                            jadwal_pengerjaan: j.jadwal_pengerjaan || '',
+                            estimasi_upload: j.estimasi_upload ? new Date(j.estimasi_upload).toISOString().split('T')[0] : '',
+                            status: j.status || 'PENDING',
+                          });
+                          setJadwalModalOpen(true);
+                        }}
+                        className="px-2.5 py-1 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 cursor-pointer"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!confirm('Hapus jadwal KOL ini?')) return;
+                          try {
+                            await deleteJadwalKOL(j.id);
+                            mutate();
+                          } catch (err: any) {
+                            alert(err?.message || 'Gagal menghapus jadwal');
+                          }
+                        }}
+                        className="px-2.5 py-1 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded border border-rose-200 cursor-pointer"
+                      >
+                        Hapus
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {jadwalList.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="text-center text-slate-400 py-10">
+                      Belum ada jadwal KOL tercatat.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+      <>
       {/* Action Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
         <div className="relative flex-1 max-w-md">
@@ -346,6 +518,139 @@ export function AffiliatorManager({
           </table>
         </div>
       </div>
+      </>
+      )}
+
+      {/* MODAL: TAMBAH / EDIT JADWAL KOL */}
+      {jadwalModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[75] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between border-b pb-3 mb-4">
+              <h3 className="text-lg font-bold text-slate-900">
+                {editingJadwal ? '✏️ Edit Jadwal KOL' : '📅 Tambah Jadwal KOL'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setJadwalModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!jadwalForm.affiliate_id) {
+                  alert('Pilih affiliator terlebih dahulu');
+                  return;
+                }
+                setSavingJadwal(true);
+                try {
+                  if (editingJadwal) {
+                    await updateJadwalKOL(editingJadwal.id, {
+                      jadwal_kirim: jadwalForm.jadwal_kirim || null,
+                      jadwal_pengerjaan: jadwalForm.jadwal_pengerjaan || null,
+                      estimasi_upload: jadwalForm.estimasi_upload || null,
+                      status: jadwalForm.status,
+                    });
+                  } else {
+                    await createJadwalKOL({
+                      affiliate_id: jadwalForm.affiliate_id,
+                      jadwal_kirim: jadwalForm.jadwal_kirim || null,
+                      jadwal_pengerjaan: jadwalForm.jadwal_pengerjaan || null,
+                      estimasi_upload: jadwalForm.estimasi_upload || null,
+                      status: jadwalForm.status,
+                    });
+                  }
+                  setJadwalModalOpen(false);
+                  mutate();
+                } catch (err: any) {
+                  alert(err?.message || 'Gagal menyimpan jadwal KOL');
+                } finally {
+                  setSavingJadwal(false);
+                }
+              }}
+              className="space-y-3.5"
+            >
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Affiliator / KOL *</label>
+                <select
+                  required
+                  disabled={Boolean(editingJadwal)}
+                  value={jadwalForm.affiliate_id}
+                  onChange={(e) => setJadwalForm({ ...jadwalForm, affiliate_id: e.target.value })}
+                  className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-white disabled:bg-slate-100"
+                >
+                  <option value="">-- Pilih Affiliator --</option>
+                  {affiliators.map((a: any) => (
+                    <option key={a.id} value={a.id}>
+                      {a.nama} ({a.akun_medsos || '-'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Jadwal Kirim</label>
+                  <input
+                    type="date"
+                    value={jadwalForm.jadwal_kirim}
+                    onChange={(e) => setJadwalForm({ ...jadwalForm, jadwal_kirim: e.target.value })}
+                    className="w-full border border-slate-200 rounded-xl p-2 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Pengerjaan</label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: 3 hari / 20 Nov"
+                    value={jadwalForm.jadwal_pengerjaan}
+                    onChange={(e) => setJadwalForm({ ...jadwalForm, jadwal_pengerjaan: e.target.value })}
+                    className="w-full border border-slate-200 rounded-xl p-2 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Est. Upload</label>
+                  <input
+                    type="date"
+                    value={jadwalForm.estimasi_upload}
+                    onChange={(e) => setJadwalForm({ ...jadwalForm, estimasi_upload: e.target.value })}
+                    className="w-full border border-slate-200 rounded-xl p-2 text-xs"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Status</label>
+                <select
+                  value={jadwalForm.status}
+                  onChange={(e) => setJadwalForm({ ...jadwalForm, status: e.target.value })}
+                  className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-white font-semibold"
+                >
+                  <option value="PENDING">PENDING</option>
+                  <option value="PROSES">PROSES</option>
+                  <option value="SELESAI">SELESAI</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setJadwalModalOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingJadwal}
+                  className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl disabled:opacity-50 cursor-pointer"
+                >
+                  {savingJadwal ? 'Menyimpan...' : 'Simpan Jadwal'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL: KIRIM SAMPLE / PRODUK KE AFFILIATE */}
       {isSendSampleModalOpen && (

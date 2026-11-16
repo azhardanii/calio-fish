@@ -4,8 +4,10 @@ import { parseWhatsAppReport } from '@/lib/ai-parser';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { recalculateOutletFinance } from '@/app/actions';
-import { postPayment } from '@/lib/consignment/finance';
+import { postPayment, postShipment } from '@/lib/consignment/finance';
 import { TRANSACTION_TYPES, BREAKDOWN_STATUS } from '@/lib/consignment/constants';
+import { matchProductType } from '@/lib/consignment/product-type-match';
+import { getOnlineTarget } from '@/lib/settings';
 
 const ADMIN_PHONE = process.env.WA_ADMIN_PHONE || '6285157991798';
 const TARGET_GROUP_ID = process.env.WA_GROUP_ID || '120363293055467760@g.us';
@@ -655,7 +657,10 @@ export async function POST(req: Request) {
         let targetKey = 'shopee_target_mtd';
         if (pf.includes('tiktok')) targetKey = 'tiktok_target_mtd';
         const targetObj = await prisma.systemSetting.findUnique({ where: { key: targetKey }});
-        const targetVal = Number(targetObj?.value ?? 0);
+        let targetVal = Number(targetObj?.value ?? 0);
+        if (!targetVal) {
+          targetVal = await getOnlineTarget(pf.includes('tiktok') ? 'tiktok' : 'shopee');
+        }
         const gap = Number(targetVal) - Number(currentMtd);
         const percentage = Number(targetVal) > 0 ? ((Number(currentMtd) / Number(targetVal)) * 100).toFixed(1) : 0;
 
@@ -711,6 +716,7 @@ export async function POST(req: Request) {
                   );
                 }
 
+                const outboundItemsPayload: Array<{ product_id: string; qty: number }> = [];
                 for (const item of items) {
                   if (item.product_key && item.qty > 0) {
                     const product = await tx.product.findUnique({ where: { sku: item.product_key } });
@@ -720,6 +726,7 @@ export async function POST(req: Request) {
                       
                       const newBalance = product.stok - item.qty;
                       await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
+                      outboundItemsPayload.push({ product_id: product.id, qty: item.qty });
                       
                       await tx.stockTransaction.create({
                         data: {
@@ -738,6 +745,22 @@ export async function POST(req: Request) {
                       });
                     }
                   }
+                }
+                if (outboundItemsPayload.length > 0) {
+                  await tx.outboundShipment.create({
+                    data: {
+                      date: new Date(parsedData.date),
+                      destination_type: 'E-Commerce',
+                      destination_name: entry.platform || 'Online',
+                      source_type: 'WAREHOUSE',
+                      source_name: w.name,
+                      shipment_type: 'DISTRIBUSI',
+                      employee_id: employeeId,
+                      status: 'SHIPPED',
+                      notes: `Penjualan Online Multi (${entry.platform || 'Online'})`,
+                      items: { create: outboundItemsPayload }
+                    }
+                  });
                 }
               }
             }
@@ -1032,10 +1055,14 @@ export async function POST(req: Request) {
             }
 
             // 5. Process Items and Stocks
-            let totalBilling = 0;
+            const outletShipmentItems: Array<{ productId: string; qty: number }> = [];
+            const returWarehouseItems: Array<{ productId: string; qtyReturned: number; qtyReusable: number; qtyReject: number; unitPrice: number; productTypeId: string | null }> = [];
             for (const item of items) {
                if (item.product_key && item.qty > 0) {
-                 const product = await tx.product.findUnique({ where: { sku: item.product_key } });
+                 const product = await tx.product.findUnique({
+                   where: { sku: item.product_key },
+                   include: { product_type: true },
+                 });
                  if (product) {
                    await tx.outboundItem.create({
                      data: { shipment_id: shipment.id, product_id: product.id, qty: item.qty }
@@ -1049,7 +1076,7 @@ export async function POST(req: Request) {
                      }
                    } else if (srcType === 'OUTLET' && sourceId) {
                      const os = await tx.outletStock.findUnique({ where: { outlet_id_product_id: { outlet_id: sourceId, product_id: product.id } }});
-                     if (os) await tx.outletStock.update({ where: { id: os.id }, data: { quantity: os.quantity - item.qty }});
+                     if (os) await tx.outletStock.update({ where: { id: os.id }, data: { quantity: Math.max(0, os.quantity - item.qty) }});
                    } else if (srcType === 'BOOTH' && sourceId) {
                      const bs = await tx.boothStock.findUnique({ where: { booth_id_product_id: { booth_id: sourceId, product_id: product.id } }});
                      if (bs) await tx.boothStock.update({ where: { id: bs.id }, data: { quantity: Math.max(0, bs.quantity - item.qty) }});
@@ -1058,10 +1085,30 @@ export async function POST(req: Request) {
                    // Increment Destination Stock (If internal transfer)
                    if ((destType === 'WAREHOUSE' || destType === 'DISTRIBUTOR') && destId) {
                      const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: destId, product_id: product.id } }});
+                     const qReusable = Math.max(0, Number(item.qty_reusable) || 0);
+                     const qReject = kategori === 'RETUR'
+                       ? (qReusable > 0 ? Math.max(0, item.qty - qReusable) : item.qty)
+                       : 0;
+                     if (kategori === 'RETUR') {
+                       returWarehouseItems.push({
+                         productId: product.id,
+                         qtyReturned: item.qty,
+                         qtyReusable: qReusable,
+                         qtyReject: qReject,
+                         unitPrice: Number(product.product_type?.base_price || product.base_price || 0),
+                         productTypeId: product.product_type_id,
+                       });
+                     }
                      if (ws) {
-                       // If RETUR, add to returned_qty. If PENGEMBALIAN_BOOTH, add to healthy active quantity!
+                       // If RETUR, add reusable to quantity & reject to returned_qty. If PENGEMBALIAN_BOOTH, add to active quantity!
                        if (kategori === 'RETUR') {
-                         await tx.warehouseStock.update({ where: { id: ws.id }, data: { returned_qty: ws.returned_qty + item.qty }});
+                         await tx.warehouseStock.update({
+                           where: { id: ws.id },
+                           data: {
+                             quantity: ws.quantity + qReusable,
+                             returned_qty: ws.returned_qty + qReject,
+                           },
+                         });
                        } else {
                          await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity + item.qty }});
                        }
@@ -1070,28 +1117,14 @@ export async function POST(req: Request) {
                          data: {
                            warehouse_id: destId,
                            product_id: product.id,
-                           quantity: kategori === 'RETUR' ? 0 : item.qty,
-                           returned_qty: kategori === 'RETUR' ? item.qty : 0
+                           quantity: kategori === 'RETUR' ? qReusable : item.qty,
+                           returned_qty: kategori === 'RETUR' ? qReject : 0
                          }
                        });
                      }
                    } else if (destType === 'OUTLET' && destId) {
-                     const os = await tx.outletStock.findUnique({ where: { outlet_id_product_id: { outlet_id: destId, product_id: product.id } }});
-                     let hargaBeli = product.base_price;
-                     if (os) {
-                       await tx.outletStock.update({ where: { id: os.id }, data: { quantity: os.quantity + item.qty }});
-                       if (os.harga_beli) hargaBeli = os.harga_beli;
-                     } else {
-                       await tx.outletStock.create({
-                         data: {
-                           outlet_id: destId,
-                           product_id: product.id,
-                           quantity: item.qty,
-                           harga_beli: product.base_price
-                         }
-                       });
-                     }
-                     totalBilling += (Number(hargaBeli) * item.qty);
+                     // Consignment postShipment will upsert OutletStock, OutletTypeStock, and OutletTransaction SHIPMENT
+                     outletShipmentItems.push({ productId: product.id, qty: item.qty });
                    } else if (destType === 'BOOTH' && destId) {
                      await tx.boothStock.upsert({
                        where: { booth_id_product_id: { booth_id: destId, product_id: product.id } },
@@ -1116,7 +1149,7 @@ export async function POST(req: Request) {
                        }
                      }
                    } else if (!['WAREHOUSE', 'OUTLET', 'DISTRIBUTOR'].includes(destType) || kategori === 'RETUR') {
-                     newBalance -= item.qty;
+                     newBalance = Math.max(0, newBalance - item.qty);
                      await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
                    }
                    
@@ -1143,7 +1176,56 @@ export async function POST(req: Request) {
                }
              }
 
-             if (destType === 'OUTLET' && destId && totalBilling > 0) {
+             // Log WarehouseReturn (+ deduct OutletTypeStock if return came from OUTLET)
+             if (kategori === 'RETUR' && destId && returWarehouseItems.length > 0) {
+               await tx.warehouseReturn.create({
+                 data: {
+                   date: parsedData.date ? new Date(parsedData.date) : new Date(),
+                   warehouse_id: destId,
+                   source_type: srcType,
+                   source_id: sourceId,
+                   source_name: resolvedSourceName,
+                   notes: `Otomatis dari Laporan WA (${shipment.id.slice(0, 8)})`,
+                   items: {
+                     create: returWarehouseItems.map(r => ({
+                       product_id: r.productId,
+                       qty_returned: r.qtyReturned,
+                       qty_reusable: r.qtyReusable,
+                       qty_reject: r.qtyReject,
+                     })),
+                   },
+                 },
+               });
+
+               if (srcType === 'OUTLET' && sourceId) {
+                 for (const r of returWarehouseItems) {
+                   if (!r.productTypeId) continue;
+                   const ots = await tx.outletTypeStock.findUnique({
+                     where: { outlet_id_product_type_id: { outlet_id: sourceId, product_type_id: r.productTypeId } },
+                   });
+                   const price = ots?.harga_beli != null ? Number(ots.harga_beli) : r.unitPrice;
+                   const val = r.qtyReturned * price;
+                   await tx.outletTypeStock.updateMany({
+                     where: { outlet_id: sourceId, product_type_id: r.productTypeId },
+                     data: { quantity: { decrement: r.qtyReturned } },
+                   });
+                   await tx.outletTransaction.create({
+                     data: {
+                       outlet_id: sourceId,
+                       type: TRANSACTION_TYPES.RETURN,
+                       amount: new Prisma.Decimal(val),
+                       valuasi_delta: new Prisma.Decimal(-val),
+                       piutang_delta: new Prisma.Decimal(0),
+                       description: `Retur WA (${r.qtyReturned} pcs) ke ${destName}`,
+                       date: parsedData.date ? new Date(parsedData.date) : new Date(),
+                     },
+                   });
+                 }
+                 await recalculateOutletFinance(tx, sourceId);
+               }
+             }
+
+             if (destType === 'OUTLET' && destId && outletShipmentItems.length > 0) {
                const outlet = await tx.outlet.findUnique({ where: { id: destId } });
                if (outlet) {
                  await tx.outlet.update({
@@ -1152,16 +1234,12 @@ export async function POST(req: Request) {
                      order_baru: outlet.order_baru + 1
                    }
                  });
-                 await tx.outletTransaction.create({
-                   data: {
-                     outlet_id: destId,
-                     type: 'BILLING',
-                     amount: totalBilling,
-                     description: `Otomatis dari Laporan WA (ID: ${shipment.id})`,
-                     date: parsedData.date ? new Date(parsedData.date) : new Date()
-                   }
+                 await postShipment(tx, {
+                   outletId: destId,
+                   items: outletShipmentItems,
+                   date: parsedData.date ? new Date(parsedData.date) : new Date(),
+                   description: `Otomatis dari Laporan WA (ID: ${shipment.id.slice(0, 8)})`,
                  });
-                 await recalculateOutletFinance(tx, destId);
                }
              }
           }
@@ -1220,29 +1298,46 @@ export async function POST(req: Request) {
         const tgl = parsedData.date ? new Date(parsedData.date) : new Date();
 
         if (data.jenis_transaksi === 'PELUNASAN') {
-          // Parse reported items per product type / gramasi if provided
+          // Parse reported items per product type / kategori dynamically + optional variants
           let parsedItems: any[] | undefined = undefined;
           if (Array.isArray(data.items) && data.items.length > 0) {
-            const allTypes = await prisma.productType.findMany();
+            const [allTypes, allProducts] = await Promise.all([
+              prisma.productType.findMany({ where: { is_active: true } }),
+              prisma.product.findMany({ select: { id: true, sku: true, name: true, short_name: true, product_type_id: true } }),
+            ]);
             parsedItems = [];
             for (const it of data.items) {
-              const rawKind = (it.jenis || '').toLowerCase();
+              const rawKind = (it.jenis || '').trim();
               const qty = Number(it.qty) || 0;
               if (qty <= 0) continue;
 
-              const matched = allTypes.find((pt) => {
-                const c = pt.code.toLowerCase();
-                const n = pt.name.toLowerCase();
-                if (rawKind.includes('60') && (c.includes('60') || n.includes('60'))) return true;
-                if (rawKind.includes('20') && (c.includes('20') || n.includes('20'))) return true;
-                if (rawKind.includes('abon') && (c.includes('abon') || n.includes('abon'))) return true;
-                return c === rawKind || n.includes(rawKind);
-              });
-
+              const matched = matchProductType(rawKind, allTypes);
               if (matched) {
+                let manualVariants: Array<{ productId: string; qty: number }> | undefined = undefined;
+                if (Array.isArray(it.variants) && it.variants.length > 0) {
+                  manualVariants = [];
+                  for (const v of it.variants) {
+                    const vQty = Number(v.qty) || 0;
+                    if (vQty <= 0) continue;
+                    const keyLower = (v.product_key || '').toLowerCase();
+                    const prod = allProducts.find(
+                      (p) =>
+                        p.product_type_id === matched.id &&
+                        (p.sku.toLowerCase() === keyLower ||
+                          p.short_name.toLowerCase() === keyLower ||
+                          p.name.toLowerCase().includes(keyLower))
+                    );
+                    if (prod) {
+                      manualVariants.push({ productId: prod.id, qty: vQty });
+                    }
+                  }
+                  if (manualVariants.length === 0) manualVariants = undefined;
+                }
+
                 parsedItems.push({
                   productTypeId: matched.id,
                   qty,
+                  variants: manualVariants,
                 });
               }
             }

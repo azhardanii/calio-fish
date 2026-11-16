@@ -448,6 +448,11 @@ export async function GET(req: Request) {
         };
       }
       response.myPerformance = myPerformance;
+      response.offlineReports = await prisma.marketingOffline.findMany({
+        where: { employee_id: user.id, date: { gte: periodStart, lte: periodEnd } },
+        orderBy: { date: 'desc' },
+        include: { employee: true },
+      });
     } else if (isDistributor && user) {
       response.myDistributor = distributorPerformance.find(d => d.id === user.id) || null;
     }

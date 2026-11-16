@@ -83,6 +83,7 @@ export async function GET(req: NextRequest) {
     recentOffline, recentOnline, recentAttendance, recentProduksi,
     onlineFilterByPlatform,
     shipmentsData,
+    soldTypeItemsAgg,
     // NEW: Personal Buyer
     personalBuyerAllAgg, personalBuyerDirectAgg, personalBuyerDirectToday, personalBuyerDirectCount, personalBuyerDaily, recentPersonalBuyer,
     // NEW: Event & Open Booth
@@ -116,6 +117,16 @@ export async function GET(req: NextRequest) {
     prisma.produksi.findMany({ take: 2, orderBy: { created_at: 'desc' }, select: { date: true, kegiatan: true, total_hasil_pcs: true, created_at: true } }),
     prisma.marketingOnline.groupBy({ by: ['platform'], _sum: { omset_harian: true }, where: dateFilter ? { date: dateFilter } : {} }),
     prisma.outboundShipment.findMany({ where: dateFilter ? { date: dateFilter } : {}, include: { items: true } }),
+    prisma.outletTransactionItem.groupBy({
+      by: ['product_type_id'],
+      _sum: { qty: true },
+      where: {
+        transaction: {
+          type: { in: ['SALE', 'PAYMENT', 'PELUNASAN'] },
+          ...(dateFilter ? { date: dateFilter } : {}),
+        },
+      },
+    }),
 
     // Personal Buyer (Semua untuk Kas Masuk)
     prisma.personalBuyerTransaction.aggregate({ _sum: { amount: true }, where: dateFilter ? { date: dateFilter } : {} }),
@@ -236,6 +247,7 @@ export async function GET(req: NextRequest) {
         managed_outlets: {
           include: {
             stocks: { include: { product: true } },
+            type_stocks: { include: { product_type: true } },
             transactions: { orderBy: { date: 'desc' } },
           }
         },
@@ -273,12 +285,22 @@ export async function GET(req: NextRequest) {
     emp.managed_outlets.forEach((outlet: any) => {
       totalOutstandingAll += Number(outlet.sisa_tagihan || 0);
 
-      (outlet.stocks || []).forEach((s: any) => {
-        const unitPrice = (s.harga_beli !== null && s.harga_beli !== undefined)
-          ? Number(s.harga_beli)
-          : Number(s.product?.base_price || 0);
-        totalStockValuation += (Number(s.quantity || 0) * unitPrice);
-      });
+      const typeStocks = outlet.type_stocks || [];
+      if (typeStocks.length > 0) {
+        typeStocks.forEach((ts: any) => {
+          const unitPrice = (ts.harga_beli !== null && ts.harga_beli !== undefined)
+            ? Number(ts.harga_beli)
+            : Number(ts.product_type?.base_price || 0);
+          totalStockValuation += (Number(ts.quantity || 0) * unitPrice);
+        });
+      } else {
+        (outlet.stocks || []).forEach((s: any) => {
+          const unitPrice = (s.harga_beli !== null && s.harga_beli !== undefined)
+            ? Number(s.harga_beli)
+            : Number(s.product?.base_price || 0);
+          totalStockValuation += (Number(s.quantity || 0) * unitPrice);
+        });
+      }
 
       (outlet.transactions || []).forEach((tx: any) => {
         const txDate = new Date(tx.date);
@@ -749,6 +771,8 @@ export async function GET(req: NextRequest) {
         }
       });
 
+      const soldMatch = (soldTypeItemsAgg || []).find((agg: any) => agg.product_type_id === pt.id);
+      const terjualQty = toNum(soldMatch?._sum?.qty);
       const basePrice = Number(pt.base_price || 0);
       return {
         id: pt.id,
@@ -757,6 +781,7 @@ export async function GET(req: NextRequest) {
         base_price: basePrice,
         gudang_qty: gudangQty,
         outlet_qty: outletQty,
+        terjual_qty: terjualQty,
         total_qty: gudangQty + outletQty,
         valuasi_outlet: outletQty * basePrice,
         valuasi_gudang: gudangQty * basePrice,

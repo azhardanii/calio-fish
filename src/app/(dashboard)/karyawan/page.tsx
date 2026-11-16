@@ -27,6 +27,11 @@ import {
 } from 'lucide-react';
 import { EmployeeManager } from './EmployeeManager';
 import { DistributorManager } from './DistributorManager';
+import {
+  createAttendanceManual,
+  updateAttendance,
+  deleteAttendance,
+} from '@/app/actions';
 
 // Safe date formatting helpers to prevent any invalid time value or hydration mismatch
 function safeFormatDate(val: any): string {
@@ -95,6 +100,16 @@ export default function KaryawanPage() {
   const [presensiSearch, setPresensiSearch] = useState('');
   const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState('ALL');
   const [presensiStatusFilter, setPresensiStatusFilter] = useState('ALL');
+  const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
+  const [editingAttendance, setEditingAttendance] = useState<any>(null);
+  const [attendanceForm, setAttendanceForm] = useState({
+    employee_id: '',
+    date: new Date().toISOString().split('T')[0],
+    waktu: '08:00',
+    status_kehadiran: 'HADIR',
+    alasan: '',
+  });
+  const [savingAttendance, setSavingAttendance] = useState(false);
 
   // 7. Filter label
   const filterLabel = useMemo(() => {
@@ -776,6 +791,23 @@ export default function KaryawanPage() {
                   </p>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingAttendance(null);
+                  setAttendanceForm({
+                    employee_id: employees[0]?.id || '',
+                    date: new Date().toISOString().split('T')[0],
+                    waktu: '08:00',
+                    status_kehadiran: 'HADIR',
+                    alasan: '',
+                  });
+                  setAttendanceModalOpen(true);
+                }}
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer self-start sm:self-auto"
+              >
+                + Input Presensi Manual
+              </button>
             </div>
 
             {/* Desktop Table View */}
@@ -787,6 +819,7 @@ export default function KaryawanPage() {
                     <th className="py-3.5 px-4">NAMA KARYAWAN</th>
                     <th className="py-3.5 px-4 text-center">STATUS KEHADIRAN</th>
                     <th className="py-3.5 px-4">ALASAN / KETERANGAN</th>
+                    <th className="py-3.5 px-4 text-right">AKSI</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -828,13 +861,51 @@ export default function KaryawanPage() {
                         <td className="py-3.5 px-4 text-gray-600">
                           {a.alasan || <span className="text-gray-400 italic">-</span>}
                         </td>
+
+                        <td className="py-3.5 px-4 text-right whitespace-nowrap space-x-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const dt = new Date(a.waktu || a.date);
+                              const hh = String(dt.getHours()).padStart(2, '0');
+                              const mm = String(dt.getMinutes()).padStart(2, '0');
+                              setEditingAttendance(a);
+                              setAttendanceForm({
+                                employee_id: a.employee_id,
+                                date: new Date(a.date).toISOString().split('T')[0],
+                                waktu: `${hh}:${mm}`,
+                                status_kehadiran: status || 'HADIR',
+                                alasan: a.alasan || '',
+                              });
+                              setAttendanceModalOpen(true);
+                            }}
+                            className="px-2.5 py-1 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 cursor-pointer"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!confirm('Hapus catatan presensi ini?')) return;
+                              try {
+                                await deleteAttendance(a.id);
+                                await mutate();
+                              } catch (err: any) {
+                                alert(err?.message || 'Gagal menghapus presensi');
+                              }
+                            }}
+                            className="px-2.5 py-1 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded border border-rose-200 cursor-pointer"
+                          >
+                            Hapus
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
 
                   {filteredAttendances.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="text-center py-12 text-gray-400">
+                      <td colSpan={5} className="text-center py-12 text-gray-400">
                         <Clock className="w-10 h-10 mx-auto mb-2 text-gray-300" />
                         <div className="font-semibold text-gray-600">Belum ada riwayat presensi yang sesuai filter</div>
                         <div className="text-xs text-gray-400 mt-1">
@@ -899,6 +970,136 @@ export default function KaryawanPage() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL INPUT / EDIT PRESENSI MANUAL */}
+      {attendanceModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
+              <h3 className="text-lg font-bold text-gray-900">
+                {editingAttendance ? 'Edit Presensi Karyawan' : 'Input Presensi Manual'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setAttendanceModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 text-lg font-bold cursor-pointer"
+              >
+                ×
+              </button>
+            </div>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!attendanceForm.employee_id || !attendanceForm.date) return;
+                setSavingAttendance(true);
+                try {
+                  const waktuIso = `${attendanceForm.date}T${attendanceForm.waktu || '08:00'}:00`;
+                  if (editingAttendance) {
+                    await updateAttendance(editingAttendance.id, {
+                      date: attendanceForm.date,
+                      waktu: waktuIso,
+                      status_kehadiran: attendanceForm.status_kehadiran,
+                      alasan: attendanceForm.alasan || undefined,
+                    });
+                  } else {
+                    await createAttendanceManual({
+                      employee_id: attendanceForm.employee_id,
+                      date: attendanceForm.date,
+                      waktu: waktuIso,
+                      status_kehadiran: attendanceForm.status_kehadiran,
+                      alasan: attendanceForm.alasan || undefined,
+                    });
+                  }
+                  setAttendanceModalOpen(false);
+                  await mutate();
+                } catch (err: any) {
+                  alert(err?.message || 'Gagal menyimpan presensi');
+                } finally {
+                  setSavingAttendance(false);
+                }
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Karyawan</label>
+                <select
+                  required
+                  disabled={Boolean(editingAttendance)}
+                  value={attendanceForm.employee_id}
+                  onChange={(e) => setAttendanceForm({ ...attendanceForm, employee_id: e.target.value })}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white disabled:bg-gray-100"
+                >
+                  <option value="">-- Pilih Karyawan --</option>
+                  {employees.map((emp: any) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.nama} ({emp.role || emp.posisi || 'Staff'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Tanggal</label>
+                  <input
+                    type="date"
+                    required
+                    value={attendanceForm.date}
+                    onChange={(e) => setAttendanceForm({ ...attendanceForm, date: e.target.value })}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Jam</label>
+                  <input
+                    type="time"
+                    value={attendanceForm.waktu}
+                    onChange={(e) => setAttendanceForm({ ...attendanceForm, waktu: e.target.value })}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Status Kehadiran</label>
+                <select
+                  value={attendanceForm.status_kehadiran}
+                  onChange={(e) => setAttendanceForm({ ...attendanceForm, status_kehadiran: e.target.value })}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white font-semibold"
+                >
+                  <option value="HADIR">HADIR</option>
+                  <option value="IZIN">IZIN</option>
+                  <option value="SAKIT">SAKIT</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Alasan / Catatan (Opsional)</label>
+                <input
+                  type="text"
+                  placeholder="Contoh: Shift pagi / WFO / Sakit demam"
+                  value={attendanceForm.alasan}
+                  onChange={(e) => setAttendanceForm({ ...attendanceForm, alasan: e.target.value })}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setAttendanceModalOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingAttendance}
+                  className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl disabled:opacity-50 cursor-pointer"
+                >
+                  {savingAttendance ? 'Menyimpan...' : 'Simpan Presensi'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

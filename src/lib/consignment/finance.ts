@@ -1,10 +1,17 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { BREAKDOWN_STATUS, OPNAME_STATUS, TRANSACTION_TYPES } from './constants';
+import {
+  allocateVariants,
+  ManualVariantInput,
+  reconcileVariantQuantities,
+  VariantStockInfo,
+} from './variants';
 
 export interface ConsignmentItemInput {
   productTypeId: string;
   qty: number;
   price?: number;
+  variants?: ManualVariantInput[];
 }
 
 export interface PureStockInfo {
@@ -18,6 +25,7 @@ export interface ProcessedConsignmentItem {
   qty: number;
   price: number;
   total: number;
+  variants?: ManualVariantInput[];
 }
 
 export interface PaymentModeAResult {
@@ -44,7 +52,7 @@ export function calculatePaymentModeA(params: {
   const { nominal, currentPiutang, items, stocks, settleOnly } = params;
 
   // Case 1: settleOnly = true (pure piutang settlement, no sold items)
-  if (settleOnly || (!items || items.length === 0) && settleOnly) {
+  if (settleOnly) {
     const sold = 0;
     const surplus = nominal;
     const settle = Math.min(surplus, Math.max(0, currentPiutang));
@@ -84,6 +92,7 @@ export function calculatePaymentModeA(params: {
         qty: item.qty,
         price,
         total,
+        variants: item.variants,
       });
     }
 
@@ -196,7 +205,7 @@ export function calculateSale(params: {
   const { items, stocks } = params;
   const stockMap = new Map(stocks.map((s) => [s.productTypeId, s]));
   let amount = 0;
-  const processedItems: Array<{ productTypeId: string; qty: number; price: number; total: number }> = [];
+  const processedItems: ProcessedConsignmentItem[] = [];
 
   for (const item of items) {
     if (item.qty <= 0) continue;
@@ -213,6 +222,7 @@ export function calculateSale(params: {
       qty: item.qty,
       price,
       total,
+      variants: item.variants,
     });
   }
 
@@ -431,6 +441,109 @@ export async function postShipment(
 }
 
 /**
+ * Ambil bobot total kiriman per varian ke outlet (berdasarkan OutboundShipment tujuan OUTLET)
+ */
+async function getOutletVariantShipmentWeights(tx: TxClient, outletId: string): Promise<Map<string, number>> {
+  const shippedRows = await tx.outboundItem.findMany({
+    where: {
+      shipment: {
+        outlet_id: outletId,
+        destination_type: 'OUTLET',
+      },
+    },
+    select: { product_id: true, qty: true },
+  });
+  const weights = new Map<string, number>();
+  for (const row of shippedRows) {
+    weights.set(row.product_id, (weights.get(row.product_id) || 0) + Number(row.qty || 0));
+  }
+  return weights;
+}
+
+/**
+ * Alokasikan qty terjual per kategori ke masing-masing varian rasa (manual jika diisi,
+ * sisanya otomatis berdasarkan sisa stok & proporsi kiriman ke outlet), lalu kurangi
+ * estimasi stok varian di OutletStock & catat histori di OutletTransactionVariant.
+ */
+async function applyCategoryVariantDeductions(
+  tx: TxClient,
+  outletId: string,
+  transactionId: string,
+  processedItems: ProcessedConsignmentItem[]
+) {
+  const nonZero = processedItems.filter((p) => p.qty > 0);
+  if (nonZero.length === 0) return;
+
+  const typeIds = Array.from(new Set(nonZero.map((p) => p.productTypeId)));
+  const [products, outletStocks, shipmentWeights] = await Promise.all([
+    tx.product.findMany({
+      where: { product_type_id: { in: typeIds } },
+      select: { id: true, product_type_id: true },
+    }),
+    tx.outletStock.findMany({
+      where: { outlet_id: outletId },
+      select: { id: true, product_id: true, quantity: true },
+    }),
+    getOutletVariantShipmentWeights(tx, outletId),
+  ]);
+
+  const stockByProductId = new Map(outletStocks.map((s) => [s.product_id, s]));
+  const productIdsByType = new Map<string, string[]>();
+  for (const p of products) {
+    if (!p.product_type_id) continue;
+    const list = productIdsByType.get(p.product_type_id) || [];
+    list.push(p.id);
+    productIdsByType.set(p.product_type_id, list);
+  }
+
+  for (const item of nonZero) {
+    const typeProductIds = productIdsByType.get(item.productTypeId) || [];
+    if (typeProductIds.length === 0) continue;
+
+    const typeProductSet = new Set(typeProductIds);
+    const validManual = (item.variants || []).filter((v) => typeProductSet.has(v.productId) && v.qty > 0);
+
+    const variantInfos: VariantStockInfo[] = typeProductIds.map((pid) => {
+      const os = stockByProductId.get(pid);
+      return {
+        productId: pid,
+        remaining: os ? Math.max(0, os.quantity) : 0,
+        shipped: shipmentWeights.get(pid) || 0,
+      };
+    });
+
+    const { allocations } = allocateVariants({
+      qty: item.qty,
+      variants: variantInfos,
+      manual: validManual,
+    });
+
+    for (const alloc of allocations) {
+      if (alloc.qty <= 0) continue;
+      const existingOs = stockByProductId.get(alloc.productId);
+      if (existingOs) {
+        const nextQty = Math.max(0, existingOs.quantity - alloc.qty);
+        await tx.outletStock.update({
+          where: { id: existingOs.id },
+          data: { quantity: nextQty },
+        });
+        existingOs.quantity = nextQty;
+      }
+
+      await tx.outletTransactionVariant.create({
+        data: {
+          transaction_id: transactionId,
+          product_id: alloc.productId,
+          product_type_id: item.productTypeId,
+          qty: alloc.qty,
+          source: alloc.source,
+        },
+      });
+    }
+  }
+}
+
+/**
  * Post SALE (has_daily_sales = true)
  */
 export async function postSale(
@@ -506,6 +619,7 @@ export async function postSale(
     },
   });
 
+  await applyCategoryVariantDeductions(tx, outletId, txRecord.id, calc.processedItems);
   await recalculateOutletFinance(tx, outletId);
 
   return txRecord;
@@ -618,6 +732,7 @@ export async function postPayment(
       },
     });
 
+    await applyCategoryVariantDeductions(tx, outletId, txRecord.id, calc.processedItems);
     await recalculateOutletFinance(tx, outletId);
     return txRecord;
   }
@@ -711,6 +826,7 @@ export async function completePendingPayment(
     },
   });
 
+  await applyCategoryVariantDeductions(tx, outlet.id, updatedTx.id, calc.processedItems);
   await recalculateOutletFinance(tx, outlet.id);
   return updatedTx;
 }
@@ -745,6 +861,21 @@ export async function applyOpname(
 
   let totalSelisihValue = 0;
   const stockMap = new Map(opname.outlet.type_stocks.map((s) => [s.product_type_id, s]));
+  const [outletStocks, typeProducts, shipmentWeights] = await Promise.all([
+    tx.outletStock.findMany({
+      where: { outlet_id: opname.outlet_id },
+      include: { product: true },
+    }),
+    tx.product.findMany({
+      where: { product_type_id: { in: opname.items.map((i) => i.product_type_id) } },
+      select: { id: true, product_type_id: true },
+    }),
+    getOutletVariantShipmentWeights(tx, opname.outlet_id),
+  ]);
+  const weightRecord: Record<string, number> = {};
+  shipmentWeights.forEach((v, k) => {
+    weightRecord[k] = v;
+  });
 
   for (const item of opname.items) {
     const existingStock = stockMap.get(item.product_type_id);
@@ -770,6 +901,38 @@ export async function applyOpname(
         quantity: item.qty_actual,
       },
     });
+
+    // Selaraskan estimasi stok varian (OutletStock) dengan stok kategori hasil opname
+    const prodIdsForType = typeProducts.filter((p) => p.product_type_id === item.product_type_id).map((p) => p.id);
+    const currentVariantList = outletStocks
+      .filter((s) => s.product?.product_type_id === item.product_type_id || prodIdsForType.includes(s.product_id))
+      .map((s) => ({ productId: s.product_id, qty: s.quantity }));
+
+    if (currentVariantList.length > 0) {
+      const reconciled = reconcileVariantQuantities({
+        current: currentVariantList,
+        target: item.qty_actual,
+        weights: weightRecord,
+      });
+      for (const r of reconciled) {
+        await tx.outletStock.upsert({
+          where: {
+            outlet_id_product_id: {
+              outlet_id: opname.outlet_id,
+              product_id: r.productId,
+            },
+          },
+          create: {
+            outlet_id: opname.outlet_id,
+            product_id: r.productId,
+            quantity: r.qty,
+          },
+          update: {
+            quantity: r.qty,
+          },
+        });
+      }
+    }
   }
 
   // Update Opname status
@@ -792,4 +955,59 @@ export async function applyOpname(
   });
 
   await recalculateOutletFinance(tx, opname.outlet_id);
+}
+
+/**
+ * Hapus transaksi outlet (PAYMENT, SALE, PIUTANG_MANUAL) & pulihkan stok kategori/varian yang terpotong
+ */
+export async function deleteOutletTransactionRecord(
+  tx: TxClient,
+  params: { transactionId: string }
+) {
+  const existing = await tx.outletTransaction.findUnique({
+    where: { id: params.transactionId },
+    include: { items: true, variants: true },
+  });
+  if (!existing) throw new Error('Transaksi tidak ditemukan');
+
+  // Restore category stocks if SALE or PAYMENT deducted them
+  if (
+    existing.type === TRANSACTION_TYPES.SALE ||
+    existing.type === TRANSACTION_TYPES.PAYMENT ||
+    existing.type === TRANSACTION_TYPES.PELUNASAN
+  ) {
+    for (const item of existing.items) {
+      await tx.outletTypeStock.upsert({
+        where: {
+          outlet_id_product_type_id: {
+            outlet_id: existing.outlet_id,
+            product_type_id: item.product_type_id,
+          },
+        },
+        create: {
+          outlet_id: existing.outlet_id,
+          product_type_id: item.product_type_id,
+          quantity: item.qty,
+        },
+        update: {
+          quantity: { increment: item.qty },
+        },
+      });
+    }
+
+    for (const v of existing.variants) {
+      await tx.outletStock.updateMany({
+        where: {
+          outlet_id: existing.outlet_id,
+          product_id: v.product_id,
+        },
+        data: {
+          quantity: { increment: v.qty },
+        },
+      });
+    }
+  }
+
+  await tx.outletTransaction.delete({ where: { id: existing.id } });
+  return await recalculateOutletFinance(tx, existing.outlet_id);
 }
