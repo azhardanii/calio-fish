@@ -9,7 +9,7 @@ export async function GET() {
       orderBy: { created_at: 'desc' } 
     }),
     prisma.productType.findMany({
-      orderBy: { code: 'asc' }
+      orderBy: { name: 'asc' }
     }),
     prisma.stockTransaction.findMany({
       include: { product: true, employee: true },

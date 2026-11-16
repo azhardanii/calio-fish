@@ -695,11 +695,40 @@ export async function deleteAffiliator(id: string) {
   revalidatePath('/affiliator');
 }
 
+// Helper: bangkitkan kode kategori otomatis & unik dari nama kategori (mis. "20g" -> "20G")
+async function generateUniqueCategoryCode(
+  txOrPrisma: Pick<typeof prisma, 'productType'>,
+  name: string,
+  excludeId?: string
+): Promise<string> {
+  const base =
+    name
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'KATEGORI';
+
+  let candidate = base;
+  let counter = 2;
+  while (true) {
+    const conflict = await txOrPrisma.productType.findFirst({
+      where: {
+        code: candidate,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (!conflict) return candidate;
+    candidate = `${base}_${counter}`;
+    counter += 1;
+  }
+}
+
 // Product Type (Kategori Produk) CRUD
 export async function createProductType(data: {
-  code: string;
+  code?: string;
   name: string;
-  base_price: number;
+  base_price?: number;
   is_active?: boolean;
 }) {
   const user = await verifySession();
@@ -708,15 +737,24 @@ export async function createProductType(data: {
     throw new Error('Akses ditolak: Hanya OWNER atau ADMIN yang dapat menambah kategori produk.');
   }
 
-  const cleanCode = (data.code || '').trim().toUpperCase();
   const cleanName = (data.name || '').trim();
-  if (!cleanCode || !cleanName) {
-    throw new Error('Kode dan nama kategori produk wajib diisi.');
+  if (!cleanName) {
+    throw new Error('Nama kategori produk wajib diisi.');
   }
+
+  const dupName = await prisma.productType.findFirst({
+    where: { name: { equals: cleanName, mode: 'insensitive' } },
+    select: { id: true },
+  });
+  if (dupName) {
+    throw new Error(`Kategori "${cleanName}" sudah ada.`);
+  }
+
+  const autoCode = await generateUniqueCategoryCode(prisma, data.code?.trim() || cleanName);
 
   const created = await prisma.productType.create({
     data: {
-      code: cleanCode,
+      code: autoCode,
       name: cleanName,
       base_price: new Prisma.Decimal(Number(data.base_price) || 0),
       is_active: data.is_active !== undefined ? Boolean(data.is_active) : true,
@@ -741,18 +779,36 @@ export async function updateProductType(id: string, data: {
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    let nextCode: string | undefined;
+    let nextName: string | undefined;
+
+    if (data.name !== undefined) {
+      nextName = data.name.trim();
+      if (!nextName) throw new Error('Nama kategori produk wajib diisi.');
+
+      const dupName = await tx.productType.findFirst({
+        where: { name: { equals: nextName, mode: 'insensitive' }, id: { not: id } },
+        select: { id: true },
+      });
+      if (dupName) throw new Error(`Kategori "${nextName}" sudah digunakan.`);
+
+      nextCode = await generateUniqueCategoryCode(tx, data.code?.trim() || nextName, id);
+    } else if (data.code !== undefined && data.code.trim()) {
+      nextCode = await generateUniqueCategoryCode(tx, data.code.trim(), id);
+    }
+
     const pt = await tx.productType.update({
       where: { id },
       data: {
-        ...(data.code !== undefined ? { code: data.code.trim().toUpperCase() } : {}),
-        ...(data.name !== undefined ? { name: data.name.trim() } : {}),
+        ...(nextCode !== undefined ? { code: nextCode } : {}),
+        ...(nextName !== undefined ? { name: nextName } : {}),
         ...(data.base_price !== undefined ? { base_price: new Prisma.Decimal(Number(data.base_price) || 0) } : {}),
         ...(data.is_active !== undefined ? { is_active: Boolean(data.is_active) } : {}),
       }
     });
 
     // Keep linked products' legacy category string synced with ProductType name
-    if (data.name !== undefined) {
+    if (nextName !== undefined) {
       await tx.product.updateMany({
         where: { product_type_id: id },
         data: { category: pt.name }
