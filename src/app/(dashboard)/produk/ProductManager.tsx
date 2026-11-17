@@ -13,6 +13,7 @@ import {
   deleteProductType,
 } from '@/app/actions';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Pencil, Trash2, Plus } from 'lucide-react';
 
 export function ProductManager({
   products,
@@ -258,110 +259,69 @@ export function ProductManager({
 
         <div className="flex items-center gap-2 flex-wrap">
           {activeSection === 'products' && (
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white font-medium text-gray-700"
-            >
-              <option value="all">Semua Kategori ({products.length})</option>
-              {productTypes.map((pt: any) => (
-                <option key={pt.id} value={pt.id}>
-                  {pt.name}
-                </option>
-              ))}
-              <option value="none">Belum Berkategori</option>
-            </select>
+            <>
+              <div className="inline-flex items-center rounded-lg border border-gray-300 bg-white overflow-hidden h-9">
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="px-3 h-full text-sm bg-white font-medium text-gray-700 focus:outline-none cursor-pointer"
+                >
+                  <option value="all">Semua Kategori ({products.length})</option>
+                  {productTypes.map((pt: any) => {
+                    const count = products.filter((p) => p.product_type_id === pt.id).length;
+                    return (
+                      <option key={pt.id} value={pt.id}>
+                        {pt.name} ({count})
+                      </option>
+                    );
+                  })}
+                  <option value="none">Belum Berkategori</option>
+                </select>
+                {categoryFilter !== 'all' && categoryFilter !== 'none' && (() => {
+                  const selectedCat = productTypes.find((pt: any) => pt.id === categoryFilter);
+                  if (!selectedCat) return null;
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => openCategoryModal(selectedCat)}
+                        title={`Edit kategori ${selectedCat.name}`}
+                        className="px-2.5 h-full border-l border-gray-200 text-blue-600 hover:bg-blue-50 flex items-center justify-center transition-colors cursor-pointer"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCategory(selectedCat)}
+                        title={`Hapus kategori ${selectedCat.name}`}
+                        className="px-2.5 h-full border-l border-gray-200 text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  );
+                })()}
+              </div>
+              <button
+                type="button"
+                onClick={() => openModal()}
+                className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-4 h-9 rounded-lg text-sm font-bold shadow-xs transition-colors cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Tambah Produk</span>
+              </button>
+            </>
           )}
           <button
             type="button"
             onClick={() => openCategoryModal()}
-            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3.5 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3.5 h-9 rounded-lg text-sm font-bold transition-colors cursor-pointer"
           >
-            + Tambah Kategori
-          </button>
-          <button
-            type="button"
-            onClick={() => openModal()}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow transition-colors cursor-pointer"
-          >
-            + Tambah Produk
+            <Plus className="w-4 h-4" />
+            <span>Tambah Kategori</span>
           </button>
         </div>
       </div>
-
-      {/* Quick Category Management Chip Bar (langsung terlihat di halaman utama) */}
-      {activeSection === 'products' && (
-        <div className="flex flex-wrap items-center gap-2 mb-4 p-3 rounded-xl bg-slate-50 border border-slate-200/80">
-          <span className="text-xs font-bold text-slate-600 uppercase tracking-wider mr-1">
-            Kategori:
-          </span>
-          <button
-            type="button"
-            onClick={() => setCategoryFilter('all')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-              categoryFilter === 'all'
-                ? 'bg-slate-900 text-white'
-                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-            }`}
-          >
-            Semua ({products.length})
-          </button>
-          {productTypes.map((pt: any) => {
-            const count = products.filter((p) => p.product_type_id === pt.id).length;
-            const isSelected = categoryFilter === pt.id;
-            return (
-              <div
-                key={pt.id}
-                className={`inline-flex items-center rounded-lg border text-xs overflow-hidden transition ${
-                  isSelected
-                    ? 'bg-indigo-600 text-white border-indigo-600'
-                    : 'bg-white text-slate-800 border-slate-200'
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => setCategoryFilter(isSelected ? 'all' : pt.id)}
-                  className="px-2.5 py-1 font-bold cursor-pointer hover:opacity-90"
-                  title={`Filter kategori ${pt.name}`}
-                >
-                  {pt.name} <span className="opacity-75 font-normal">({count})</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openCategoryModal(pt)}
-                  title={`Edit kategori ${pt.name}`}
-                  className={`px-1.5 py-1 border-l cursor-pointer transition ${
-                    isSelected
-                      ? 'border-indigo-500 hover:bg-indigo-700 text-white'
-                      : 'border-slate-200 text-blue-600 hover:bg-blue-50'
-                  }`}
-                >
-                  ✏️
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteCategory(pt)}
-                  title={`Hapus kategori ${pt.name}`}
-                  className={`px-1.5 py-1 border-l cursor-pointer transition ${
-                    isSelected
-                      ? 'border-indigo-500 hover:bg-rose-600 text-white'
-                      : 'border-slate-200 text-rose-600 hover:bg-rose-50'
-                  }`}
-                >
-                  🗑️
-                </button>
-              </div>
-            );
-          })}
-          <button
-            type="button"
-            onClick={() => openCategoryModal()}
-            className="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-dashed border-indigo-300 cursor-pointer"
-          >
-            + Kategori Baru
-          </button>
-        </div>
-      )}
 
       {/* SECTION 1: CATALOG TABLE */}
       {activeSection === 'products' && (
@@ -455,21 +415,25 @@ export function ProductManager({
                           {pt.is_active !== false ? 'Aktif' : 'Nonaktif'}
                         </span>
                       </TableCell>
-                      <TableCell className="text-right space-x-2 whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => openCategoryModal(pt)}
-                          className="px-2.5 py-1 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 cursor-pointer"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteCategory(pt)}
-                          className="px-2.5 py-1 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded border border-rose-200 cursor-pointer"
-                        >
-                          Hapus
-                        </button>
+                      <TableCell className="text-right whitespace-nowrap">
+                        <div className="inline-flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => openCategoryModal(pt)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 cursor-pointer transition-colors"
+                          >
+                            <Pencil className="w-3 h-3" />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCategory(pt)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-md border border-rose-200 cursor-pointer transition-colors"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Hapus</span>
+                          </button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -586,64 +550,63 @@ export function ProductManager({
                   <input required type="text" className="w-full border rounded p-2" placeholder="Cth: fs_original" value={formData.sku || ''} onChange={e => setFormData({ ...formData, sku: e.target.value })} />
                 </div>
                 <div>
-                  <div className="flex items-center justify-between gap-1 mb-1">
-                    <label className="block text-sm font-medium">Kategori / Jenis Produk *</label>
-                    <div className="flex items-center gap-2 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => openCategoryModal()}
-                        className="font-bold text-indigo-600 hover:underline cursor-pointer"
-                      >
-                        + Tambah
-                      </button>
-                      {formData.product_type_id && (() => {
-                        const selectedPt = productTypes.find((t: any) => t.id === formData.product_type_id);
-                        if (!selectedPt) return null;
-                        return (
-                          <>
-                            <span className="text-gray-300">|</span>
-                            <button
-                              type="button"
-                              onClick={() => openCategoryModal(selectedPt)}
-                              className="font-bold text-blue-600 hover:underline cursor-pointer"
-                            >
-                              Edit
-                            </button>
-                            <span className="text-gray-300">|</span>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteCategory(selectedPt)}
-                              className="font-bold text-rose-600 hover:underline cursor-pointer"
-                            >
-                              Hapus
-                            </button>
-                          </>
-                        );
-                      })()}
-                    </div>
+                  <label className="block text-sm font-medium mb-1">Kategori / Jenis Produk *</label>
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      required
+                      value={formData.product_type_id || ''}
+                      onChange={(e) => {
+                        const ptId = e.target.value;
+                        const pt = productTypes.find((t: any) => t.id === ptId);
+                        setFormData({
+                          ...formData,
+                          product_type_id: ptId,
+                          category: pt ? pt.name : formData.category,
+                          base_price: !isEditing && pt ? Number(pt.base_price) : formData.base_price,
+                        });
+                      }}
+                      className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2.5 py-2 bg-white font-medium text-sm h-[38px]"
+                    >
+                      <option value="">-- Pilih Kategori --</option>
+                      {productTypes.map((pt: any) => (
+                        <option key={pt.id} value={pt.id}>
+                          {pt.name} — Rp {Number(pt.base_price || 0).toLocaleString('id-ID')}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => openCategoryModal()}
+                      title="Tambah kategori baru"
+                      className="h-[38px] w-[38px] shrink-0 inline-flex items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 cursor-pointer transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                    {formData.product_type_id && (() => {
+                      const selectedPt = productTypes.find((t: any) => t.id === formData.product_type_id);
+                      if (!selectedPt) return null;
+                      return (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openCategoryModal(selectedPt)}
+                            title={`Edit kategori ${selectedPt.name}`}
+                            className="h-[38px] w-[38px] shrink-0 inline-flex items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 cursor-pointer transition-colors"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCategory(selectedPt)}
+                            title={`Hapus kategori ${selectedPt.name}`}
+                            className="h-[38px] w-[38px] shrink-0 inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 cursor-pointer transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      );
+                    })()}
                   </div>
-                  <select
-                    required
-                    value={formData.product_type_id || ''}
-                    onChange={(e) => {
-                      const ptId = e.target.value;
-                      const pt = productTypes.find((t: any) => t.id === ptId);
-                      setFormData({
-                        ...formData,
-                        product_type_id: ptId,
-                        category: pt ? pt.name : formData.category,
-                        base_price: !isEditing && pt ? Number(pt.base_price) : formData.base_price,
-                      });
-                    }}
-                    className="w-full border rounded p-2 bg-white font-medium"
-                  >
-                    <option value="">-- Pilih Kategori --</option>
-                    {productTypes.map((pt: any) => (
-                      <option key={pt.id} value={pt.id}>
-                        {pt.name} — Rp {Number(pt.base_price || 0).toLocaleString('id-ID')}
-                      </option>
-                    ))}
-                  </select>
                 </div>
               </div>
               <div>
