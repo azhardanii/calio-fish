@@ -440,20 +440,40 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
     setIsSubmitting(true);
     try {
       if (isEditing) {
-        await updateOutlet(formData.id, formData);
+        const res = await updateOutlet(formData.id, formData);
+        if (res && res.success === false) {
+          throw new Error(res.error || 'Gagal memperbarui data outlet');
+        }
       } else {
         const stockItems = Object.entries(initialStocks)
           .filter(([_, qty]) => Number(qty) > 0)
           .map(([productId, qty]) => ({ product_id: productId, qty: Number(qty) }));
 
-        await createOutlet(
+        const selectedWhId = outletWarehouseId || warehouses[0]?.id;
+        if (stockItems.length > 0 && selectedWhId) {
+          const wh = warehouses.find((w: any) => w.id === selectedWhId);
+          for (const st of stockItems) {
+            const avail = wh?.stocks?.find((s: any) => s.product_id === st.product_id)?.quantity ?? 0;
+            if (st.qty > avail) {
+              const prod = products.find((p: any) => p.id === st.product_id);
+              throw new Error(
+                `Stok "${prod?.name || 'Produk'}" di gudang "${wh?.name || 'Gudang'}" hanya tersedia ${avail} pcs (diminta ${st.qty} pcs). Tambah stok produksi di menu Warehouse dulu atau biarkan 0 pcs.`
+              );
+            }
+          }
+        }
+
+        const res = await createOutlet(
           {
             ...formData,
             distributor_id: isDistributor ? currentUser?.id : (formData.distributor_id || null)
           },
           stockItems.length > 0 ? stockItems : undefined,
-          stockItems.length > 0 ? (outletWarehouseId || warehouses[0]?.id) : undefined
+          stockItems.length > 0 ? selectedWhId : undefined
         );
+        if (res && res.success === false) {
+          throw new Error(res.error || 'Gagal menyimpan outlet baru');
+        }
       }
       await Promise.all([
         mutate('/api/data/outlets'),
@@ -483,7 +503,10 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
 
     setIsDeleting(true);
     try {
-      await deleteOutlet(id);
+      const res = await deleteOutlet(id);
+      if (res && res.success === false) {
+        throw new Error(res.error || 'Gagal menghapus outlet');
+      }
       await Promise.all([
         mutate('/api/data/outlets'),
         mutate('/api/data/employees')
@@ -890,6 +913,9 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
     try {
       const selectedWId = stockWarehouseId || warehouses[0]?.id;
       const res: any = await adjustOutletStock(stock.id, targetQty, stockNote, selectedWId);
+      if (res && res.success === false) {
+        throw new Error(res.error || 'Gagal menyesuaikan stok outlet');
+      }
 
       const targetOutletId = selectedOutlet.id;
 
@@ -2574,27 +2600,49 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
 
                   <div className="space-y-1.5">
                     <label className="block text-xs font-semibold text-slate-700">Jumlah Stok Produk Awal:</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {products.map((p: any) => (
-                        <div key={p.id} className="bg-white p-2 rounded-lg border border-slate-200 flex flex-col justify-between">
-                          <span className="text-xs font-bold text-slate-800 truncate">{p.short_name || p.name}</span>
-                          <div className="flex items-center gap-1.5 mt-1">
-                            <input 
-                              type="number" 
-                              min="0"
-                              placeholder="0"
-                              className="w-full border rounded px-2 py-1 text-xs font-bold text-slate-800"
-                              value={initialStocks[p.id] || ''}
-                              onChange={e => setInitialStocks({
-                                ...initialStocks,
-                                [p.id]: parseInt(e.target.value) || 0
-                              })}
-                            />
-                            <span className="text-[10px] text-slate-400 font-bold shrink-0">pcs</span>
+                    {(() => {
+                      const activeWh = warehouses.find((w: any) => w.id === (outletWarehouseId || warehouses[0]?.id));
+                      const totalWhStock = (activeWh?.stocks || []).reduce((acc: number, s: any) => acc + Number(s.quantity || 0), 0);
+                      return (
+                        <>
+                          {activeWh && totalWhStock === 0 && (
+                            <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 leading-snug">
+                              ⚠️ Stok di gudang <b>{activeWh.name}</b> saat ini masih <b>0 pcs</b>. Biarkan 0 pcs untuk menyimpan outlet tanpa stok awal, atau tambahkan stok gudang terlebih dahulu di menu <b>Warehouse</b>.
+                            </div>
+                          )}
+                          <div className="grid grid-cols-2 gap-2">
+                            {products.map((p: any) => {
+                              const avail = activeWh?.stocks?.find((s: any) => s.product_id === p.id)?.quantity ?? 0;
+                              return (
+                                <div key={p.id} className="bg-white p-2 rounded-lg border border-slate-200 flex flex-col justify-between">
+                                  <div className="flex items-center justify-between gap-1">
+                                    <span className="text-xs font-bold text-slate-800 truncate">{p.short_name || p.name}</span>
+                                    <span className={`text-[10px] font-bold shrink-0 ${avail > 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                      Stok: {avail}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 mt-1">
+                                    <input 
+                                      type="number" 
+                                      min="0"
+                                      max={avail}
+                                      placeholder="0"
+                                      className="w-full border rounded px-2 py-1 text-xs font-bold text-slate-800"
+                                      value={initialStocks[p.id] || ''}
+                                      onChange={e => setInitialStocks({
+                                        ...initialStocks,
+                                        [p.id]: parseInt(e.target.value) || 0
+                                      })}
+                                    />
+                                    <span className="text-[10px] text-slate-400 font-bold shrink-0">pcs</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               )}

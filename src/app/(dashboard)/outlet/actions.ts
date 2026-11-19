@@ -14,6 +14,7 @@ import {
 } from '@/lib/consignment/finance';
 import { OPNAME_STATUS } from '@/lib/consignment/constants';
 import { Prisma } from '@prisma/client';
+import { serializeDeep } from '@/lib/serialize';
 
 export async function updateOutletProductPrice(outletStockId: string, hargaBeli: number) {
   try {
@@ -125,7 +126,7 @@ export async function updateOutletTypePrice(outletTypeStockId: string, hargaBeli
     revalidatePath('/outlet');
     revalidatePath('/marketing');
     revalidatePath('/overview');
-    return { success: true, updatedOutlet };
+    return { success: true, updatedOutlet: serializeDeep(updatedOutlet) };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -162,12 +163,12 @@ export async function submitOutletPayment(
         date,
         description: description || (settleOnly ? 'Pelunasan Sisa Piutang' : 'Laporan Pembayaran Outlet'),
       });
-    });
+    }, { maxWait: 10000, timeout: 30000 });
 
     revalidatePath('/outlet');
     revalidatePath('/marketing');
     revalidatePath('/overview');
-    return { success: true, data: result };
+    return { success: true, data: serializeDeep(result) };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -202,12 +203,12 @@ export async function submitOutletSale(
         periodEnd: pEnd,
         description: description || 'Pencatatan Daily Sales Modern Trade',
       });
-    });
+    }, { maxWait: 10000, timeout: 30000 });
 
     revalidatePath('/outlet');
     revalidatePath('/marketing');
     revalidatePath('/overview');
-    return { success: true, data: result };
+    return { success: true, data: serializeDeep(result) };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -233,12 +234,12 @@ export async function completePendingPaymentAction(
         transactionId,
         items,
       });
-    });
+    }, { maxWait: 10000, timeout: 30000 });
 
     revalidatePath('/outlet');
     revalidatePath('/marketing');
     revalidatePath('/overview');
-    return { success: true, data: result };
+    return { success: true, data: serializeDeep(result) };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -303,12 +304,12 @@ export async function submitStockOpname(
         await applyOpname(tx, { opnameId: op.id });
       }
       return op;
-    });
+    }, { maxWait: 10000, timeout: 30000 });
 
     revalidatePath('/outlet');
     revalidatePath('/marketing');
     revalidatePath('/overview');
-    return { success: true, data: opname };
+    return { success: true, data: serializeDeep(opname) };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -386,12 +387,12 @@ export async function updateOutletTransactionAction(
 
       await recalculateOutletFinance(tx, existing.outlet_id);
       return txRec;
-    });
+    }, { maxWait: 10000, timeout: 30000 });
 
     revalidatePath('/outlet');
     revalidatePath('/marketing');
     revalidatePath('/overview');
-    return { success: true, data: updated };
+    return { success: true, data: serializeDeep(updated) };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
