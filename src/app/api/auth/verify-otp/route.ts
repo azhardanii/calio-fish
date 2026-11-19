@@ -1,19 +1,28 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createSession } from '@/lib/auth';
+import {
+  getPhoneLookupCandidates,
+  getPhoneTailKey,
+  normalizeIndonesianPhone,
+} from '@/lib/phone';
 
 export async function POST(req: Request) {
   try {
     const { no_hp, otp } = await req.json();
-    let formattedPhone = no_hp.replace(/\D/g, '');
-    if (formattedPhone.startsWith('0')) {
-      formattedPhone = '62' + formattedPhone.substring(1);
-    }
+    const formattedPhone = normalizeIndonesianPhone(no_hp);
+    const candidates = getPhoneLookupCandidates(no_hp);
+    const tailKey = getPhoneTailKey(no_hp);
 
     if (!formattedPhone || !otp) return NextResponse.json({ error: 'Data tidak lengkap' }, { status: 400 });
 
-    const employee = await prisma.employee.findUnique({
-      where: { no_hp: formattedPhone },
+    const employee = await prisma.employee.findFirst({
+      where: {
+        OR: [
+          ...candidates.map((c) => ({ no_hp: c })),
+          ...(tailKey.length >= 8 ? [{ no_hp: { endsWith: tailKey } }] : []),
+        ],
+      },
     });
 
     if (!employee || !employee.status_aktif) {
@@ -41,6 +50,9 @@ export async function POST(req: Request) {
     } else if (roleRaw === 'ADMIN' || roleRaw.includes('ADMIN') || posisiRaw.includes('ADMIN')) {
       normalizedRole = 'ADMIN';
       redirectUrl = '/overview';
+    } else if (roleRaw.includes('DISTRIBUTOR') || posisiRaw.includes('DISTRIBUTOR')) {
+      normalizedRole = 'DISTRIBUTOR';
+      redirectUrl = '/warehouse';
     } else if (roleRaw === 'STAFF MARKETING' || roleRaw === 'STAFF_MARKETING' || roleRaw.includes('MARKETING') || posisiRaw.includes('MARKETING')) {
       normalizedRole = 'MARKETING';
       redirectUrl = '/marketing';

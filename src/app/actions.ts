@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { verifySession } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
 import { serializeDeep } from '@/lib/serialize';
+import { normalizeIndonesianPhone } from '@/lib/phone';
 import {
   recalculateOutletFinance as consignmentRecalculate,
   postPayment,
@@ -15,6 +16,13 @@ import { TRANSACTION_TYPES } from '@/lib/consignment/constants';
 
 // Karyawan
 export async function createKaryawan(data: any, outletIds?: string[]) {
+  if (data.no_hp !== undefined) {
+    const normalized = normalizeIndonesianPhone(data.no_hp);
+    if (!normalized) {
+      throw new Error('Nomor WhatsApp / HP wajib diisi dengan format yang valid.');
+    }
+    data.no_hp = normalized;
+  }
   if (data.posisi) {
     const rawPos = data.posisi.toUpperCase();
     if (rawPos === 'OWNER' || rawPos.includes('OWNER')) {
@@ -49,6 +57,13 @@ export async function createKaryawan(data: any, outletIds?: string[]) {
 }
 
 export async function updateKaryawan(id: string, data: any, outletIds?: string[]) {
+  if (data.no_hp !== undefined) {
+    const normalized = normalizeIndonesianPhone(data.no_hp);
+    if (!normalized) {
+      throw new Error('Nomor WhatsApp / HP wajib diisi dengan format yang valid.');
+    }
+    data.no_hp = normalized;
+  }
   if (data.posisi) {
     const rawPos = data.posisi.toUpperCase();
     if (rawPos === 'OWNER' || rawPos.includes('OWNER')) {

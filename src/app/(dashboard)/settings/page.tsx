@@ -217,7 +217,7 @@ function WaGroupSelector() {
         }
 
         if (settingsRes?.WA_GROUP_ID) {
-          setSelectedIds(settingsRes.WA_GROUP_ID.split(',').map((id: string) => id.trim()));
+          setSelectedIds(settingsRes.WA_GROUP_ID.split(',').map((id: string) => id.trim()).filter(Boolean));
         }
       } catch (err) {
         console.error(err);
@@ -237,11 +237,16 @@ function WaGroupSelector() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await fetch('/api/system-settings', {
+      const cleanedIds = Array.from(new Set(selectedIds.map(id => id.trim()).filter(Boolean)));
+      const res = await fetch('/api/system-settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: 'WA_GROUP_ID', value: selectedIds.join(',') }),
+        body: JSON.stringify({ key: 'WA_GROUP_ID', value: cleanedIds.join(',') }),
       });
+      if (!res.ok) {
+        throw new Error('Gagal menyimpan pengaturan ke server');
+      }
+      setSelectedIds(cleanedIds);
       setToast('✅ Grup WhatsApp berhasil disimpan!');
       setTimeout(() => setToast(''), 3000);
     } catch (err) {
@@ -347,6 +352,13 @@ function WaGroupSelector() {
       >
         {saving ? 'Menyimpan...' : 'Simpan Pengaturan Grup'}
       </button>
+      <div style={{ marginTop: 12, padding: '10px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, fontSize: 12, color: '#1e40af', lineHeight: 1.5 }}>
+        <b>Info Webhook GOWA:</b> Pastikan pada panel WhatsApp Gateway (GOWA) URL Webhook diarahkan ke{' '}
+        <code style={{ background: '#fff', padding: '1px 6px', borderRadius: 4, border: '1px solid #bfdbfe' }}>
+          {typeof window !== 'undefined' ? `${window.location.origin}/api/webhook/whatsapp` : '/api/webhook/whatsapp'}
+        </code>{' '}
+        dengan event <b>message</b> aktif.
+      </div>
     </div>
   );
 }

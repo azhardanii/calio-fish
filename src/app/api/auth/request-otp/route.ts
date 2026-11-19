@@ -1,19 +1,28 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sendMessage } from '@/lib/whatsapp';
+import {
+  getPhoneLookupCandidates,
+  getPhoneTailKey,
+  normalizeIndonesianPhone,
+} from '@/lib/phone';
 
 export async function POST(req: Request) {
   try {
     const { no_hp } = await req.json();
     if (!no_hp) return NextResponse.json({ error: 'Nomor HP wajib diisi' }, { status: 400 });
 
-    let formattedPhone = no_hp.replace(/\D/g, ''); // remove non-digits
-    if (formattedPhone.startsWith('0')) {
-      formattedPhone = '62' + formattedPhone.substring(1);
-    }
+    const formattedPhone = normalizeIndonesianPhone(no_hp);
+    const candidates = getPhoneLookupCandidates(no_hp);
+    const tailKey = getPhoneTailKey(no_hp);
 
-    const employee = await prisma.employee.findUnique({
-      where: { no_hp: formattedPhone },
+    let employee = await prisma.employee.findFirst({
+      where: {
+        OR: [
+          ...candidates.map((c) => ({ no_hp: c })),
+          ...(tailKey.length >= 8 ? [{ no_hp: { endsWith: tailKey } }] : []),
+        ],
+      },
     });
 
     if (!employee || !employee.status_aktif) {
@@ -32,10 +41,19 @@ export async function POST(req: Request) {
       },
     });
 
-
+    const waRecipient = normalizeIndonesianPhone(employee.no_hp) || formattedPhone;
     const message = `*Calio Fish - Kode OTP*\n\nKode rahasia Anda adalah: *${otp}*\n\nBerlaku selama 5 menit. JANGAN BERIKAN KODE INI KEPADA SIAPAPUN.`;
-    
-    await sendMessage(formattedPhone, message);
+
+    const sendRes: any = await sendMessage(waRecipient, message);
+    if (sendRes?.status === 'error') {
+      console.error('OTP WhatsApp send failed:', sendRes);
+      return NextResponse.json(
+        {
+          error: `OTP dibuat tapi gagal terkirim via WhatsApp (${sendRes?.message || 'periksa koneksi GOWA'}).`,
+        },
+        { status: 502 }
+      );
+    }
 
     return NextResponse.json({ success: true, message: 'OTP terkirim' });
   } catch (error) {

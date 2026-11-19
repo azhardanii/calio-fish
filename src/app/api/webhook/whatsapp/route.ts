@@ -8,9 +8,66 @@ import { postPayment, postShipment } from '@/lib/consignment/finance';
 import { TRANSACTION_TYPES, BREAKDOWN_STATUS } from '@/lib/consignment/constants';
 import { matchProductType } from '@/lib/consignment/product-type-match';
 import { getOnlineTarget } from '@/lib/settings';
+import { getPhoneLookupCandidates, getPhoneTailKey } from '@/lib/phone';
 
-const ADMIN_PHONE = process.env.WA_ADMIN_PHONE || '6285157991798';
+const BOT_PHONE = (process.env.WA_ADMIN_PHONE || '628174734149').replace(/\D/g, '');
 const TARGET_GROUP_ID = process.env.WA_GROUP_ID || '120363293055467760@g.us';
+
+function extractGowaWebhook(rawBody: any) {
+  const event = String(rawBody?.event || (rawBody?.payload ? 'message' : '')).toLowerCase();
+  const p = rawBody?.payload || rawBody || {};
+  const msgObj = p?.message || rawBody?.message || {};
+
+  const bodyText = String(
+    p?.body ??
+      p?.text ??
+      p?.content ??
+      msgObj?.text ??
+      msgObj?.conversation ??
+      msgObj?.extendedTextMessage?.text ??
+      rawBody?.body ??
+      ''
+  );
+
+  const rawFrom = String(p?.from ?? rawBody?.from ?? '');
+  let fromSender = rawFrom;
+  let chatFromIn = '';
+  const inMatch = rawFrom.match(/^(.+?)\s+in\s+(.+)$/i);
+  if (inMatch) {
+    fromSender = inMatch[1].trim();
+    chatFromIn = inMatch[2].trim();
+  }
+
+  const chatId = String(
+    p?.chat_id ??
+      p?.chat_jid ??
+      p?.chat?.id ??
+      chatFromIn ??
+      (fromSender.endsWith('@g.us') ? fromSender : '') ??
+      rawBody?.chat_id ??
+      ''
+  ).trim();
+
+  const senderRaw = String(
+    p?.sender_pn ??
+      p?.sender_jid ??
+      p?.sender_id ??
+      p?.participant ??
+      (fromSender.endsWith('@g.us') ? '' : fromSender) ??
+      ''
+  ).trim();
+
+  return {
+    event,
+    deviceId: String(rawBody?.device_id || p?.device_id || '').trim(),
+    msgId: String(p?.id ?? msgObj?.id ?? rawBody?.id ?? '').trim(),
+    bodyText,
+    chatId,
+    senderRaw,
+    senderName: String(p?.from_name ?? p?.sender_display_name ?? p?.pushName ?? senderRaw ?? 'Unknown'),
+    isFromMe: Boolean(p?.is_from_me ?? p?.from_me ?? rawBody?.is_from_me),
+  };
+}
 
 async function updateStock(productKey: string, qty: number, type: string, flow: "IN" | "OUT", description: string, dateStr: string) {
   if (!qty || qty <= 0) return;
@@ -40,18 +97,47 @@ async function updateStock(productKey: string, qty: number, type: string, flow: 
 const processedMessageIds = new Set<string>();
 
 export async function POST(req: Request) {
+  let acquiredMsgLockKey: string | null = null;
   try {
     const body: GowaPayload = await req.json();
+    const extracted = extractGowaWebhook(body);
 
-    if (body.event !== 'message') {
+    const isMessageEvent =
+      extracted.event === 'message' ||
+      extracted.event === 'message.text' ||
+      extracted.event === 'messages.upsert';
+
+    if (!isMessageEvent) {
       return NextResponse.json({ status: 'ignored', reason: 'not a message event' });
     }
 
-    const payload = body.payload;
-    if (!payload) return NextResponse.json({ status: 'ignored', reason: 'no payload' });
+    if (!extracted.bodyText && !extracted.chatId) {
+      return NextResponse.json({ status: 'ignored', reason: 'no payload' });
+    }
+
+    // Filter device_id jika GOWA menjalankan multi-device (kecuali chat tester)
+    const configuredDeviceId = (process.env.GOWA_DEVICE_ID || '').trim();
+    if (
+      configuredDeviceId &&
+      extracted.deviceId &&
+      extracted.deviceId !== 'test_device' &&
+      extracted.chatId !== 'TEST_CHAT_ID' &&
+      extracted.deviceId !== configuredDeviceId
+    ) {
+      return NextResponse.json({ status: 'ignored', reason: 'different device_id' });
+    }
+
+    const payload = {
+      id: extracted.msgId,
+      from: extracted.senderRaw,
+      chat_id: extracted.chatId,
+      body: extracted.bodyText,
+      from_name: extracted.senderName,
+      is_from_me: extracted.isFromMe,
+    };
 
     const textBody = (payload.body || '').trim().toLowerCase();
-    const strippedBody = textBody.replace(/^[\/!#]?(lapor|laporkan)\s+/i, '').trim();
+    const strippedBody = textBody.replace(/^[\/!#]?(lapor|laporkan)\s*/i, '').trim();
 
     const isLapor = textBody.startsWith('/lapor') || textBody.startsWith('!lapor') || textBody.startsWith('#lapor') || textBody.startsWith('lapor');
     const isMasuk = textBody.startsWith('/masuk') || textBody.startsWith('!masuk') || textBody.startsWith('#masuk') || textBody === 'masuk' || textBody.startsWith('/hadir') || textBody.startsWith('!hadir') || textBody.startsWith('#hadir') || textBody === 'hadir' || strippedBody.startsWith('masuk') || strippedBody.startsWith('hadir');
@@ -85,44 +171,59 @@ export async function POST(req: Request) {
 
     // 1. Cek apakah grup ini dicentang (diizinkan)
     const groupSetting = await prisma.systemSetting.findUnique({ where: { key: 'WA_GROUP_ID' } });
-    let allowedGroups = (process.env.WA_GROUP_ID || '120363293055467760@g.us').split(',').map(g => g.trim());
+    let allowedGroups = (process.env.WA_GROUP_ID || TARGET_GROUP_ID).split(',').map(g => g.trim()).filter(Boolean);
     if (groupSetting && groupSetting.value) {
       allowedGroups = groupSetting.value.split(',').map(g => g.trim()).filter(Boolean);
     }
 
-    if (!allowedGroups.includes(payload.chat_id) && payload.chat_id !== 'TEST_CHAT_ID') {
+    const chatBareId = (payload.chat_id || '').split('@')[0];
+    const isAllowedGroup =
+      payload.chat_id === 'TEST_CHAT_ID' ||
+      allowedGroups.some((g) => g === payload.chat_id || (chatBareId && g.split('@')[0] === chatBareId));
+
+    if (!isAllowedGroup) {
       return NextResponse.json({ status: 'ignored', reason: 'unauthorized sender, not target group' });
     }
 
     // Jika sampai di sini, berarti grupnya DICENTANG. Kita cetak log-nya:
     console.log(`\n[Webhook - GRUP TERDAFTAR] Pesan dari: ${sender} (${senderNumber})\nDi Grup ID: ${groupId}\nIsi Pesan:\n${payload.body}\n`);
 
-    // 2. Cek apakah pengirim adalah nomor bot/admin itu sendiri (mencegah infinite loop)
-    if (senderNumber.includes(ADMIN_PHONE)) {
-      console.log(`[Webhook - DIBATALKAN] Pesan dikirim oleh nomor Admin/Bot sendiri, proses dihentikan.`);
+    // 2. Cek apakah pengirim adalah nomor bot itu sendiri (mencegah infinite loop)
+    const cleanSenderDigits = senderNumber.replace(/\D/g, '');
+    if (BOT_PHONE && payload.chat_id !== 'TEST_CHAT_ID' && cleanSenderDigits && cleanSenderDigits.includes(BOT_PHONE)) {
+      console.log(`[Webhook - DIBATALKAN] Pesan dikirim oleh nomor Bot sendiri (${BOT_PHONE}), proses dihentikan.`);
       return NextResponse.json({ status: 'ignored', reason: 'message from bot/admin' });
     }
 
     try {
       if (payload.id) {
+        const lockKey = `msg_${payload.id}`;
         await prisma.systemSetting.create({
           data: {
-            key: `msg_${payload.id}`,
+            key: lockKey,
             value: 'processed'
           }
         });
+        acquiredMsgLockKey = lockKey;
       }
     } catch (e) {
       // If unique constraint fails, it means it's already being processed!
       return NextResponse.json({ status: 'ignored', reason: 'duplicate message id (db lock)' });
     }
 
-    // Lookup employee by phone number
-    const cleanPhone = (payload.from || '').replace(/\D/g, '');
-    const phoneKey = cleanPhone.length > 8 ? cleanPhone.slice(-8) : cleanPhone;
-    const employee = await prisma.employee.findFirst({
-      where: { no_hp: { contains: phoneKey } }
-    });
+    // Lookup employee by phone number (supporting both 08... and 628...)
+    const empCandidates = getPhoneLookupCandidates(senderNumber);
+    const phoneKey = getPhoneTailKey(senderNumber);
+    const employee = cleanSenderDigits
+      ? await prisma.employee.findFirst({
+          where: {
+            OR: [
+              ...empCandidates.map((c) => ({ no_hp: c })),
+              ...(phoneKey.length >= 8 ? [{ no_hp: { endsWith: phoneKey } }] : []),
+            ],
+          },
+        })
+      : null;
     const employeeId = employee ? employee.id : null;
 
     // Read the message first for a humanized feel
@@ -1524,6 +1625,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ status: 'success', parsedData, replyMsg });
   } catch (error) {
     console.error('Webhook processing error:', error);
+    if (acquiredMsgLockKey) {
+      await prisma.systemSetting.delete({ where: { key: acquiredMsgLockKey } }).catch(() => {});
+    }
     return NextResponse.json({ status: 'error', message: 'Internal Server Error' }, { status: 500 });
   }
 }
