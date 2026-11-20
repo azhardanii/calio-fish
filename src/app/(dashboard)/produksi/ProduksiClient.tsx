@@ -75,7 +75,12 @@ export function ProduksiClient({
     let data = [...initialData];
 
     if (filterKegiatan !== 'all') {
-      data = data.filter((p) => p.kegiatan.toLowerCase() === filterKegiatan.toLowerCase());
+      data = data.filter((p) => {
+        if (filterKegiatan === 'Pengemasan') {
+          return /kemas|pengemasan|packing/i.test(p.kegiatan);
+        }
+        return p.kegiatan.toLowerCase() === filterKegiatan.toLowerCase();
+      });
     }
 
     if (appliedDateRange?.from) {
@@ -116,7 +121,7 @@ export function ProduksiClient({
 
     filteredData.forEach(p => {
       if (p.total_hasil_pcs) totalPcs += Number(p.total_hasil_pcs);
-      if (p.bahan_jadi && p.kegiatan.toLowerCase() !== 'mengemas') {
+      if (p.bahan_jadi && !/kemas|pengemasan|packing/i.test(p.kegiatan)) {
         totalKg += Number(p.bahan_jadi);
       }
       if (p.bahan_baku && p.bahan_jadi) {
@@ -188,8 +193,8 @@ export function ProduksiClient({
       }));
   }, [filteredData, appliedDateRange]);
 
-  const defaultKegiatan = ['Pembersihan', 'Pemotongan', 'Penggorengan', 'Penirisan Minyak', 'Pemberian Bumbu', 'Pengemasan', 'Lainnya'];
-  const uniqueKegiatan = Array.from(new Set([...defaultKegiatan, ...initialData.map(p => p.kegiatan)]));
+  const defaultKegiatan = ['Pembersihan', 'Pengemasan'];
+  const uniqueKegiatan = defaultKegiatan;
 
   const stokBahanSummary = useMemo(() => {
     const map = new Map<string, { kategori: string; jenis_ukuran: string; masuk: number; keluar: number; saldo: number }>();
@@ -782,7 +787,13 @@ function TambahKegiatanModal({
   const [date, setDate] = useState(
     editingItem ? new Date(editingItem.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
   );
-  const [kegiatan, setKegiatan] = useState<string>(editingItem?.kegiatan || 'Pembersihan');
+  const [kegiatan, setKegiatan] = useState<string>(
+    editingItem
+      ? /kemas|pengemasan|packing/i.test(editingItem.kegiatan)
+        ? 'Pengemasan'
+        : 'Pembersihan'
+      : 'Pembersihan'
+  );
   const [jenisProduksi, setJenisProduksi] = useState<string>(editingItem?.jenis_produksi || '');
   const [bahanBaku, setBahanBaku] = useState<string>(editingItem?.bahan_baku != null ? String(editingItem.bahan_baku) : '');
   const [bahanJadi, setBahanJadi] = useState<string>(editingItem?.bahan_jadi != null ? String(editingItem.bahan_jadi) : '');
@@ -884,12 +895,7 @@ function TambahKegiatanModal({
                 className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white font-semibold text-gray-800"
               >
                 <option value="Pembersihan">Pembersihan</option>
-                <option value="Pemotongan">Pemotongan</option>
-                <option value="Penggorengan">Penggorengan</option>
-                <option value="Penirisan Minyak">Penirisan Minyak</option>
-                <option value="Pemberian Bumbu">Pemberian Bumbu</option>
                 <option value="Pengemasan">Pengemasan (Masuk Stok)</option>
-                <option value="Lainnya">Lainnya</option>
               </select>
             </div>
           </div>

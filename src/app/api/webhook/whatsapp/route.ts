@@ -7,11 +7,57 @@ import { recalculateOutletFinance } from '@/app/actions';
 import { postPayment, postShipment } from '@/lib/consignment/finance';
 import { TRANSACTION_TYPES, BREAKDOWN_STATUS } from '@/lib/consignment/constants';
 import { matchProductType } from '@/lib/consignment/product-type-match';
+import { resolveProductMatch } from '@/lib/consignment/product-match';
 import { getOnlineTarget } from '@/lib/settings';
 import { getPhoneLookupCandidates, getPhoneTailKey } from '@/lib/phone';
 
 const BOT_PHONE = (process.env.WA_ADMIN_PHONE || '628174734149').replace(/\D/g, '');
 const TARGET_GROUP_ID = process.env.WA_GROUP_ID || '120363293055467760@g.us';
+
+type ProductWithType = Prisma.ProductGetPayload<{ include: { product_type: true } }>;
+
+async function fetchMatchableProducts(
+  db: Prisma.TransactionClient | typeof prisma = prisma
+): Promise<ProductWithType[]> {
+  return db.product.findMany({ include: { product_type: true } });
+}
+
+async function recordWebhookDebug(
+  extracted: {
+    event: string;
+    deviceId: string;
+    msgId: string;
+    chatId: string;
+    senderRaw: string;
+    bodyText: string;
+    isFromMe: boolean;
+  },
+  outcome: string,
+  reason: string
+) {
+  if (!extracted.chatId || extracted.chatId === 'TEST_CHAT_ID') return;
+  try {
+    const val = JSON.stringify({
+      at: new Date().toISOString(),
+      event: extracted.event,
+      deviceId: extracted.deviceId,
+      msgId: extracted.msgId,
+      chatId: extracted.chatId,
+      senderRaw: extracted.senderRaw,
+      isFromMe: extracted.isFromMe,
+      bodyPreview: extracted.bodyText.slice(0, 120),
+      outcome,
+      reason,
+    });
+    await prisma.systemSetting.upsert({
+      where: { key: 'wa_last_webhook_debug' },
+      update: { value: val },
+      create: { key: 'wa_last_webhook_debug', value: val },
+    });
+  } catch {
+    // non-fatal diagnostic logging
+  }
+}
 
 function extractGowaWebhook(rawBody: any) {
   const event = String(rawBody?.event || (rawBody?.payload ? 'message' : '')).toLowerCase();
@@ -71,7 +117,8 @@ function extractGowaWebhook(rawBody: any) {
 
 async function updateStock(productKey: string, qty: number, type: string, flow: "IN" | "OUT", description: string, dateStr: string) {
   if (!qty || qty <= 0) return;
-  const product = await prisma.product.findUnique({ where: { sku: productKey } });
+  const allProducts = await fetchMatchableProducts();
+  const product = resolveProductMatch(productKey, allProducts);
   if (!product) return;
   
   const newBalance = flow === "IN" ? product.stok + qty : product.stok - qty;
@@ -103,9 +150,8 @@ export async function POST(req: Request) {
     const extracted = extractGowaWebhook(body);
 
     const isMessageEvent =
-      extracted.event === 'message' ||
-      extracted.event === 'message.text' ||
-      extracted.event === 'messages.upsert';
+      extracted.event.startsWith('message') ||
+      (!extracted.event && Boolean(extracted.bodyText && extracted.chatId));
 
     if (!isMessageEvent) {
       return NextResponse.json({ status: 'ignored', reason: 'not a message event' });
@@ -115,15 +161,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'ignored', reason: 'no payload' });
     }
 
-    // Filter device_id jika GOWA menjalankan multi-device (kecuali chat tester)
+    // Filter device_id jika GOWA menjalankan multi-device (dukung UUID GOWA_DEVICE_ID maupun JID bot)
     const configuredDeviceId = (process.env.GOWA_DEVICE_ID || '').trim();
-    if (
-      configuredDeviceId &&
-      extracted.deviceId &&
-      extracted.deviceId !== 'test_device' &&
-      extracted.chatId !== 'TEST_CHAT_ID' &&
-      extracted.deviceId !== configuredDeviceId
-    ) {
+    const deviceDigits = extracted.deviceId.replace(/@.*$/, '').replace(/:.*$/, '').replace(/\D/g, '');
+    const isConfiguredDevice =
+      !configuredDeviceId ||
+      !extracted.deviceId ||
+      extracted.deviceId === 'test_device' ||
+      extracted.chatId === 'TEST_CHAT_ID' ||
+      extracted.deviceId.toLowerCase() === configuredDeviceId.toLowerCase() ||
+      (BOT_PHONE && deviceDigits === BOT_PHONE);
+
+    if (!isConfiguredDevice) {
+      await recordWebhookDebug(extracted, 'ignored', `different device_id: ${extracted.deviceId}`);
       return NextResponse.json({ status: 'ignored', reason: 'different device_id' });
     }
 
@@ -158,10 +208,12 @@ export async function POST(req: Request) {
     const isTriggered = isLapor || isMasuk || isIzin || isSakit || isStructuredReport;
     
     if (!isTriggered) {
+      await recordWebhookDebug(extracted, 'ignored', 'no trigger prefix or report keyword');
       return NextResponse.json({ status: 'ignored', reason: 'no trigger prefix or report keyword' });
     }
 
     if (payload.is_from_me) {
+      await recordWebhookDebug(extracted, 'ignored', 'message from self');
       return NextResponse.json({ status: 'ignored', reason: 'message from self' });
     }
 
@@ -182,6 +234,7 @@ export async function POST(req: Request) {
       allowedGroups.some((g) => g === payload.chat_id || (chatBareId && g.split('@')[0] === chatBareId));
 
     if (!isAllowedGroup) {
+      await recordWebhookDebug(extracted, 'ignored', `not target group (${payload.chat_id})`);
       return NextResponse.json({ status: 'ignored', reason: 'unauthorized sender, not target group' });
     }
 
@@ -191,9 +244,12 @@ export async function POST(req: Request) {
     // 2. Cek apakah pengirim adalah nomor bot itu sendiri (mencegah infinite loop)
     const cleanSenderDigits = senderNumber.replace(/\D/g, '');
     if (BOT_PHONE && payload.chat_id !== 'TEST_CHAT_ID' && cleanSenderDigits && cleanSenderDigits.includes(BOT_PHONE)) {
+      await recordWebhookDebug(extracted, 'ignored', 'message from bot/admin');
       console.log(`[Webhook - DIBATALKAN] Pesan dikirim oleh nomor Bot sendiri (${BOT_PHONE}), proses dihentikan.`);
       return NextResponse.json({ status: 'ignored', reason: 'message from bot/admin' });
     }
+
+    await recordWebhookDebug(extracted, 'accepted', 'processing message');
 
     try {
       if (payload.id) {
@@ -366,12 +422,14 @@ export async function POST(req: Request) {
           });
 
           if (w && items.length > 0) {
+            const allProducts = await fetchMatchableProducts(tx);
+            const resolvedPB: Array<{ prod: ProductWithType; qty: number }> = [];
             const insufficient: string[] = [];
             for (const it of items) {
               if (it.product_key && it.qty > 0) {
-                const prod = await tx.product.findUnique({ where: { sku: it.product_key } });
+                const prod = resolveProductMatch(it.product_key, allProducts);
                 if (!prod) {
-                  insufficient.push(`• *${it.product_key}* (SKU tidak ditemukan)`);
+                  insufficient.push(`• *${it.product_key}* (SKU/nama produk tidak ditemukan)`);
                   continue;
                 }
                 const ws = await tx.warehouseStock.findUnique({
@@ -380,6 +438,8 @@ export async function POST(req: Request) {
                 const avail = ws?.quantity || 0;
                 if (avail < it.qty) {
                   insufficient.push(`• *${prod.name}* (Tersedia di ${w.name}: ${avail} pcs, Diminta: ${it.qty} pcs)`);
+                } else {
+                  resolvedPB.push({ prod, qty: it.qty });
                 }
               }
             }
@@ -392,44 +452,39 @@ export async function POST(req: Request) {
               );
             }
 
-            for (const it of items) {
-              if (it.product_key && it.qty > 0) {
-                const prod = await tx.product.findUnique({ where: { sku: it.product_key } });
-                if (prod) {
-                  totalQty += it.qty;
-                  firstProductName = prod.name;
-                  const ws = await tx.warehouseStock.findUnique({
-                    where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: prod.id } }
-                  });
-                  if (ws) {
-                    await tx.warehouseStock.update({
-                      where: { id: ws.id },
-                      data: { quantity: ws.quantity - it.qty }
-                    });
-                  }
-                  const newBal = prod.stok - it.qty;
-                  await tx.product.update({
-                    where: { id: prod.id },
-                    data: { stok: newBal }
-                  });
-
-                  await tx.stockTransaction.create({
-                    data: {
-                      product_id: prod.id,
-                      type: 'PENJUALAN',
-                      flow: 'OUT',
-                      qty: it.qty,
-                      balance: newBal,
-                      description: `Personal Buyer: ${buyerName} (${data.keterangan || 'Penjualan Langsung WA'})`,
-                      date: parsedData.date ? new Date(parsedData.date) : new Date(),
-                      source_type: 'WAREHOUSE',
-                      source_id: w.id,
-                      destination_type: 'ENDUSER',
-                      employee_id: employeeId
-                    }
-                  });
-                }
+            for (const { prod, qty } of resolvedPB) {
+              totalQty += qty;
+              firstProductName = prod.name;
+              const ws = await tx.warehouseStock.findUnique({
+                where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: prod.id } }
+              });
+              if (ws) {
+                await tx.warehouseStock.update({
+                  where: { id: ws.id },
+                  data: { quantity: ws.quantity - qty }
+                });
               }
+              const newBal = prod.stok - qty;
+              await tx.product.update({
+                where: { id: prod.id },
+                data: { stok: newBal }
+              });
+
+              await tx.stockTransaction.create({
+                data: {
+                  product_id: prod.id,
+                  type: 'PENJUALAN',
+                  flow: 'OUT',
+                  qty,
+                  balance: newBal,
+                  description: `Personal Buyer: ${buyerName} (${data.keterangan || 'Penjualan Langsung WA'})`,
+                  date: parsedData.date ? new Date(parsedData.date) : new Date(),
+                  source_type: 'WAREHOUSE',
+                  source_id: w.id,
+                  destination_type: 'ENDUSER',
+                  employee_id: employeeId
+                }
+              });
             }
           }
 
@@ -463,66 +518,90 @@ export async function POST(req: Request) {
       } else if (parsedData.report_type === 'PRODUKSI_HASIL') {
         const activities = Array.isArray(data) ? data : [data];
         let totalStokAdded = 0;
-        let lastProductShortName = '';
+        const packedSummary: string[] = [];
 
         await prisma.$transaction(async (tx) => {
+          const allProducts = await fetchMatchableProducts(tx);
+          const centralWarehouse = await tx.warehouse.findFirst({
+            where: { name: { contains: 'Banyuwangi', mode: 'insensitive' } },
+          });
+          const unmatchedPacking: string[] = [];
+
           for (const activity of activities) {
+            const hasilPcs = activity.hasil_pcs ? Number(activity.hasil_pcs) : 0;
+            const isPacking = Boolean(
+              (activity.kegiatan && /mengemas|kemas|pengemasan|packing/i.test(activity.kegiatan)) ||
+              (hasilPcs > 0 && activity.product_key)
+            );
+            const normalizedKegiatan = isPacking ? 'Pengemasan' : 'Pembersihan';
+
             await tx.produksi.create({
               data: {
                 date: new Date(parsedData.date),
-                kegiatan: activity.kegiatan || 'Produksi',
+                kegiatan: normalizedKegiatan,
                 jenis_produksi: activity.jenis_produksi || null,
                 bahan_baku: activity.bahan_baku_kg ? Number(activity.bahan_baku_kg) : null,
                 bahan_jadi: activity.hasil_kg ? Number(activity.hasil_kg) : null,
-                total_hasil_pcs: activity.hasil_pcs ? Number(activity.hasil_pcs) : null,
+                total_hasil_pcs: hasilPcs || null,
                 hpp_batch: activity.hpp_batch ? Number(activity.hpp_batch) : null,
                 employee_id: employeeId
               },
             });
 
-            const isPacking = activity.kegiatan && /mengemas|kemas|pengemasan|packing/i.test(activity.kegiatan);
-            if (isPacking && activity.hasil_pcs > 0 && activity.product_key) {
-               const product = await tx.product.findUnique({ where: { sku: activity.product_key } });
-               if (product) {
-                 const newBalance = product.stok + activity.hasil_pcs;
-                 await tx.product.update({ where: { id: product.id }, data: { stok: newBalance } });
+            if (isPacking && hasilPcs > 0) {
+              const rawKey = activity.product_key || activity.jenis_produksi || '';
+              const product = resolveProductMatch(rawKey, allProducts);
+              if (!product) {
+                unmatchedPacking.push(rawKey || 'Produk tidak disebutkan');
+                continue;
+              }
+              const newBalance = product.stok + hasilPcs;
+              await tx.product.update({ where: { id: product.id }, data: { stok: newBalance } });
 
-                 let destId = null;
-                 const w = await tx.warehouse.findFirst({ where: { name: { contains: 'Banyuwangi', mode: 'insensitive' } }});
-                 if (w) {
-                   destId = w.id;
-                   const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: product.id } }});
-                   if (ws) {
-                     await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity + activity.hasil_pcs } });
-                   } else {
-                     await tx.warehouseStock.create({ data: { warehouse_id: w.id, product_id: product.id, quantity: activity.hasil_pcs } });
-                   }
-                 }
+              let destId: string | null = null;
+              if (centralWarehouse) {
+                destId = centralWarehouse.id;
+                const ws = await tx.warehouseStock.findUnique({
+                  where: { warehouse_id_product_id: { warehouse_id: centralWarehouse.id, product_id: product.id } },
+                });
+                if (ws) {
+                  await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity + hasilPcs } });
+                } else {
+                  await tx.warehouseStock.create({
+                    data: { warehouse_id: centralWarehouse.id, product_id: product.id, quantity: hasilPcs },
+                  });
+                }
+              }
 
-                 await tx.stockTransaction.create({
-                   data: {
-                     product_id: product.id,
-                     type: 'PRODUKSI',
-                     flow: 'IN',
-                     qty: activity.hasil_pcs,
-                     balance: newBalance,
-                     description: `Hasil Produksi (${activity.kegiatan})`,
-                     date: new Date(parsedData.date),
-                     destination_type: 'WAREHOUSE',
-                     destination_id: destId,
-                     employee_id: employeeId
-                   }
-                 });
-                 totalStokAdded += activity.hasil_pcs;
-                 lastProductShortName = product.short_name;
-               }
+              await tx.stockTransaction.create({
+                data: {
+                  product_id: product.id,
+                  type: 'PRODUKSI',
+                  flow: 'IN',
+                  qty: hasilPcs,
+                  balance: newBalance,
+                  description: `Hasil Produksi (${activity.kegiatan})`,
+                  date: new Date(parsedData.date),
+                  destination_type: 'WAREHOUSE',
+                  destination_id: destId,
+                  employee_id: employeeId,
+                },
+              });
+              totalStokAdded += hasilPcs;
+              packedSummary.push(`${product.short_name} (+${hasilPcs} pcs)`);
             }
+          }
+
+          if (unmatchedPacking.length > 0) {
+            throw new Error(
+              `AMBIGUOUS:Produk untuk laporan mengemas (${unmatchedPacking.join(', ')}) belum dikenali atau gramasinya belum jelas. Mohon tulis nama produk + gramasi (misal: /lapor mengemas fs sambal matah 60gr : 100pcs).`
+            );
           }
         }, { maxWait: 10000, timeout: 60000 });
         
         replyMsg = `✅ *${activities.length} Kegiatan Produksi* tanggal ${parsedData.date} dicatat!`;
         if (totalStokAdded > 0) {
-          replyMsg += `\nStok ${lastProductShortName || 'Produk'} bertambah ${totalStokAdded} pcs.`;
+          replyMsg += `\nStok bertambah: ${packedSummary.join(', ')}.`;
         }
 
       } else if (parsedData.report_type === 'STOK_BAHAN') {
@@ -583,9 +662,10 @@ export async function POST(req: Request) {
                   throw new Error(`AMBIGUOUS:Akses ditolak. Anda (${employee.nama}) tidak memiliki izin untuk menginput laporan ke Outlet '${o.nama}' karena bukan outlet yang ditugaskan kepada Anda.`);
                 }
               }
+              const allProducts = await fetchMatchableProducts(tx);
               for (const item of items) {
                 if (item.product_key && item.qty > 0) {
-                  const product = await tx.product.findUnique({ where: { sku: item.product_key } });
+                  const product = resolveProductMatch(item.product_key, allProducts);
                   if (product) {
                     const os = await tx.outletStock.findUnique({ where: { outlet_id_product_id: { outlet_id: o.id, product_id: product.id } }});
                     if (os) await tx.outletStock.update({ where: { id: os.id }, data: { quantity: os.quantity - item.qty }});
@@ -664,18 +744,22 @@ export async function POST(req: Request) {
             const srcName = data.source_name || 'Banyuwangi';
             const w = await tx.warehouse.findFirst({ where: { name: { contains: srcName, mode: 'insensitive' } }});
             if (w) {
+              const allProducts = await fetchMatchableProducts(tx);
+              const resolvedOnline: Array<{ product: ProductWithType; qty: number }> = [];
               const insufficientItems: string[] = [];
               for (const item of items) {
                 if (item.product_key && item.qty > 0) {
-                  const product = await tx.product.findUnique({ where: { sku: item.product_key } });
+                  const product = resolveProductMatch(item.product_key, allProducts);
                   if (!product) {
-                    insufficientItems.push(`• *${item.product_key}* (SKU tidak ditemukan di database)`);
+                    insufficientItems.push(`• *${item.product_key}* (SKU/nama produk tidak ditemukan di database)`);
                     continue;
                   }
                   const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: product.id } }});
                   const availableQty = ws ? ws.quantity : 0;
                   if (availableQty < item.qty) {
                     insufficientItems.push(`• *${product.name}* (Tersedia: ${availableQty} pcs, Diminta: ${item.qty} pcs)`);
+                  } else {
+                    resolvedOnline.push({ product, qty: item.qty });
                   }
                 }
               }
@@ -688,33 +772,28 @@ export async function POST(req: Request) {
                 );
               }
 
-              for (const item of items) {
-                if (item.product_key && item.qty > 0) {
-                  const product = await tx.product.findUnique({ where: { sku: item.product_key } });
-                  if (product) {
-                    const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: product.id } }});
-                    if (ws) await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity - item.qty }});
-                    
-                    const newBalance = product.stok - item.qty;
-                    await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
-                    
-                    await tx.stockTransaction.create({
-                      data: {
-                        product_id: product.id,
-                        type: 'PENJUALAN',
-                        flow: 'OUT',
-                        qty: item.qty,
-                        balance: newBalance,
-                        description: `Penjualan Online (${data.platform}) dari ${w.name}`,
-                        date: new Date(parsedData.date),
-                        source_type: 'WAREHOUSE',
-                        source_id: w.id,
-                        destination_type: 'ENDUSER',
-                        employee_id: employeeId
-                      }
-                    });
+              for (const { product, qty } of resolvedOnline) {
+                const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: product.id } }});
+                if (ws) await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity - qty }});
+                
+                const newBalance = product.stok - qty;
+                await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
+                
+                await tx.stockTransaction.create({
+                  data: {
+                    product_id: product.id,
+                    type: 'PENJUALAN',
+                    flow: 'OUT',
+                    qty,
+                    balance: newBalance,
+                    description: `Penjualan Online (${data.platform}) dari ${w.name}`,
+                    date: new Date(parsedData.date),
+                    source_type: 'WAREHOUSE',
+                    source_id: w.id,
+                    destination_type: 'ENDUSER',
+                    employee_id: employeeId
                   }
-                }
+                });
               }
 
               // Create OutboundShipment for unified tracking
@@ -731,15 +810,10 @@ export async function POST(req: Request) {
                 }
               });
 
-              for (const item of items) {
-                if (item.product_key && item.qty > 0) {
-                  const product = await tx.product.findUnique({ where: { sku: item.product_key } });
-                  if (product) {
-                    await tx.outboundItem.create({
-                      data: { shipment_id: shipment.id, product_id: product.id, qty: item.qty }
-                    });
-                  }
-                }
+              for (const { product, qty } of resolvedOnline) {
+                await tx.outboundItem.create({
+                  data: { shipment_id: shipment.id, product_id: product.id, qty }
+                });
               }
 
             }
@@ -772,6 +846,7 @@ export async function POST(req: Request) {
       
       } else if (parsedData.report_type === 'MARKETING_ONLINE_MULTI') {
         await prisma.$transaction(async (tx) => {
+          const allProducts = await fetchMatchableProducts(tx);
           for (const entry of data) {
              await tx.marketingOnline.create({
               data: {
@@ -793,18 +868,21 @@ export async function POST(req: Request) {
               const srcName = entry.source_name || 'Banyuwangi';
               const w = await tx.warehouse.findFirst({ where: { name: { contains: srcName, mode: 'insensitive' } }});
               if (w) {
+                const resolvedMulti: Array<{ product: ProductWithType; qty: number }> = [];
                 const insufficientItems: string[] = [];
                 for (const item of items) {
                   if (item.product_key && item.qty > 0) {
-                    const product = await tx.product.findUnique({ where: { sku: item.product_key } });
+                    const product = resolveProductMatch(item.product_key, allProducts);
                     if (!product) {
-                      insufficientItems.push(`• *${item.product_key}* (SKU tidak ditemukan di database)`);
+                      insufficientItems.push(`• *${item.product_key}* (SKU/nama produk tidak ditemukan di database)`);
                       continue;
                     }
                     const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: product.id } }});
                     const availableQty = ws ? ws.quantity : 0;
                     if (availableQty < item.qty) {
                       insufficientItems.push(`• *${product.name}* (Tersedia: ${availableQty} pcs, Diminta: ${item.qty} pcs)`);
+                    } else {
+                      resolvedMulti.push({ product, qty: item.qty });
                     }
                   }
                 }
@@ -818,34 +896,29 @@ export async function POST(req: Request) {
                 }
 
                 const outboundItemsPayload: Array<{ product_id: string; qty: number }> = [];
-                for (const item of items) {
-                  if (item.product_key && item.qty > 0) {
-                    const product = await tx.product.findUnique({ where: { sku: item.product_key } });
-                    if (product) {
-                      const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: product.id } }});
-                      if (ws) await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity - item.qty }});
-                      
-                      const newBalance = product.stok - item.qty;
-                      await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
-                      outboundItemsPayload.push({ product_id: product.id, qty: item.qty });
-                      
-                      await tx.stockTransaction.create({
-                        data: {
-                          product_id: product.id,
-                          type: 'PENJUALAN',
-                          flow: 'OUT',
-                          qty: item.qty,
-                          balance: newBalance,
-                          description: `Penjualan Online Multi (${entry.platform}) dari ${w.name}`,
-                          date: new Date(parsedData.date),
-                          source_type: 'WAREHOUSE',
-                          source_id: w.id,
-                          destination_type: 'ENDUSER',
-                          employee_id: employeeId
-                        }
-                      });
+                for (const { product, qty } of resolvedMulti) {
+                  const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: w.id, product_id: product.id } }});
+                  if (ws) await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity - qty }});
+                  
+                  const newBalance = product.stok - qty;
+                  await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
+                  outboundItemsPayload.push({ product_id: product.id, qty });
+                  
+                  await tx.stockTransaction.create({
+                    data: {
+                      product_id: product.id,
+                      type: 'PENJUALAN',
+                      flow: 'OUT',
+                      qty,
+                      balance: newBalance,
+                      description: `Penjualan Online Multi (${entry.platform}) dari ${w.name}`,
+                      date: new Date(parsedData.date),
+                      source_type: 'WAREHOUSE',
+                      source_id: w.id,
+                      destination_type: 'ENDUSER',
+                      employee_id: employeeId
                     }
-                  }
+                  });
                 }
                 if (outboundItemsPayload.length > 0) {
                   await tx.outboundShipment.create({
@@ -1072,12 +1145,13 @@ export async function POST(req: Request) {
             }
 
             // 3. Pre-validate Stock Availability at Source (BATALKAN jika stok tidak cukup)
+            const allProducts = await fetchMatchableProducts(tx);
             const insufficientItems: string[] = [];
             for (const item of items) {
               if (item.product_key && item.qty > 0) {
-                const product = await tx.product.findUnique({ where: { sku: item.product_key } });
+                const product = resolveProductMatch(item.product_key, allProducts);
                 if (!product) {
-                  insufficientItems.push(`• *${item.product_key}* (SKU produk tidak ditemukan di database)`);
+                  insufficientItems.push(`• *${item.product_key}* (SKU/nama produk tidak ditemukan di database)`);
                   continue;
                 }
 
@@ -1160,10 +1234,7 @@ export async function POST(req: Request) {
             const returWarehouseItems: Array<{ productId: string; qtyReturned: number; qtyReusable: number; qtyReject: number; unitPrice: number; productTypeId: string | null }> = [];
             for (const item of items) {
                if (item.product_key && item.qty > 0) {
-                 const product = await tx.product.findUnique({
-                   where: { sku: item.product_key },
-                   include: { product_type: true },
-                 });
+                 const product = resolveProductMatch(item.product_key, allProducts);
                  if (product) {
                    await tx.outboundItem.create({
                      data: { shipment_id: shipment.id, product_id: product.id, qty: item.qty }
@@ -1404,7 +1475,7 @@ export async function POST(req: Request) {
           if (Array.isArray(data.items) && data.items.length > 0) {
             const [allTypes, allProducts] = await Promise.all([
               prisma.productType.findMany({ where: { is_active: true } }),
-              prisma.product.findMany({ select: { id: true, sku: true, name: true, short_name: true, product_type_id: true } }),
+              fetchMatchableProducts(prisma),
             ]);
             parsedItems = [];
             for (const it of data.items) {
@@ -1417,17 +1488,14 @@ export async function POST(req: Request) {
                 let manualVariants: Array<{ productId: string; qty: number }> | undefined = undefined;
                 if (Array.isArray(it.variants) && it.variants.length > 0) {
                   manualVariants = [];
+                  const typeProducts = allProducts.filter((p) => p.product_type_id === matched.id);
                   for (const v of it.variants) {
                     const vQty = Number(v.qty) || 0;
                     if (vQty <= 0) continue;
-                    const keyLower = (v.product_key || '').toLowerCase();
-                    const prod = allProducts.find(
-                      (p) =>
-                        p.product_type_id === matched.id &&
-                        (p.sku.toLowerCase() === keyLower ||
-                          p.short_name.toLowerCase() === keyLower ||
-                          p.name.toLowerCase().includes(keyLower))
-                    );
+                    const prod =
+                      typeProducts.length > 0
+                        ? resolveProductMatch(v.product_key, typeProducts)
+                        : resolveProductMatch(v.product_key, allProducts);
                     if (prod) {
                       manualVariants.push({ productId: prod.id, qty: vQty });
                     }
@@ -1520,6 +1588,7 @@ export async function POST(req: Request) {
         const booth = bsList[0];
 
         await prisma.$transaction(async (tx) => {
+          const allProducts = await fetchMatchableProducts(tx);
           let calculatedTotal = 0;
           for (const item of items) {
             const itemQty = Number(item.qty) || 1;
@@ -1560,15 +1629,17 @@ export async function POST(req: Request) {
               });
             } else {
               // Direct product
-              const prod = await tx.product.findFirst({
-                where: {
-                  OR: [
-                    { name: { contains: item.item_name, mode: 'insensitive' } },
-                    { short_name: { contains: item.item_name, mode: 'insensitive' } },
-                    { sku: { contains: item.item_name, mode: 'insensitive' } }
-                  ]
-                }
-              });
+              const prod =
+                resolveProductMatch(item.product_key || item.item_name, allProducts) ||
+                (await tx.product.findFirst({
+                  where: {
+                    OR: [
+                      { name: { contains: item.item_name, mode: 'insensitive' } },
+                      { short_name: { contains: item.item_name, mode: 'insensitive' } },
+                      { sku: { contains: item.item_name, mode: 'insensitive' } },
+                    ],
+                  },
+                }));
               if (prod) {
                 const bstock = await tx.boothStock.findUnique({
                   where: { booth_id_product_id: { booth_id: booth.id, product_id: prod.id } }
