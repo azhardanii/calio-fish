@@ -1144,50 +1144,60 @@ export async function POST(req: Request) {
               }
             }
 
-            // 3. Pre-validate Stock Availability at Source (BATALKAN jika stok tidak cukup)
-            const allProducts = await fetchMatchableProducts(tx);
-            const insufficientItems: string[] = [];
-            for (const item of items) {
-              if (item.product_key && item.qty > 0) {
-                const product = resolveProductMatch(item.product_key, allProducts);
-                if (!product) {
-                  insufficientItems.push(`• *${item.product_key}* (SKU/nama produk tidak ditemukan di database)`);
-                  continue;
-                }
+            // 3. Pre-validate Items & Stock Availability at Source (BATALKAN jika kosong / stok tidak cukup)
+            const validRawItems = Array.isArray(items)
+              ? items.filter((it: any) => it?.product_key && Number(it.qty) > 0)
+              : [];
+            if (validRawItems.length === 0) {
+              throw new Error(
+                `AMBIGUOUS:Daftar produk dan jumlah qty pengiriman ke *${destName}* belum terbaca. Contoh format: /lapor kirim dari Gudang Banyuwangi ke ${destName}: FS Ori 60gr 10 pcs.`
+              );
+            }
 
-                if ((srcType === 'WAREHOUSE' || srcType === 'DISTRIBUTOR') && sourceId) {
-                  const ws = await tx.warehouseStock.findUnique({
-                    where: { warehouse_id_product_id: { warehouse_id: sourceId, product_id: product.id } }
-                  });
-                  const availableQty = ws ? ws.quantity : 0;
-                  if (availableQty < item.qty) {
-                    insufficientItems.push(`• *${product.name}* (Tersedia: ${availableQty} pcs, Diminta: ${item.qty} pcs)`);
-                  }
-                } else if (srcType === 'OUTLET' && sourceId) {
-                  const os = await tx.outletStock.findUnique({
-                    where: { outlet_id_product_id: { outlet_id: sourceId, product_id: product.id } }
-                  });
-                  const availableQty = os ? os.quantity : 0;
-                  if (availableQty < item.qty) {
-                    insufficientItems.push(`• *${product.name}* (Tersedia di outlet: ${availableQty} pcs, Diminta: ${item.qty} pcs)`);
-                  }
-                } else if (srcType === 'BOOTH' && sourceId) {
-                  const bs = await tx.boothStock.findUnique({
-                    where: { booth_id_product_id: { booth_id: sourceId, product_id: product.id } }
-                  });
-                  const availableQty = bs ? bs.quantity : 0;
-                  if (availableQty < item.qty) {
-                    insufficientItems.push(`• *${product.name}* (Tersedia di booth: ${availableQty} pcs, Diminta: ${item.qty} pcs)`);
-                  }
+            const allProducts = await fetchMatchableProducts(tx);
+            const resolvedRouteItems: Array<{ product: ProductWithType; qty: number; rawItem: any }> = [];
+            const insufficientItems: string[] = [];
+            for (const item of validRawItems) {
+              const qty = Number(item.qty) || 0;
+              const product = resolveProductMatch(item.product_key, allProducts);
+              if (!product) {
+                insufficientItems.push(`• *${item.product_key}* (SKU/nama produk tidak ditemukan di database)`);
+                continue;
+              }
+              resolvedRouteItems.push({ product, qty, rawItem: item });
+
+              if ((srcType === 'WAREHOUSE' || srcType === 'DISTRIBUTOR') && sourceId) {
+                const ws = await tx.warehouseStock.findUnique({
+                  where: { warehouse_id_product_id: { warehouse_id: sourceId, product_id: product.id } }
+                });
+                const availableQty = ws ? ws.quantity : 0;
+                if (availableQty < qty) {
+                  insufficientItems.push(`• *${product.name}* (Tersedia: ${availableQty} pcs, Diminta: ${qty} pcs)`);
+                }
+              } else if (srcType === 'OUTLET' && sourceId) {
+                const os = await tx.outletStock.findUnique({
+                  where: { outlet_id_product_id: { outlet_id: sourceId, product_id: product.id } }
+                });
+                const availableQty = os ? os.quantity : 0;
+                if (availableQty < qty) {
+                  insufficientItems.push(`• *${product.name}* (Tersedia di outlet: ${availableQty} pcs, Diminta: ${qty} pcs)`);
+                }
+              } else if (srcType === 'BOOTH' && sourceId) {
+                const bs = await tx.boothStock.findUnique({
+                  where: { booth_id_product_id: { booth_id: sourceId, product_id: product.id } }
+                });
+                const availableQty = bs ? bs.quantity : 0;
+                if (availableQty < qty) {
+                  insufficientItems.push(`• *${product.name}* (Tersedia di booth: ${availableQty} pcs, Diminta: ${qty} pcs)`);
                 }
               }
             }
 
             if (insufficientItems.length > 0) {
-              const srcLabel = srcType === 'WAREHOUSE' 
-                ? `gudang *${resolvedSourceName}*` 
-                : srcType === 'OUTLET' 
-                ? `outlet *${resolvedSourceName}*` 
+              const srcLabel = (srcType === 'WAREHOUSE' || srcType === 'DISTRIBUTOR')
+                ? `gudang *${resolvedSourceName}*`
+                : srcType === 'OUTLET'
+                ? `outlet *${resolvedSourceName}*`
                 : `booth *${resolvedSourceName}*`;
               throw new Error(
                 `BATAL:Stok di ${srcLabel} tidak mencukupi atau habis:\n` +
@@ -1232,26 +1242,23 @@ export async function POST(req: Request) {
             // 5. Process Items and Stocks
             const outletShipmentItems: Array<{ productId: string; qty: number }> = [];
             const returWarehouseItems: Array<{ productId: string; qtyReturned: number; qtyReusable: number; qtyReject: number; unitPrice: number; productTypeId: string | null }> = [];
-            for (const item of items) {
-               if (item.product_key && item.qty > 0) {
-                 const product = resolveProductMatch(item.product_key, allProducts);
-                 if (product) {
+            for (const { product, qty: itemQty, rawItem: item } of resolvedRouteItems) {
                    await tx.outboundItem.create({
-                     data: { shipment_id: shipment.id, product_id: product.id, qty: item.qty }
+                     data: { shipment_id: shipment.id, product_id: product.id, qty: itemQty }
                    });
                    
                    // Decrement Source Stock
-                   if (srcType === 'WAREHOUSE' && sourceId) {
+                   if ((srcType === 'WAREHOUSE' || srcType === 'DISTRIBUTOR') && sourceId) {
                      const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: sourceId, product_id: product.id } }});
                      if (ws) {
-                       await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity - item.qty }});
+                       await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity - itemQty }});
                      }
                    } else if (srcType === 'OUTLET' && sourceId) {
                      const os = await tx.outletStock.findUnique({ where: { outlet_id_product_id: { outlet_id: sourceId, product_id: product.id } }});
-                     if (os) await tx.outletStock.update({ where: { id: os.id }, data: { quantity: Math.max(0, os.quantity - item.qty) }});
+                     if (os) await tx.outletStock.update({ where: { id: os.id }, data: { quantity: Math.max(0, os.quantity - itemQty) }});
                    } else if (srcType === 'BOOTH' && sourceId) {
                      const bs = await tx.boothStock.findUnique({ where: { booth_id_product_id: { booth_id: sourceId, product_id: product.id } }});
-                     if (bs) await tx.boothStock.update({ where: { id: bs.id }, data: { quantity: Math.max(0, bs.quantity - item.qty) }});
+                     if (bs) await tx.boothStock.update({ where: { id: bs.id }, data: { quantity: Math.max(0, bs.quantity - itemQty) }});
                    }
 
                    // Increment Destination Stock (If internal transfer)
@@ -1259,12 +1266,12 @@ export async function POST(req: Request) {
                      const ws = await tx.warehouseStock.findUnique({ where: { warehouse_id_product_id: { warehouse_id: destId, product_id: product.id } }});
                      const qReusable = Math.max(0, Number(item.qty_reusable) || 0);
                      const qReject = kategori === 'RETUR'
-                       ? (qReusable > 0 ? Math.max(0, item.qty - qReusable) : item.qty)
+                       ? (qReusable > 0 ? Math.max(0, itemQty - qReusable) : itemQty)
                        : 0;
                      if (kategori === 'RETUR') {
                        returWarehouseItems.push({
                          productId: product.id,
-                         qtyReturned: item.qty,
+                         qtyReturned: itemQty,
                          qtyReusable: qReusable,
                          qtyReject: qReject,
                          unitPrice: Number(product.product_type?.base_price || product.base_price || 0),
@@ -1282,26 +1289,26 @@ export async function POST(req: Request) {
                            },
                          });
                        } else {
-                         await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity + item.qty }});
+                         await tx.warehouseStock.update({ where: { id: ws.id }, data: { quantity: ws.quantity + itemQty }});
                        }
                      } else {
                        await tx.warehouseStock.create({
                          data: {
                            warehouse_id: destId,
                            product_id: product.id,
-                           quantity: kategori === 'RETUR' ? qReusable : item.qty,
+                           quantity: kategori === 'RETUR' ? qReusable : itemQty,
                            returned_qty: kategori === 'RETUR' ? qReject : 0
                          }
                        });
                      }
                    } else if (destType === 'OUTLET' && destId) {
                      // Consignment postShipment will upsert OutletStock, OutletTypeStock, and OutletTransaction SHIPMENT
-                     outletShipmentItems.push({ productId: product.id, qty: item.qty });
+                     outletShipmentItems.push({ productId: product.id, qty: itemQty });
                    } else if (destType === 'BOOTH' && destId) {
                      await tx.boothStock.upsert({
                        where: { booth_id_product_id: { booth_id: destId, product_id: product.id } },
-                       update: { quantity: { increment: item.qty } },
-                       create: { booth_id: destId, product_id: product.id, quantity: item.qty }
+                       update: { quantity: { increment: itemQty } },
+                       create: { booth_id: destId, product_id: product.id, quantity: itemQty }
                      });
                    }
                    
@@ -1309,7 +1316,7 @@ export async function POST(req: Request) {
                    let newBalance = product.stok;
                    if (kategori === 'PENGEMBALIAN_BOOTH') {
                      // Good stock returning from booth to warehouse increases central stock
-                     newBalance += item.qty;
+                     newBalance += itemQty;
                      await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
                      if (sourceId && srcType === 'BOOTH') {
                        const isFinished = /selesai|tutup|berakhir/i.test(payload.body || '');
@@ -1321,19 +1328,19 @@ export async function POST(req: Request) {
                        }
                      }
                    } else if (!['WAREHOUSE', 'OUTLET', 'DISTRIBUTOR'].includes(destType) || kategori === 'RETUR') {
-                     newBalance = Math.max(0, newBalance - item.qty);
+                     newBalance = Math.max(0, newBalance - itemQty);
                      await tx.product.update({ where: { id: product.id }, data: { stok: newBalance }});
                    }
                    
-                    const txType = kategori === 'RETUR' ? 'RETUR' : kategori === 'PENGEMBALIAN_BOOTH' ? 'PENGEMBALIAN_BOOTH' : destType === 'BOOTH' ? 'DISTRIBUSI_BOOTH' : (destType === 'AFFILIATE' || kategori === 'SAMPLE') ? 'SAMPLE_AFFILIATE' : 'DISTRIBUSI';
-                    const txFlow = kategori === 'PENGEMBALIAN_BOOTH' ? 'IN' : 'OUT';
+                   const txType = kategori === 'RETUR' ? 'RETUR' : kategori === 'PENGEMBALIAN_BOOTH' ? 'PENGEMBALIAN_BOOTH' : destType === 'BOOTH' ? 'DISTRIBUSI_BOOTH' : (destType === 'AFFILIATE' || kategori === 'SAMPLE') ? 'SAMPLE_AFFILIATE' : 'DISTRIBUSI';
+                   const txFlow = kategori === 'PENGEMBALIAN_BOOTH' ? 'IN' : 'OUT';
 
                    await tx.stockTransaction.create({
                      data: {
                        product_id: product.id,
                        type: txType,
                        flow: txFlow,
-                       qty: item.qty,
+                       qty: itemQty,
                        balance: newBalance,
                        description: kategori === 'RETUR' ? `Retur dari ${resolvedSourceName} ke ${destName}` : kategori === 'PENGEMBALIAN_BOOTH' ? `Pengembalian sisa layak jual dari ${resolvedSourceName} ke ${destName}` : destType === 'AFFILIATE' ? `Kirim sample affiliate ke ${destName} dari ${resolvedSourceName}` : `Dari ${resolvedSourceName} ke ${destName}`,
                        date: parsedData.date ? new Date(parsedData.date) : new Date(),
@@ -1344,9 +1351,7 @@ export async function POST(req: Request) {
                        employee_id: employeeId
                      }
                    });
-                 }
-               }
-             }
+            }
 
              // Log WarehouseReturn (+ deduct OutletTypeStock if return came from OUTLET)
              if (kategori === 'RETUR' && destId && returWarehouseItems.length > 0) {
