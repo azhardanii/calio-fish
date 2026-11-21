@@ -34,7 +34,6 @@ export default function WarehousePage() {
   const { data, isLoading, mutate } = useSWR('/api/data/warehouses');
   const { data: currentUser } = useSWR('/api/auth/me');
   const { data: productData } = useSWR('/api/data/products');
-  const { data: outletData } = useSWR('/api/data/outlets');
   
   const [activeTab, setActiveTab] = useState<'warehouse' | 'distributor' | 'production' | 'returns'>('warehouse');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -81,6 +80,31 @@ export default function WarehousePage() {
   });
   const [isSubmittingReturn, setIsSubmittingReturn] = useState(false);
 
+  const warehouses = data?.warehouses || [];
+  const shipments = data?.shipments || [];
+  const productions = data?.productions || [];
+  const returns = data?.returns || [];
+  const outlets = data?.outlets || [];
+  const totalShipments = data?.totalShipments || 0;
+  const totalItemsSent = data?.totalItemsSent || 0;
+
+  const products = productData?.products || [];
+
+  const groupedProductions = React.useMemo(() => {
+    const groups: Record<string, { monthLabel: string; totalQty: number; entries: any[] }> = {};
+    (productions || []).forEach((prod: any) => {
+      const d = new Date(prod.date);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+      if (!groups[key]) {
+        groups[key] = { monthLabel: label, totalQty: 0, entries: [] };
+      }
+      groups[key].totalQty += prod.qty;
+      groups[key].entries.push(prod);
+    });
+    return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a));
+  }, [productions]);
+
   if (isLoading && !data) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
@@ -99,16 +123,6 @@ export default function WarehousePage() {
 
   const currentTab = isDistributor ? 'distributor' : activeTab;
 
-  const warehouses = data?.warehouses || [];
-  const shipments = data?.shipments || [];
-  const productions = data?.productions || [];
-  const returns = data?.returns || [];
-  const totalShipments = data?.totalShipments || 0;
-  const totalItemsSent = data?.totalItemsSent || 0;
-
-  const products = productData?.products || [];
-  const outlets = outletData?.outlets || [];
-
   const centralAndBranchWarehouses = warehouses.filter((w: any) => w.type === 'FACTORY' || w.type === 'STORAGE');
   const distributorWarehouses = warehouses.filter((w: any) => w.type === 'DISTRIBUTOR');
   const displayedWarehouses = currentTab === 'distributor' ? distributorWarehouses : centralAndBranchWarehouses;
@@ -116,21 +130,6 @@ export default function WarehousePage() {
   const totalGlobalStock = displayedWarehouses.reduce((sum: number, w: any) => {
     return sum + (w.stocks || []).reduce((acc: number, s: any) => acc + (s.quantity || 0), 0);
   }, 0);
-
-  const groupedProductions = React.useMemo(() => {
-    const groups: Record<string, { monthLabel: string; totalQty: number; entries: any[] }> = {};
-    (productions || []).forEach((prod: any) => {
-      const d = new Date(prod.date);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = d.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
-      if (!groups[key]) {
-        groups[key] = { monthLabel: label, totalQty: 0, entries: [] };
-      }
-      groups[key].totalQty += prod.qty;
-      groups[key].entries.push(prod);
-    });
-    return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a));
-  }, [productions]);
 
   const handleSaveProduction = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,7 +191,7 @@ export default function WarehousePage() {
           qtyReject: it.qtyReject || 0,
         })),
       });
-      await Promise.all([mutate(), productData?.mutate?.(), outletData?.mutate?.()]);
+      await mutate();
       setIsReturnModalOpen(false);
       alert('Data retur gudang berhasil dicatat!');
     } catch (err: any) {

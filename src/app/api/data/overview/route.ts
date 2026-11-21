@@ -373,15 +373,19 @@ export async function GET(req: NextRequest) {
   });
 
   const totalMarketingTarget = marketingStaffPerformance.reduce((s: number, m: any) => s + m.target_omset, 0);
-  const totalMarketingOmset = marketingStaffPerformance.reduce((s: number, m: any) => s + m.total_omset_this_month, 0);
+  const totalMarketingOmset = marketingStaffPerformance.reduce((s: number, m: any) => s + (m.total_kas_masuk_paid ?? 0), 0);
 
   // Target Tim Marketing: 100% terakumulasi dari target masing-masing user marketing yang ada
   const marketingTarget = totalMarketingTarget;
   const offlineOmset = toNum(offlineFilterAgg._sum.omset_harian);
   const shopeeTarget = baseShopeeTarget * monthsCount;
   const tiktokTarget = baseTiktokTarget * monthsCount;
-  const shopeeOmset = toNum(onlineFilterByPlatform.find(x => x.platform === 'shopee')?._sum.omset_harian);
-  const tiktokOmset = toNum(onlineFilterByPlatform.find(x => x.platform === 'tiktok')?._sum.omset_harian);
+  const shopeeOmset = onlineFilterByPlatform
+    .filter(x => (x.platform || '').toLowerCase().includes('shopee'))
+    .reduce((s, x) => s + toNum(x._sum.omset_harian), 0);
+  const tiktokOmset = onlineFilterByPlatform
+    .filter(x => (x.platform || '').toLowerCase().includes('tiktok'))
+    .reduce((s, x) => s + toNum(x._sum.omset_harian), 0);
   const personalBuyerDirectOmset = toNum(personalBuyerDirectAgg._sum.amount);
   const personalBuyerDirectTodayOmset = toNum(personalBuyerDirectToday._sum.amount);
   const personalBuyerAllOmset = toNum(personalBuyerAllAgg._sum.amount);

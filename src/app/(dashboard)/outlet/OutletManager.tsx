@@ -22,7 +22,8 @@ import {
   approveStockOpnameAction,
   rejectStockOpnameAction,
   updateOutletTransactionAction,
-  deleteOutletTransactionAction
+  deleteOutletTransactionAction,
+  batchUpdateOutletProducts
 } from './actions';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { 
@@ -214,6 +215,13 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const [newTypePrice, setNewTypePrice] = useState<number>(0);
   const [isSavingTypePrice, setIsSavingTypePrice] = useState(false);
 
+  // Batch selection & inline edit per product card
+  const [selectedProductIds, setSelectedProductIds] = useState<Record<string, boolean>>({});
+  const [batchDrafts, setBatchDrafts] = useState<Record<string, { targetQty: string; hargaBeli: string }>>({});
+  const [bulkPriceFill, setBulkPriceFill] = useState<string>('');
+  const [batchNote, setBatchNote] = useState<string>('');
+  const [isSavingBatch, setIsSavingBatch] = useState(false);
+
   // Consignment Payment Modal
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [payNominal, setPayNominal] = useState<number | ''>('');
@@ -268,13 +276,13 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
 
   // Keep selectedOutlet in sync with latest outlets data from SWR
   useEffect(() => {
-    if (selectedOutlet?.id && outlets && !editingStockId && !editingPriceId && !isSavingStock && !isSavingPrice) {
+    if (selectedOutlet?.id && outlets && !editingStockId && !editingPriceId && !isSavingStock && !isSavingPrice && !isSavingBatch) {
       const fresh = outlets.find((o: any) => o.id === selectedOutlet.id);
       if (fresh) {
         setSelectedOutlet(fresh);
       }
     }
-  }, [outlets, editingStockId, editingPriceId, isSavingStock, isSavingPrice]);
+  }, [outlets, editingStockId, editingPriceId, isSavingStock, isSavingPrice, isSavingBatch]);
 
   // Helper to reliably compute product unit price for this outlet
   const getStockPrice = (stock: any) => {
@@ -385,12 +393,24 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
   const openDetailModal = (outlet: any) => {
     setSelectedOutlet(outlet);
     setActiveTab('STOK');
+    setSelectedProductIds({});
+    setBatchDrafts({});
+    setBulkPriceFill('');
+    setBatchNote('');
+    setEditingStockId(null);
+    setEditingPriceId(null);
     setIsDetailModalOpen(true);
   };
 
   const closeDetailModal = () => {
     setIsDetailModalOpen(false);
     setSelectedOutlet(null);
+    setSelectedProductIds({});
+    setBatchDrafts({});
+    setBulkPriceFill('');
+    setBatchNote('');
+    setEditingStockId(null);
+    setEditingPriceId(null);
   };
 
   const openModal = (outlet?: any) => {
@@ -712,18 +732,25 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
 
   const handleSubmitPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedOutlet || !payNominal || isSubmittingPay) return;
-    const nominal = Number(payNominal);
-    if (nominal <= 0) {
-      alert('Nominal pembayaran harus lebih dari 0.');
+    if (!selectedOutlet || isSubmittingPay) return;
+    const nominal = payNominal === '' ? 0 : Number(payNominal);
+    if (isNaN(nominal) || nominal < 0) {
+      alert('Nominal pembayaran tidak boleh negatif.');
       return;
     }
 
-    let items;
-    try {
-      items = buildItemsPayload(payItems, payVariants);
-    } catch (err: any) {
-      alert(err.message);
+    let items: any[] = [];
+    if (!paySettleOnly) {
+      try {
+        items = buildItemsPayload(payItems, payVariants);
+      } catch (err: any) {
+        alert(err.message);
+        return;
+      }
+    }
+
+    if (nominal === 0 && (paySettleOnly || items.length === 0)) {
+      alert('Masukkan nominal setoran > 0 atau isi minimal 1 rincian produk terjual.');
       return;
     }
 
@@ -892,6 +919,46 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
     }
   };
 
+  const syncOutletStateAfterMutation = async (
+    targetOutletId: string,
+    patch: {
+      tagihan?: number;
+      sisa_tagihan?: number;
+      payment?: number;
+      valuasi_stok?: number;
+      piutang?: number;
+      stocks?: any[];
+      type_stocks?: any[];
+    },
+    revalidateWarehouse = false
+  ) => {
+    const applyPatch = (o: any) => ({
+      ...o,
+      ...(patch.tagihan !== undefined ? { tagihan: patch.tagihan } : {}),
+      ...(patch.sisa_tagihan !== undefined ? { sisa_tagihan: patch.sisa_tagihan } : {}),
+      ...(patch.payment !== undefined ? { payment: patch.payment } : {}),
+      ...(patch.valuasi_stok !== undefined ? { valuasi_stok: patch.valuasi_stok } : {}),
+      ...(patch.piutang !== undefined ? { piutang: patch.piutang } : {}),
+      ...(patch.stocks !== undefined ? { stocks: patch.stocks } : {}),
+      ...(patch.type_stocks !== undefined ? { type_stocks: patch.type_stocks } : {}),
+    });
+
+    setSelectedOutlet((prev: any) => (prev && prev.id === targetOutletId ? applyPatch(prev) : prev));
+
+    await mutate(
+      '/api/data/outlets',
+      (currentOutlets: any[] | undefined) =>
+        currentOutlets ? currentOutlets.map((o: any) => (o.id === targetOutletId ? applyPatch(o) : o)) : currentOutlets,
+      false
+    );
+
+    // Revalidasi di latar belakang agar UI langsung responsif tanpa menunggu semua endpoint selesai
+    void mutate('/api/data/outlets');
+    if (revalidateWarehouse) void mutate('/api/data/warehouses');
+    void mutate('/api/data/marketing');
+    void mutate('/api/data/overview');
+  };
+
   // Real-time stock adjustment with optimistic SWR sync
   const handleSaveStock = async (stock: any) => {
     if (!isOwnerOrAdmin) {
@@ -903,7 +970,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
       alert('Masukkan jumlah penyesuaian stok (+ untuk menambah, - untuk mengurangi/kembalikan ke gudang).');
       return;
     }
-    const targetQty = Number(stock.quantity) + delta;
+    const targetQty = Number(stock.quantity || 0) + delta;
     if (targetQty < 0) {
       alert('Stok fisik outlet tidak boleh menjadi minus.');
       return;
@@ -912,55 +979,33 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
     setIsSavingStock(true);
     try {
       const selectedWId = stockWarehouseId || warehouses[0]?.id;
-      const res: any = await adjustOutletStock(stock.id, targetQty, stockNote, selectedWId);
-      if (res && res.success === false) {
-        throw new Error(res.error || 'Gagal menyesuaikan stok outlet');
-      }
-
       const targetOutletId = selectedOutlet.id;
 
-      // 1. Immutable update for local modal state
-      setSelectedOutlet((prev: any) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          tagihan: res?.tagihan !== undefined ? res.tagihan : prev.tagihan,
-          sisa_tagihan: res?.sisa_tagihan !== undefined ? res.sisa_tagihan : prev.sisa_tagihan,
-          payment: res?.payment !== undefined ? res.payment : prev.payment,
-          stocks: (prev.stocks || []).map((s: any) =>
-            s.id === stock.id ? { ...s, quantity: targetQty } : s
-          )
-        };
-      });
-
-      // 2. Optimistic update of SWR outlets cache
-      await mutate(
-        '/api/data/outlets',
-        (currentOutlets: any[] | undefined) => {
-          if (!currentOutlets) return currentOutlets;
-          return currentOutlets.map((o: any) => {
-            if (o.id !== targetOutletId) return o;
-            return {
-              ...o,
-              tagihan: res?.tagihan !== undefined ? res.tagihan : o.tagihan,
-              sisa_tagihan: res?.sisa_tagihan !== undefined ? res.sisa_tagihan : o.sisa_tagihan,
-              payment: res?.payment !== undefined ? res.payment : o.payment,
-              stocks: (o.stocks || []).map((s: any) =>
-                s.id === stock.id ? { ...s, quantity: targetQty } : s
-              )
-            };
-          });
-        },
-        false
-      );
-
-      // 3. Revalidate from server
-      await Promise.all([
-        mutate('/api/data/outlets'),
-        mutate('/api/data/warehouses'),
-        mutate('/api/data/marketing'),
-        mutate('/api/data/overview'),
-      ]);
+      if (!stock.id) {
+        const res = await batchUpdateOutletProducts({
+          outletId: targetOutletId,
+          warehouseId: selectedWId,
+          note: stockNote,
+          items: [{ productId: stock.product_id, targetQty }],
+        });
+        if (!res?.success) throw new Error(res?.error || 'Gagal menyesuaikan stok outlet');
+        await syncOutletStateAfterMutation(targetOutletId, res, true);
+      } else {
+        const res: any = await adjustOutletStock(stock.id, targetQty, stockNote, selectedWId);
+        if (res && res.success === false) {
+          throw new Error(res.error || 'Gagal menyesuaikan stok outlet');
+        }
+        await syncOutletStateAfterMutation(
+          targetOutletId,
+          {
+            ...res,
+            stocks: (selectedOutlet.stocks || []).map((s: any) =>
+              s.id === stock.id ? { ...s, quantity: targetQty } : s
+            ),
+          },
+          true
+        );
+      }
       setEditingStockId(null);
       setStockDelta('');
     } catch (err: any) {
@@ -983,59 +1028,163 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
     }
     setIsSavingPrice(true);
     try {
-      const res = await updateOutletProductPrice(stock.id, priceNum);
-      if (res && !res.success) {
-        throw new Error(res.error || 'Gagal mengubah harga');
-      }
-
       const targetOutletId = selectedOutlet.id;
-
-      // 1. Immutable update for local modal state
-      setSelectedOutlet((prev: any) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          tagihan: res?.tagihan !== undefined ? res.tagihan : prev.tagihan,
-          sisa_tagihan: res?.sisa_tagihan !== undefined ? res.sisa_tagihan : prev.sisa_tagihan,
-          payment: res?.payment !== undefined ? res.payment : prev.payment,
-          stocks: (prev.stocks || []).map((s: any) =>
-            s.id === stock.id ? { ...s, harga_beli: priceNum } : s
-          )
-        };
-      });
-
-      // 2. Optimistic update of SWR outlets cache
-      await mutate(
-        '/api/data/outlets',
-        (currentOutlets: any[] | undefined) => {
-          if (!currentOutlets) return currentOutlets;
-          return currentOutlets.map((o: any) => {
-            if (o.id !== targetOutletId) return o;
-            return {
-              ...o,
-              tagihan: res?.tagihan !== undefined ? res.tagihan : o.tagihan,
-              sisa_tagihan: res?.sisa_tagihan !== undefined ? res.sisa_tagihan : o.sisa_tagihan,
-              payment: res?.payment !== undefined ? res.payment : o.payment,
-              stocks: (o.stocks || []).map((s: any) =>
-                s.id === stock.id ? { ...s, harga_beli: priceNum } : s
-              )
-            };
-          });
-        },
-        false
-      );
-
-      // 3. Revalidate from server
-      await Promise.all([
-        mutate('/api/data/outlets'),
-        mutate('/api/data/marketing'),
-        mutate('/api/data/overview'),
-      ]);
+      if (!stock.id) {
+        const res = await batchUpdateOutletProducts({
+          outletId: targetOutletId,
+          items: [{ productId: stock.product_id, hargaBeli: priceNum }],
+        });
+        if (!res?.success) throw new Error(res?.error || 'Gagal mengubah harga');
+        await syncOutletStateAfterMutation(targetOutletId, res, false);
+      } else {
+        const res = await updateOutletProductPrice(stock.id, priceNum);
+        if (res && !res.success) {
+          throw new Error(res.error || 'Gagal mengubah harga');
+        }
+        await syncOutletStateAfterMutation(
+          targetOutletId,
+          {
+            ...res,
+            stocks: (selectedOutlet.stocks || []).map((s: any) =>
+              s.id === stock.id ? { ...s, harga_beli: priceNum } : s
+            ),
+          },
+          false
+        );
+      }
       setEditingPriceId(null);
     } catch (err: any) {
       alert(err.message || 'Gagal mengubah harga');
     } finally {
       setIsSavingPrice(false);
+    }
+  };
+
+  const toggleProductCheck = (card: any) => {
+    const pid = card.product_id;
+    setSelectedProductIds((prev) => {
+      const nextChecked = !prev[pid];
+      if (nextChecked) {
+        setBatchDrafts((d) => ({
+          ...d,
+          [pid]: d[pid] || {
+            targetQty: String(Number(card.quantity || 0)),
+            hargaBeli: String(getStockPrice(card)),
+          },
+        }));
+      }
+      return { ...prev, [pid]: nextChecked };
+    });
+  };
+
+  const toggleSelectAllProducts = (cards: any[]) => {
+    const allChecked = cards.length > 0 && cards.every((c) => selectedProductIds[c.product_id]);
+    if (allChecked) {
+      setSelectedProductIds({});
+      return;
+    }
+    const nextSelected: Record<string, boolean> = {};
+    const nextDrafts: Record<string, { targetQty: string; hargaBeli: string }> = { ...batchDrafts };
+    for (const card of cards) {
+      nextSelected[card.product_id] = true;
+      if (!nextDrafts[card.product_id]) {
+        nextDrafts[card.product_id] = {
+          targetQty: String(Number(card.quantity || 0)),
+          hargaBeli: String(getStockPrice(card)),
+        };
+      }
+    }
+    setBatchDrafts(nextDrafts);
+    setSelectedProductIds(nextSelected);
+  };
+
+  const applyBulkPriceToChecked = (cards: any[]) => {
+    const val = Number(bulkPriceFill);
+    if (bulkPriceFill === '' || isNaN(val) || val < 0) {
+      alert('Masukkan nominal harga massal yang valid.');
+      return;
+    }
+    setBatchDrafts((prev) => {
+      const next = { ...prev };
+      for (const c of cards) {
+        if (selectedProductIds[c.product_id]) {
+          const cur = next[c.product_id] || {
+            targetQty: String(Number(c.quantity || 0)),
+            hargaBeli: String(getStockPrice(c)),
+          };
+          next[c.product_id] = { ...cur, hargaBeli: String(val) };
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleSaveBatch = async (cards: any[]) => {
+    if (!isOwnerOrAdmin || !selectedOutlet || isSavingBatch) return;
+    const checkedCards = cards.filter((c) => selectedProductIds[c.product_id]);
+    if (checkedCards.length === 0) return;
+
+    const payloadItems: Array<{ productId: string; targetQty?: number; hargaBeli?: number }> = [];
+    let hasStockDelta = false;
+    for (const card of checkedCards) {
+      const draft = batchDrafts[card.product_id];
+      if (!draft) continue;
+      const curQty = Number(card.quantity || 0);
+      const curPrice = getStockPrice(card);
+      const nextQty = draft.targetQty === '' ? curQty : Number(draft.targetQty);
+      const nextPrice = draft.hargaBeli === '' ? curPrice : Number(draft.hargaBeli);
+
+      if (isNaN(nextQty) || nextQty < 0) {
+        alert(`Stok "${card.product?.name}" tidak boleh kurang dari 0.`);
+        return;
+      }
+      if (isNaN(nextPrice) || nextPrice < 0) {
+        alert(`Harga "${card.product?.name}" tidak boleh negatif.`);
+        return;
+      }
+
+      const itemPatch: { productId: string; targetQty?: number; hargaBeli?: number } = {
+        productId: card.product_id,
+      };
+      if (nextQty !== curQty) {
+        itemPatch.targetQty = nextQty;
+        hasStockDelta = true;
+      }
+      if (nextPrice !== curPrice) {
+        itemPatch.hargaBeli = nextPrice;
+      }
+      if (itemPatch.targetQty !== undefined || itemPatch.hargaBeli !== undefined) {
+        payloadItems.push(itemPatch);
+      }
+    }
+
+    if (payloadItems.length === 0) {
+      alert('Belum ada perubahan stok atau harga pada produk yang dicentang.');
+      return;
+    }
+
+    setIsSavingBatch(true);
+    try {
+      const selectedWId = stockWarehouseId || warehouses[0]?.id;
+      const res = await batchUpdateOutletProducts({
+        outletId: selectedOutlet.id,
+        warehouseId: hasStockDelta ? selectedWId : undefined,
+        note: batchNote.trim() || undefined,
+        items: payloadItems,
+      });
+      if (!res?.success) {
+        throw new Error(res?.error || 'Gagal menyimpan perubahan produk');
+      }
+
+      await syncOutletStateAfterMutation(selectedOutlet.id, res, hasStockDelta);
+      setSelectedProductIds({});
+      setBatchDrafts({});
+      setBulkPriceFill('');
+      setBatchNote('');
+    } catch (err: any) {
+      alert(err.message || 'Gagal menyimpan perubahan stok & harga.');
+    } finally {
+      setIsSavingBatch(false);
     }
   };
 
@@ -1703,234 +1852,474 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                     </div>
 
                     {/* SECTION 2: Rincian Stok Fisik per Varian Rasa */}
-                    <div>
-                      <div className="text-sm font-bold text-slate-800 mb-1 flex items-center gap-1.5">
-                        <Package size={15} className="text-slate-500" />
-                        <span>Rincian Stok Fisik per Varian Rasa (Histori Pengiriman & Freezer Toko)</span>
-                      </div>
-                      <p className="text-xs text-slate-500 mb-3">
-                        Pencatatan varian rasa di freezer outlet. Penyesuaian fisik (+ / -) tersinkron otomatis ke gudang yang dipilih.
-                      </p>
-                    </div>
+                    {(() => {
+                      const existingMap = new Map<string, any>(
+                        (selectedOutlet.stocks || []).map((s: any) => [s.product_id, s])
+                      );
+                      const outletProductCards: any[] = [...(selectedOutlet.stocks || [])];
+                      (products || [])
+                        .filter((p: any) => p.is_active !== false && !existingMap.has(p.id))
+                        .forEach((p: any) => {
+                          outletProductCards.push({
+                            id: null,
+                            outlet_id: selectedOutlet.id,
+                            product_id: p.id,
+                            product: p,
+                            quantity: 0,
+                            harga_beli: null,
+                          });
+                        });
 
-                    {selectedOutlet.stocks && selectedOutlet.stocks.length > 0 ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {selectedOutlet.stocks.map((stock: any) => {
-                          const unitPrice = getStockPrice(stock);
-                          const subtotal = Number(stock.quantity || 0) * unitPrice;
-                          const isLowStock = stock.quantity > 0 && stock.quantity <= 10;
-                          const isOutOfStock = stock.quantity === 0;
+                      const checkedCards = outletProductCards.filter((c) => selectedProductIds[c.product_id]);
+                      const allChecked =
+                        outletProductCards.length > 0 && checkedCards.length === outletProductCards.length;
+                      const anyBatchStockChanged = checkedCards.some((c) => {
+                        const d = batchDrafts[c.product_id];
+                        return d && d.targetQty !== '' && Number(d.targetQty) !== Number(c.quantity || 0);
+                      });
 
-                          return (
-                            <div key={stock.id} className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs hover:border-blue-200 transition-all flex flex-col justify-between">
-                              <div>
-                                <div className="flex justify-between items-start gap-2 mb-2">
-                                  <div>
-                                    <div className="font-bold text-slate-800 text-sm">{stock.product.name}</div>
-                                    <div className="text-[10px] font-mono text-slate-400">{stock.product.sku}</div>
-                                  </div>
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                    isOutOfStock 
-                                      ? 'bg-rose-50 text-rose-600 border border-rose-200' 
-                                      : isLowStock 
-                                        ? 'bg-amber-50 text-amber-600 border border-amber-200' 
-                                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                  }`}>
-                                    {isOutOfStock ? 'Habis' : isLowStock ? 'Menipis' : 'Aman'}
+                      return (
+                        <div className="space-y-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div>
+                              <div className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                                <Package size={15} className="text-slate-500" />
+                                <span>Rincian Stok Fisik per Varian Rasa (Histori Pengiriman & Freezer Toko)</span>
+                              </div>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                Centang kotak pada beberapa produk untuk langsung ubah stok &amp; harga sekaligus. Produk baru otomatis tampil di sini.
+                              </p>
+                            </div>
+                            {isOwnerOrAdmin && outletProductCards.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => toggleSelectAllProducts(outletProductCards)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 cursor-pointer self-start sm:self-auto shrink-0"
+                              >
+                                <input
+                                  type="checkbox"
+                                  readOnly
+                                  checked={allChecked}
+                                  className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 pointer-events-none"
+                                />
+                                <span>{allChecked ? 'Batal Pilih Semua' : `Pilih Semua (${outletProductCards.length})`}</span>
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Batch Edit Bar saat ada produk dicentang */}
+                          {isOwnerOrAdmin && checkedCards.length > 0 && (
+                            <div className="bg-blue-50/90 border border-blue-200 rounded-xl p-3.5 space-y-2.5 shadow-xs">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="px-2 py-0.5 rounded-full bg-blue-600 text-white text-xs font-bold">
+                                    {checkedCards.length} produk dicentang
+                                  </span>
+                                  <span className="text-xs text-blue-900 font-medium">
+                                    Edit langsung stok/harga di kotak produk, lalu simpan sekaligus.
                                   </span>
                                 </div>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={isSavingBatch}
+                                    onClick={() => setSelectedProductIds({})}
+                                    className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-white/80 cursor-pointer"
+                                  >
+                                    Batal Centang
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isSavingBatch}
+                                    onClick={() => handleSaveBatch(outletProductCards)}
+                                    className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+                                  >
+                                    {isSavingBatch ? (
+                                      <>
+                                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        <span>Menyimpan...</span>
+                                      </>
+                                    ) : (
+                                      <span>Simpan Perubahan ({checkedCards.length})</span>
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
 
-                                {/* Stock Quantity & Subtotal Value */}
-                                <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 mb-3">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-xs text-slate-500 font-medium">Stok Fisik:</span>
-                                    <span className="text-sm font-black text-slate-800">{stock.quantity} pcs</span>
-                                  </div>
-                                  <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-200/60 text-[11px]">
-                                    <span className="text-slate-400">Valuasi Aset:</span>
-                                    <span className="font-bold text-blue-700">Rp {subtotal.toLocaleString('id-ID')}</span>
-                                  </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-blue-200/70">
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="Set harga massal (Rp)..."
+                                    value={bulkPriceFill}
+                                    onChange={(e) => setBulkPriceFill(e.target.value)}
+                                    className="w-full px-2.5 py-1.5 border border-blue-300 rounded-lg text-xs bg-white font-semibold"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => applyBulkPriceToChecked(outletProductCards)}
+                                    className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold whitespace-nowrap cursor-pointer"
+                                  >
+                                    Terapkan
+                                  </button>
                                 </div>
 
-                                {/* Stock Edit Form (Owner / Admin Only) */}
-                                {isOwnerOrAdmin && (
-                                  editingStockId === stock.id ? (
-                                    <div className="space-y-2.5 bg-blue-50/60 p-3 rounded-xl border border-blue-200 mb-3">
-                                      <div className="flex items-center justify-between">
-                                        <div className="text-[11px] font-bold text-blue-900">Penyesuaian Stok Fisik</div>
-                                        <div className="text-[10px] text-slate-500">Stok Saat Ini: <b className="text-slate-800">{stock.quantity} pcs</b></div>
-                                      </div>
-                                      
-                                      {/* Quick Delta Helper & Number Input */}
-                                      <div className="space-y-1.5">
-                                        <div className="flex items-center gap-1.5">
-                                          <div className="relative">
-                                            <input 
-                                              type="number" 
-                                              className="border border-blue-300 rounded px-2 py-1 text-xs w-20 bg-white font-black text-center text-slate-900" 
-                                              placeholder="+ / -"
-                                              value={stockDelta} 
-                                              onChange={e => {
-                                                const val = e.target.value === '' ? '' : Number(e.target.value);
-                                                setStockDelta(val);
-                                              }} 
-                                            />
-                                          </div>
-                                          <div className="flex items-center gap-1">
-                                            <button 
-                                              type="button" 
-                                              onClick={() => setStockDelta(prev => (Number(prev) || 0) - 1)}
-                                              className="px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded text-xs font-black cursor-pointer transition-colors"
-                                              title="Kurang 1 pcs (-1)"
-                                            >
-                                              -1
-                                            </button>
-                                            <button 
-                                              type="button" 
-                                              onClick={() => setStockDelta(prev => (Number(prev) || 0) + 1)}
-                                              className="px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded text-xs font-black cursor-pointer transition-colors"
-                                              title="Tambah 1 pcs (+1)"
-                                            >
-                                              +1
-                                            </button>
-                                          </div>
-                                          <input 
-                                            type="text" 
-                                            className="border border-slate-300 rounded px-2 py-1 text-xs flex-1 bg-white" 
-                                            placeholder="Keterangan..." 
-                                            value={stockNote} 
-                                            onChange={e => setStockNote(e.target.value)} 
-                                          />
-                                        </div>
-
-                                        {/* Live Preview Result */}
-                                        {stockDelta !== '' && Number(stockDelta) !== 0 && (
-                                          <div className="text-[11px] px-2 py-1 rounded bg-white border border-blue-100 flex items-center justify-between">
-                                            <span className="text-slate-500 font-medium">
-                                              Hasil Fisik: {stock.quantity} {Number(stockDelta) > 0 ? `+ ${stockDelta}` : `- ${Math.abs(Number(stockDelta))}`} =
-                                            </span>
-                                            <span className={`font-black ${stock.quantity + Number(stockDelta) < 0 ? 'text-rose-600' : 'text-blue-700'}`}>
-                                              {stock.quantity + Number(stockDelta)} pcs
-                                              {stock.quantity + Number(stockDelta) < 0 && ' (Tidak valid, stok minus!)'}
-                                            </span>
-                                          </div>
-                                        )}
-                                      </div>
-
-                                      {/* Warehouse Selection for Both Plus (+) and Minus (-) */}
-                                      {stockDelta !== '' && Number(stockDelta) !== 0 && (
-                                        <div className="pt-0.5">
-                                          <div className={`text-[10px] font-bold mb-0.5 flex items-center gap-1 ${
-                                            Number(stockDelta) > 0 ? 'text-blue-700' : 'text-amber-800'
-                                          }`}>
-                                            <span>{Number(stockDelta) > 0 ? '🏬 Ambil tambahan dari gudang:' : '🏬 Kembalikan stok ke gudang:'}</span>
-                                            <span className="font-black">({Math.abs(Number(stockDelta))} pcs)</span>
-                                          </div>
-                                          <select
-                                            value={stockWarehouseId}
-                                            onChange={e => setStockWarehouseId(e.target.value)}
-                                            className="w-full text-xs p-1.5 border border-blue-300 rounded-lg bg-white font-medium text-slate-800"
-                                          >
-                                            {warehouses.map((w: any) => (
-                                              <option key={w.id} value={w.id}>
-                                                🏬 {w.name} ({w.type === 'FACTORY' ? 'Pabrik' : 'Penyimpanan'})
-                                              </option>
-                                            ))}
-                                          </select>
-                                        </div>
-                                      )}
-
-                                      <div className="flex gap-2 pt-0.5">
-                                        <button 
-                                          disabled={isSavingStock || stockDelta === '' || Number(stockDelta) === 0 || (stock.quantity + Number(stockDelta) < 0)}
-                                          onClick={() => handleSaveStock(stock)} 
-                                          className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg font-medium flex items-center gap-1 disabled:opacity-50 cursor-pointer"
-                                        >
-                                          {isSavingStock ? (
-                                            <>
-                                              <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                              <span>Menyimpan...</span>
-                                            </>
-                                          ) : (
-                                            <span>Simpan Perubahan</span>
-                                          )}
-                                        </button>
-                                        <button 
-                                          disabled={isSavingStock} 
-                                          onClick={() => { setEditingStockId(null); setStockDelta(''); }} 
-                                          className="text-xs text-gray-500 hover:text-gray-700 cursor-pointer"
-                                        >
-                                          Batal
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="mb-3">
-                                      <button 
-                                        onClick={() => { 
-                                          setEditingStockId(stock.id); 
-                                          setStockDelta(''); 
-                                          setStockNote(''); 
-                                          setStockWarehouseId(warehouses[0]?.id || ''); 
-                                        }} 
-                                        className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 cursor-pointer"
-                                      >
-                                        <Pencil size={11} />
-                                        <span>Sesuaikan Stok Fisik</span>
-                                      </button>
-                                    </div>
-                                  )
-                                )}
-
-                                {/* Price Edit Form (Owner / Admin Only) */}
-                                {isOwnerOrAdmin && editingPriceId === stock.id ? (
-                                  <div className="flex items-center gap-1.5 bg-slate-50 p-2 rounded-lg border border-slate-200">
-                                    <input 
-                                      type="number" 
-                                      className="border rounded px-2 py-1 text-xs w-full bg-white font-bold" 
-                                      value={newPrice} 
-                                      onChange={e => setNewPrice(Number(e.target.value))} 
-                                    />
-                                    <button 
-                                      disabled={isSavingPrice}
-                                      onClick={() => handleSavePrice(stock)} 
-                                      className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded font-medium flex items-center gap-1 disabled:opacity-60 cursor-pointer"
+                                {anyBatchStockChanged && (
+                                  <>
+                                    <select
+                                      value={stockWarehouseId}
+                                      onChange={(e) => setStockWarehouseId(e.target.value)}
+                                      className="w-full px-2.5 py-1.5 border border-blue-300 rounded-lg text-xs bg-white font-medium text-slate-800"
                                     >
-                                      {isSavingPrice ? (
-                                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                      ) : (
-                                        <span>Simpan</span>
-                                      )}
-                                    </button>
-                                    <button disabled={isSavingPrice} onClick={() => setEditingPriceId(null)} className="text-xs text-gray-500 hover:text-gray-700 cursor-pointer">Batal</button>
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center justify-between pt-1 border-t border-slate-100">
-                                    <div className="text-xs text-slate-500 font-medium">Harga Jual:</div>
-                                    <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
-                                      Rp {unitPrice.toLocaleString('id-ID')}
-                                      {isOwnerOrAdmin && (
-                                        <button 
-                                          onClick={() => { setEditingPriceId(stock.id); setNewPrice(unitPrice); }} 
-                                          className="text-slate-400 hover:text-blue-600 p-0.5 cursor-pointer"
-                                          title="Edit Harga Khusus Outlet"
-                                        >
-                                          <Pencil size={11} />
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
+                                      {warehouses.map((w: any) => (
+                                        <option key={w.id} value={w.id}>
+                                          🏬 Gudang Sync: {w.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <input
+                                      type="text"
+                                      placeholder="Catatan perubahan stok (opsional)..."
+                                      value={batchNote}
+                                      onChange={(e) => setBatchNote(e.target.value)}
+                                      className="w-full px-2.5 py-1.5 border border-blue-300 rounded-lg text-xs bg-white"
+                                    />
+                                  </>
                                 )}
                               </div>
                             </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="bg-slate-50 p-8 rounded-xl border border-dashed text-center text-sm text-slate-400 italic">
-                        Belum ada data produk untuk outlet ini.
-                      </div>
-                    )}
+                          )}
+
+                          {outletProductCards.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {outletProductCards.map((stock: any) => {
+                                const cardKey = stock.product_id;
+                                const unitPrice = getStockPrice(stock);
+                                const currentQty = Number(stock.quantity || 0);
+                                const subtotal = currentQty * unitPrice;
+                                const isLowStock = currentQty > 0 && currentQty <= 10;
+                                const isOutOfStock = currentQty === 0;
+                                const isChecked = !!selectedProductIds[cardKey];
+                                const draft = batchDrafts[cardKey] || {
+                                  targetQty: String(currentQty),
+                                  hargaBeli: String(unitPrice),
+                                };
+                                const draftQtyNum = draft.targetQty === '' ? currentQty : Number(draft.targetQty);
+                                const draftDiff = draftQtyNum - currentQty;
+
+                                return (
+                                  <div
+                                    key={stock.id || `prod-${cardKey}`}
+                                    className={`bg-white p-3.5 rounded-xl border shadow-xs transition-all flex flex-col justify-between ${
+                                      isChecked
+                                        ? 'border-blue-500 ring-2 ring-blue-100 bg-blue-50/15'
+                                        : 'border-slate-200 hover:border-blue-200'
+                                    }`}
+                                  >
+                                    <div>
+                                      <div className="flex justify-between items-start gap-2 mb-2">
+                                        <div className="flex items-start gap-2 min-w-0">
+                                          {isOwnerOrAdmin && (
+                                            <input
+                                              type="checkbox"
+                                              checked={isChecked}
+                                              onChange={() => toggleProductCheck(stock)}
+                                              aria-label={`Pilih ${stock.product?.name}`}
+                                              className="mt-0.5 w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer shrink-0"
+                                            />
+                                          )}
+                                          <div className="min-w-0">
+                                            <div className="font-bold text-slate-800 text-sm leading-snug">
+                                              {stock.product?.name}
+                                            </div>
+                                            <div className="text-[10px] font-mono text-slate-400">
+                                              {stock.product?.sku}
+                                              {!stock.id && <span className="ml-1.5 text-indigo-500 font-sans font-semibold">• Baru</span>}
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                                          isOutOfStock 
+                                            ? 'bg-rose-50 text-rose-600 border border-rose-200' 
+                                            : isLowStock 
+                                              ? 'bg-amber-50 text-amber-600 border border-amber-200' 
+                                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                        }`}>
+                                          {isOutOfStock ? 'Habis' : isLowStock ? 'Menipis' : 'Aman'}
+                                        </span>
+                                      </div>
+
+                                      {/* Stock Quantity & Subtotal Value */}
+                                      <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 mb-3">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs text-slate-500 font-medium">Stok Fisik:</span>
+                                          <span className="text-sm font-black text-slate-800">{currentQty} pcs</span>
+                                        </div>
+                                        <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-200/60 text-[11px]">
+                                          <span className="text-slate-400">Valuasi Aset:</span>
+                                          <span className="font-bold text-blue-700">Rp {subtotal.toLocaleString('id-ID')}</span>
+                                        </div>
+                                      </div>
+
+                                      {isOwnerOrAdmin && isChecked ? (
+                                        <div className="space-y-2.5 bg-blue-50/70 p-2.5 rounded-xl border border-blue-200">
+                                          <div>
+                                            <div className="flex items-center justify-between text-[11px] mb-1">
+                                              <span className="font-bold text-blue-900">Stok Baru (pcs)</span>
+                                              {draftDiff !== 0 && !isNaN(draftDiff) && (
+                                                <span className={`font-extrabold ${draftDiff > 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                                  {draftDiff > 0 ? `+${draftDiff} pcs` : `${draftDiff} pcs`}
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  setBatchDrafts((p) => ({
+                                                    ...p,
+                                                    [cardKey]: {
+                                                      ...draft,
+                                                      targetQty: String(Math.max(0, draftQtyNum - 1)),
+                                                    },
+                                                  }))
+                                                }
+                                                className="px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded text-xs font-black cursor-pointer"
+                                              >
+                                                -1
+                                              </button>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                value={draft.targetQty}
+                                                onChange={(e) =>
+                                                  setBatchDrafts((p) => ({
+                                                    ...p,
+                                                    [cardKey]: { ...draft, targetQty: e.target.value },
+                                                  }))
+                                                }
+                                                className="w-full border border-blue-300 rounded px-2 py-1 text-xs bg-white font-black text-center text-slate-900"
+                                              />
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  setBatchDrafts((p) => ({
+                                                    ...p,
+                                                    [cardKey]: {
+                                                      ...draft,
+                                                      targetQty: String(draftQtyNum + 1),
+                                                    },
+                                                  }))
+                                                }
+                                                className="px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded text-xs font-black cursor-pointer"
+                                              >
+                                                +1
+                                              </button>
+                                            </div>
+                                          </div>
+
+                                          <div>
+                                            <label className="block text-[11px] font-bold text-blue-900 mb-1">
+                                              Harga Jual (Rp)
+                                            </label>
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              value={draft.hargaBeli}
+                                              onChange={(e) =>
+                                                setBatchDrafts((p) => ({
+                                                  ...p,
+                                                  [cardKey]: { ...draft, hargaBeli: e.target.value },
+                                                }))
+                                              }
+                                              className="w-full border border-blue-300 rounded px-2 py-1 text-xs bg-white font-bold text-slate-900"
+                                            />
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <>
+                                          {/* Stock Edit Form (Owner / Admin Only) */}
+                                          {isOwnerOrAdmin && (
+                                            editingStockId === cardKey ? (
+                                              <div className="space-y-2.5 bg-blue-50/60 p-3 rounded-xl border border-blue-200 mb-3">
+                                                <div className="flex items-center justify-between">
+                                                  <div className="text-[11px] font-bold text-blue-900">Penyesuaian Stok Fisik</div>
+                                                  <div className="text-[10px] text-slate-500">Stok Saat Ini: <b className="text-slate-800">{currentQty} pcs</b></div>
+                                                </div>
+                                                
+                                                <div className="space-y-1.5">
+                                                  <div className="flex items-center gap-1.5">
+                                                    <div className="relative">
+                                                      <input 
+                                                        type="number" 
+                                                        className="border border-blue-300 rounded px-2 py-1 text-xs w-20 bg-white font-black text-center text-slate-900" 
+                                                        placeholder="+ / -"
+                                                        value={stockDelta} 
+                                                        onChange={e => {
+                                                          const val = e.target.value === '' ? '' : Number(e.target.value);
+                                                          setStockDelta(val);
+                                                        }} 
+                                                      />
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                      <button 
+                                                        type="button" 
+                                                        onClick={() => setStockDelta(prev => (Number(prev) || 0) - 1)}
+                                                        className="px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded text-xs font-black cursor-pointer transition-colors"
+                                                        title="Kurang 1 pcs (-1)"
+                                                      >
+                                                        -1
+                                                      </button>
+                                                      <button 
+                                                        type="button" 
+                                                        onClick={() => setStockDelta(prev => (Number(prev) || 0) + 1)}
+                                                        className="px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded text-xs font-black cursor-pointer transition-colors"
+                                                        title="Tambah 1 pcs (+1)"
+                                                      >
+                                                        +1
+                                                      </button>
+                                                    </div>
+                                                    <input 
+                                                      type="text" 
+                                                      className="border border-slate-300 rounded px-2 py-1 text-xs flex-1 bg-white" 
+                                                      placeholder="Keterangan..." 
+                                                      value={stockNote} 
+                                                      onChange={e => setStockNote(e.target.value)} 
+                                                    />
+                                                  </div>
+
+                                                  {stockDelta !== '' && Number(stockDelta) !== 0 && (
+                                                    <div className="text-[11px] px-2 py-1 rounded bg-white border border-blue-100 flex items-center justify-between">
+                                                      <span className="text-slate-500 font-medium">
+                                                        Hasil Fisik: {currentQty} {Number(stockDelta) > 0 ? `+ ${stockDelta}` : `- ${Math.abs(Number(stockDelta))}`} =
+                                                      </span>
+                                                      <span className={`font-black ${currentQty + Number(stockDelta) < 0 ? 'text-rose-600' : 'text-blue-700'}`}>
+                                                        {currentQty + Number(stockDelta)} pcs
+                                                        {currentQty + Number(stockDelta) < 0 && ' (Tidak valid, stok minus!)'}
+                                                      </span>
+                                                    </div>
+                                                  )}
+                                                </div>
+
+                                                {stockDelta !== '' && Number(stockDelta) !== 0 && (
+                                                  <div className="pt-0.5">
+                                                    <div className={`text-[10px] font-bold mb-0.5 flex items-center gap-1 ${
+                                                      Number(stockDelta) > 0 ? 'text-blue-700' : 'text-amber-800'
+                                                    }`}>
+                                                      <span>{Number(stockDelta) > 0 ? '🏬 Ambil tambahan dari gudang:' : '🏬 Kembalikan stok ke gudang:'}</span>
+                                                      <span className="font-black">({Math.abs(Number(stockDelta))} pcs)</span>
+                                                    </div>
+                                                    <select
+                                                      value={stockWarehouseId}
+                                                      onChange={e => setStockWarehouseId(e.target.value)}
+                                                      className="w-full text-xs p-1.5 border border-blue-300 rounded-lg bg-white font-medium text-slate-800"
+                                                    >
+                                                      {warehouses.map((w: any) => (
+                                                        <option key={w.id} value={w.id}>
+                                                          🏬 {w.name} ({w.type === 'FACTORY' ? 'Pabrik' : 'Penyimpanan'})
+                                                        </option>
+                                                      ))}
+                                                    </select>
+                                                  </div>
+                                                )}
+
+                                                <div className="flex gap-2 pt-0.5">
+                                                  <button 
+                                                    disabled={isSavingStock || stockDelta === '' || Number(stockDelta) === 0 || (currentQty + Number(stockDelta) < 0)}
+                                                    onClick={() => handleSaveStock(stock)} 
+                                                    className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg font-medium flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                                                  >
+                                                    {isSavingStock ? (
+                                                      <>
+                                                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                                        <span>Menyimpan...</span>
+                                                      </>
+                                                    ) : (
+                                                      <span>Simpan Perubahan</span>
+                                                    )}
+                                                  </button>
+                                                  <button 
+                                                    disabled={isSavingStock} 
+                                                    onClick={() => { setEditingStockId(null); setStockDelta(''); }} 
+                                                    className="text-xs text-gray-500 hover:text-gray-700 cursor-pointer"
+                                                  >
+                                                    Batal
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              <div className="mb-3">
+                                                <button 
+                                                  onClick={() => { 
+                                                    setEditingStockId(cardKey); 
+                                                    setStockDelta(''); 
+                                                    setStockNote(''); 
+                                                    setStockWarehouseId(warehouses[0]?.id || ''); 
+                                                  }} 
+                                                  className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 cursor-pointer"
+                                                >
+                                                  <Pencil size={11} />
+                                                  <span>Sesuaikan Stok Fisik</span>
+                                                </button>
+                                              </div>
+                                            )
+                                          )}
+
+                                          {/* Price Edit Form (Owner / Admin Only) */}
+                                          {isOwnerOrAdmin && editingPriceId === cardKey ? (
+                                            <div className="flex items-center gap-1.5 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                                              <input 
+                                                type="number" 
+                                                className="border rounded px-2 py-1 text-xs w-full bg-white font-bold" 
+                                                value={newPrice} 
+                                                onChange={e => setNewPrice(Number(e.target.value))} 
+                                              />
+                                              <button 
+                                                disabled={isSavingPrice}
+                                                onClick={() => handleSavePrice(stock)} 
+                                                className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded font-medium flex items-center gap-1 disabled:opacity-60 cursor-pointer"
+                                              >
+                                                {isSavingPrice ? (
+                                                  <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                                ) : (
+                                                  <span>Simpan</span>
+                                                )}
+                                              </button>
+                                              <button disabled={isSavingPrice} onClick={() => setEditingPriceId(null)} className="text-xs text-gray-500 hover:text-gray-700 cursor-pointer">Batal</button>
+                                            </div>
+                                          ) : (
+                                            <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                                              <div className="text-xs text-slate-500 font-medium">Harga Jual:</div>
+                                              <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                                                Rp {unitPrice.toLocaleString('id-ID')}
+                                                {isOwnerOrAdmin && (
+                                                  <button 
+                                                    onClick={() => { setEditingPriceId(cardKey); setNewPrice(unitPrice); }} 
+                                                    className="text-slate-400 hover:text-blue-600 p-0.5 cursor-pointer"
+                                                    title="Edit Harga Khusus Outlet"
+                                                  >
+                                                    <Pencil size={11} />
+                                                  </button>
+                                                )}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="bg-slate-50 p-8 rounded-xl border border-dashed text-center text-sm text-slate-400 italic">
+                              Belum ada data produk aktif di database.
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {/* Riwayat Stok Opname Outlet */}
                     <div className="mt-4 pt-4 border-t border-slate-100">
@@ -2718,16 +3107,16 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Nominal Setoran (Rp) *</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Nominal Setoran (Rp)</label>
                     <input
                       type="number"
-                      required
-                      min="1"
+                      min="0"
                       placeholder="0"
                       value={payNominal}
-                      onChange={e => setPayNominal(e.target.value ? Number(e.target.value) : '')}
+                      onChange={e => setPayNominal(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full border rounded-lg p-2 text-xs font-bold bg-slate-50 focus:bg-white"
                     />
+                    <p className="text-[10px] text-slate-400 mt-1">Boleh diisi 0 jika penjualan masuk piutang.</p>
                   </div>
                 </div>
 
@@ -2788,7 +3177,11 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                         <span className="font-bold text-emerald-700">Rp {nominal.toLocaleString('id-ID')}</span>
                       </div>
                       <div className="pt-1.5 border-t border-slate-100">
-                        {totalItemsQty === 0 && nominal > 0 ? (
+                        {totalItemsQty === 0 && nominal === 0 ? (
+                          <div className="text-slate-500 font-medium">
+                            Isi nominal setoran &gt; 0 atau masukkan minimal 1 rincian produk terjual.
+                          </div>
+                        ) : totalItemsQty === 0 && nominal > 0 ? (
                           <div className="text-amber-700 font-medium">
                             ⚠️ Tanpa rincian item: Pembayaran akan berstatus <b>PENDING</b> sampai rincian dilengkapi.
                           </div>
@@ -2832,7 +3225,7 @@ export function OutletManager({ outlets, currentUser, employees }: { outlets: an
                   </button>
                   <button
                     type="submit"
-                    disabled={isSubmittingPay || !payNominal}
+                    disabled={isSubmittingPay || (nominal === 0 && (paySettleOnly || totalItemsQty === 0))}
                     className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50"
                   >
                     {isSubmittingPay ? 'Memproses...' : 'Simpan Pembayaran'}

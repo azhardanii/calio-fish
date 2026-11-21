@@ -145,9 +145,11 @@ const processedMessageIds = new Set<string>();
 
 export async function POST(req: Request) {
   let acquiredMsgLockKey: string | null = null;
+  let lastExtracted: ReturnType<typeof extractGowaWebhook> | null = null;
   try {
     const body: GowaPayload = await req.json();
     const extracted = extractGowaWebhook(body);
+    lastExtracted = extracted;
 
     const isMessageEvent =
       extracted.event.startsWith('message') ||
@@ -331,11 +333,25 @@ export async function POST(req: Request) {
 
     const parsedData = await parseWhatsAppReport(payload.body);
 
-    if (!parsedData || !parsedData.report_type || parsedData.report_type === 'NONE') {
+    if (!parsedData) {
       await sendChatPresence(payload.chat_id, 'paused');
+      await recordWebhookDebug(extracted, 'error', 'AI parser (Gemini) mengembalikan null / gagal memproses pesan');
+      if (isLapor) {
+        await sendMessage(
+          payload.chat_id,
+          '❌ Sistem gagal memanggil AI parser untuk membaca laporan ini. Mohon coba lagi sebentar lagi atau cek log/quota Gemini API.',
+          payload.id
+        );
+      }
+      return NextResponse.json({ status: 'error', reason: 'ai_parser_failed' }, { status: 500 });
+    }
+
+    if (!parsedData.report_type || parsedData.report_type === 'NONE') {
+      await sendChatPresence(payload.chat_id, 'paused');
+      await recordWebhookDebug(extracted, 'ignored', 'AI parsed as NONE (bukan laporan)');
       console.log('[Webhook - DIABAIKAN] Pesan terdeteksi sebagai obrolan biasa (Bukan Laporan).');
       if (isLapor) {
-        const errorMsg = `⚠️ Maaf, format laporan Anda tidak dipahami oleh sistem.\n\nContoh format yang benar:\n1. /lapor tim produksi mengemas...\n2. /lapor outlet malang omset...\n\nSilakan cek kembali *SOP & Template WhatsApp Report*.`;
+        const errorMsg = `⚠️ Maaf, format laporan Anda tidak dipahami oleh sistem.\n\nContoh format yang benar:\n1. /lapor mengemas fs sambal matah 60gr : 100pcs\n2. /lapor kirim dari Banyuwangi ke Outlet A: fs ori 60gr 10 pcs\n\nSilakan cek kembali *SOP & Template WhatsApp Report*.`;
         await sendMessage(payload.chat_id, errorMsg, payload.id);
       }
       return NextResponse.json({ status: 'ignored', reason: 'unparseable or casual chat' });
@@ -349,6 +365,8 @@ export async function POST(req: Request) {
     }
 
     let replyMsg = `✅ Laporan *${parsedData.report_type}* tanggal ${parsedData.date} berhasil dicatat!`;
+    let outcome = 'success';
+    let outcomeReason = `${parsedData.report_type} processed`;
     const data = parsedData.data;
 
     try {
@@ -723,11 +741,13 @@ export async function POST(req: Request) {
                      : `🎯 Target: Belum diset di sistem`);
 
       } else if (parsedData.report_type === 'MARKETING_ONLINE') {
+        const rawPf = String(data.platform || '').toLowerCase();
+        const normalizedPlatform = rawPf.includes('tiktok') ? 'tiktok' : rawPf.includes('shopee') ? 'shopee' : (rawPf || '-');
         await prisma.$transaction(async (tx) => {
           await tx.marketingOnline.create({
             data: {
               date: new Date(parsedData.date),
-              platform: data.platform || '-',
+              platform: normalizedPlatform,
               target_bulanan: data.target_bulanan || 0,
               target_harian: data.target_harian || 0,
               target_mtd: data.target_mtd || 0,
@@ -822,10 +842,10 @@ export async function POST(req: Request) {
         const tDate = new Date(parsedData.date);
         const startOfMonth = new Date(tDate.getFullYear(), tDate.getMonth(), 1);
         const endOfMonth = new Date(tDate.getFullYear(), tDate.getMonth() + 1, 0, 23, 59, 59, 999);
-        const pf = (data.platform || '').toLowerCase();
+        const pf = normalizedPlatform;
         const agg = await prisma.marketingOnline.aggregate({
            _sum: { omset_harian: true },
-           where: { platform: data.platform, date: { gte: startOfMonth, lte: endOfMonth } }
+           where: { platform: { contains: pf, mode: 'insensitive' }, date: { gte: startOfMonth, lte: endOfMonth } }
         });
         const currentMtd = Number(agg._sum.omset_harian ?? 0);
         
@@ -848,10 +868,12 @@ export async function POST(req: Request) {
         await prisma.$transaction(async (tx) => {
           const allProducts = await fetchMatchableProducts(tx);
           for (const entry of data) {
+             const rawEntryPf = String(entry.platform || '').toLowerCase();
+             const normEntryPf = rawEntryPf.includes('tiktok') ? 'tiktok' : rawEntryPf.includes('shopee') ? 'shopee' : (rawEntryPf || '-');
              await tx.marketingOnline.create({
               data: {
                 date: new Date(parsedData.date),
-                platform: entry.platform || '-',
+                platform: normEntryPf,
                 target_bulanan: entry.target_bulanan || 0,
                 target_harian: entry.target_harian || 0,
                 target_mtd: entry.target_mtd || 0,
@@ -1684,26 +1706,46 @@ export async function POST(req: Request) {
 
         replyMsg = `✅ *Laporan Penjualan Booth* ${booth.nama} berhasil dicatat!\nTotal Omset: Rp ${omset.toLocaleString('id-ID')}\nMetode: ${bayarMethod}`;
       }
+      outcomeReason = `${parsedData.report_type}: ${replyMsg.slice(0, 120)}`;
     } catch (dbError: any) {
+      const errDetail = dbError?.message ? String(dbError.message) : String(dbError);
       console.error('Database insertion error:', dbError);
-      if (dbError?.message && dbError.message.startsWith('AMBIGUOUS:')) {
-        replyMsg = `⚠️ Laporan dibatalkan.\n\n${dbError.message.replace('AMBIGUOUS:', '')}`;
-      } else if (dbError?.message && dbError.message.startsWith('BATAL:')) {
-        replyMsg = `❌ *PENGIRIMAN DIBATALKAN*\n\n${dbError.message.replace('BATAL:', '')}`;
+      if (errDetail.startsWith('AMBIGUOUS:')) {
+        outcome = 'clarified';
+        outcomeReason = errDetail;
+        replyMsg = `⚠️ Laporan dibatalkan.\n\n${errDetail.replace('AMBIGUOUS:', '')}`;
+      } else if (errDetail.startsWith('BATAL:')) {
+        outcome = 'rejected';
+        outcomeReason = errDetail;
+        replyMsg = `❌ *PENGIRIMAN DIBATALKAN*\n\n${errDetail.replace('BATAL:', '')}`;
       } else {
-        replyMsg = `❌ Gagal mencatat laporan ${parsedData.report_type} ke database.`;
+        outcome = 'error';
+        outcomeReason = errDetail;
+        replyMsg = `❌ Gagal mencatat laporan ${parsedData.report_type} ke database.\nDetail Error: ${errDetail.slice(0, 300)}`;
       }
     }
 
+    await recordWebhookDebug(extracted, outcome, outcomeReason);
     await sendChatPresence(payload.chat_id, 'paused');
     await sendMessage(payload.chat_id, replyMsg, payload.id);
 
-    return NextResponse.json({ status: 'success', parsedData, replyMsg });
-  } catch (error) {
+    return NextResponse.json({ status: outcome === 'error' ? 'error' : 'success', parsedData, replyMsg });
+  } catch (error: any) {
+    const errDetail = error?.message ? String(error.message) : String(error);
     console.error('Webhook processing error:', error);
+    if (lastExtracted) {
+      await recordWebhookDebug(lastExtracted, 'error', `Unhandled: ${errDetail}`);
+      if (lastExtracted.chatId && lastExtracted.chatId !== 'TEST_CHAT_ID') {
+        await sendMessage(
+          lastExtracted.chatId,
+          `❌ Terjadi error saat memproses pesan WhatsApp:\nDetail Error: ${errDetail.slice(0, 300)}`,
+          lastExtracted.msgId || undefined
+        ).catch(() => {});
+      }
+    }
     if (acquiredMsgLockKey) {
       await prisma.systemSetting.delete({ where: { key: acquiredMsgLockKey } }).catch(() => {});
     }
-    return NextResponse.json({ status: 'error', message: 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ status: 'error', message: errDetail }, { status: 500 });
   }
 }

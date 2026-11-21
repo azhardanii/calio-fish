@@ -8,9 +8,9 @@ import { OutletManager } from './OutletManager';
 export default function OutletPage() {
   const { data: outlets, isLoading: isLoadingOutlets } = useSWR('/api/data/outlets');
   const { data: currentUser, isLoading: isLoadingUser } = useSWR('/api/auth/me');
-  const { data: employees, isLoading: isLoadingEmployees } = useSWR('/api/data/employees');
+  const { data: employees } = useSWR('/api/data/employees');
 
-  if ((isLoadingOutlets && !outlets) || (isLoadingUser && !currentUser) || (isLoadingEmployees && !employees)) {
+  if ((isLoadingOutlets && !outlets) || (isLoadingUser && !currentUser)) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '40vh' }}>
         <div style={{ textAlign: 'center' }}>

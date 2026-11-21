@@ -876,7 +876,7 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
                   <div className="grid grid-cols-2 gap-2 my-2 bg-white p-2.5 rounded-lg border border-gray-100">
                     <div>
                       <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">REALISASI OMSET</div>
-                      <div className="text-sm font-black text-blue-900 mt-0.5">{formatRp(st.total_omset_this_month)}</div>
+                      <div className="text-sm font-black text-blue-900 mt-0.5">{formatRp(st.total_kas_masuk_paid ?? st.total_omset_this_month ?? 0)}</div>
                     </div>
                     <div>
                       <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">TARGET OMSET</div>
@@ -911,7 +911,7 @@ export default function OverviewClient({ data }: { data: OverviewData; isValidat
                   {/* Breakdown footer */}
                   <div className="pt-2 border-t border-gray-200/60 flex items-center justify-between text-[10px] text-gray-500">
                     <span className="truncate">
-                      Outlet: {formatRp(st.total_billing_this_month)} • Direct: {formatRp(st.personal_buyer_this_month)}
+                      Outlet: {formatRp(st.total_payment_this_month ?? 0)} • Direct: {formatRp(st.personal_buyer_this_month ?? 0)}
                     </span>
                     <Link 
                       href="/marketing" 

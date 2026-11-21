@@ -25,35 +25,44 @@ export async function GET() {
   const outlets = await prisma.outlet.findMany({
     where: whereClause,
     include: { 
-      stocks: { include: { product: true } },
-      type_stocks: { include: { product_type: true } },
+      stocks: { include: { product: { select: { id: true, sku: true, name: true, short_name: true, base_price: true, product_type_id: true, is_active: true } } } },
+      type_stocks: { include: { product_type: { select: { id: true, code: true, name: true, base_price: true } } } },
       pengelola: { select: { id: true, nama: true } },
       distributor: { select: { id: true, nama: true, wilayah: true } },
       transactions: { 
         orderBy: { date: 'desc' },
+        take: 100,
         include: { 
-          items: { include: { product_type: true } },
+          items: { include: { product_type: { select: { id: true, code: true, name: true } } } },
           variants: { include: { product: { select: { id: true, name: true, short_name: true, sku: true } } } }
         }
       },
       stock_opnames: {
         orderBy: { date: 'desc' },
-        include: { items: { include: { product_type: true } } }
+        take: 50,
+        include: { items: { include: { product_type: { select: { id: true, code: true, name: true } } } } }
       },
-      shipments: { orderBy: { date: 'desc' }, include: { items: { include: { product: true } } } }
+      shipments: {
+        orderBy: { date: 'desc' },
+        take: 50,
+        include: { items: { include: { product: { select: { id: true, sku: true, name: true, short_name: true } } } } }
+      }
     },
     orderBy: { created_at: 'desc' },
   });
 
   const outletIds = outlets.map(o => o.id);
-  const stockTransactions = await prisma.stockTransaction.findMany({
-    where: { 
-      destination_type: 'OUTLET',
-      destination_id: { in: outletIds }
-    },
-    include: { product: true, employee: { select: { nama: true } } },
-    orderBy: { created_at: 'desc' }
-  });
+  const stockTransactions = outletIds.length > 0
+    ? await prisma.stockTransaction.findMany({
+        where: { 
+          destination_type: 'OUTLET',
+          destination_id: { in: outletIds }
+        },
+        include: { product: { select: { id: true, sku: true, name: true, short_name: true } }, employee: { select: { nama: true } } },
+        orderBy: { created_at: 'desc' },
+        take: 200,
+      })
+    : [];
 
   const outletsWithHistory = outlets.map(o => {
     // Dynamic stock valuation based on type_stocks (harga_beli ?? base_price)

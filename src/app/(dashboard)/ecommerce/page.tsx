@@ -390,8 +390,8 @@ export default function EcommercePage() {
   const globalShopeeTarget = Number(data?.globalShopeeTarget || 0);
   const globalTiktokTarget = Number(data?.globalTiktokTarget || 0);
 
-  const shopeeReports = onlineReports.filter((r: any) => r.platform?.toLowerCase() === 'shopee');
-  const tiktokReports = onlineReports.filter((r: any) => r.platform?.toLowerCase() === 'tiktok');
+  const shopeeReports = onlineReports.filter((r: any) => (r.platform || '').toLowerCase().includes('shopee'));
+  const tiktokReports = onlineReports.filter((r: any) => (r.platform || '').toLowerCase().includes('tiktok'));
 
   const shopeeOmsetMtd = shopeeReports.reduce((sum: number, r: any) => sum + Number(r.omset_harian), 0);
   const tiktokOmsetMtd = tiktokReports.reduce((sum: number, r: any) => sum + Number(r.omset_harian), 0);
@@ -404,8 +404,8 @@ export default function EcommercePage() {
 
   // Filtered reports table
   const displayedReports = onlineReports.filter((r: any) => {
-    if (filterPlatform === 'SHOPEE') return r.platform?.toLowerCase() === 'shopee';
-    if (filterPlatform === 'TIKTOK') return r.platform?.toLowerCase() === 'tiktok';
+    if (filterPlatform === 'SHOPEE') return (r.platform || '').toLowerCase().includes('shopee');
+    if (filterPlatform === 'TIKTOK') return (r.platform || '').toLowerCase().includes('tiktok');
     return true;
   });
 
