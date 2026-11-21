@@ -414,14 +414,14 @@ export async function GET(req: NextRequest) {
   const netMargin = totalKasMasuk - totalPengeluaranCalio;
   const totalSisaTagihan = toNum(outletTagihanAgg._sum.sisa_tagihan);
 
-  // Omset Hari Ini: Dari Tim Marketing (billing outlet + personal buyer), online, direct personal, dan booth
+  // Omset Hari Ini: Dari Tim Marketing (pembayaran outlet masuk + personal buyer), online, direct personal, dan booth
   let marketingTodayOmset = 0;
   (marketingEmployees as any[]).forEach((emp: any) => {
     (emp.managed_outlets || []).forEach((outlet: any) => {
       (outlet.transactions || []).forEach((tx: any) => {
         const txDate = new Date(tx.date);
         if (txDate >= todayStart && txDate <= todayEnd) {
-          if (tx.type === 'PIUTANG' || tx.type === 'BILLING' || tx.type === 'TAGIHAN' || tx.type === 'ORDER') {
+          if (tx.type === 'PELUNASAN' || tx.type === 'PAYMENT') {
             marketingTodayOmset += Number(tx.amount || 0);
           }
         }
@@ -455,13 +455,13 @@ export async function GET(req: NextRequest) {
     chartMap.set(key, entry);
   };
 
-  // Populate Marketing Daily from Outlet Billing & Marketing Personal Buyer transactions
+  // Populate Marketing Daily from Outlet Payments (Kas Masuk Nyata) & Marketing Personal Buyer transactions
   (marketingEmployees as any[]).forEach((emp: any) => {
     (emp.managed_outlets || []).forEach((outlet: any) => {
       (outlet.transactions || []).forEach((tx: any) => {
         const txDate = new Date(tx.date);
         const matchDate = dateFilter ? (txDate >= startDate! && txDate <= endDate!) : true;
-        if (matchDate && (tx.type === 'PIUTANG' || tx.type === 'BILLING' || tx.type === 'TAGIHAN' || tx.type === 'ORDER')) {
+        if (matchDate && (tx.type === 'PELUNASAN' || tx.type === 'PAYMENT')) {
           addChartPoint(txDate, 'offline', Number(tx.amount || 0));
         }
       });
